@@ -1,0 +1,95 @@
+{
+  "name": "@lpm.dev/neo.markdown",
+  "version": "1.0.0",
+  "description": "Modern, tree-shakeable markdown parser with TypeScript support",
+  "keywords": [
+    "markdown",
+    "parser",
+    "commonmark",
+    "gfm",
+    "github-flavored-markdown",
+    "tree-shakeable",
+    "typescript",
+    "esm",
+    "html",
+    "marked",
+    "markdown-it"
+  ],
+  "license": "MIT",
+  "author": "neo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ne-ooo/neo.markdown"
+  },
+  "homepage": "https://github.com/ne-ooo/neo.markdown#readme",
+  "bugs": {
+    "url": "https://github.com/ne-ooo/neo.markdown/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
+    "./blocks": {
+      "types": "./dist/blocks/index.d.ts",
+      "import": "./dist/blocks/index.js",
+      "require": "./dist/blocks/index.cjs"
+    },
+    "./inline": {
+      "types": "./dist/inline/index.d.ts",
+      "import": "./dist/inline/index.js",
+      "require": "./dist/inline/index.cjs"
+    },
+    "./commonmark": {
+      "types": "./dist/presets/commonmark.d.ts",
+      "import": "./dist/presets/commonmark.js",
+      "require": "./dist/presets/commonmark.cjs"
+    },
+    "./gfm": {
+      "types": "./dist/presets/gfm.d.ts",
+      "import": "./dist/presets/gfm.js",
+      "require": "./dist/presets/gfm.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    ".lpm",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "typecheck": "tsc --noEmit",
+    "bench": "vitest bench",
+    "prepublishOnly": "npm run build && npm run test && npm run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@vitest/ui": "^1.2.0",
+    "marked": "^12.0.0",
+    "markdown-it": "^14.1.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "sideEffects": false
+}
