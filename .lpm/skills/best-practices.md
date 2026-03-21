@@ -1,7 +1,7 @@
 ---
 name: best-practices
 description: Performance, security, tree-shaking, and token pipeline patterns for @lpm.dev/neo.markdown
-version: "1.0.0"
+version: "1.1.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"

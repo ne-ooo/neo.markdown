@@ -14,6 +14,7 @@ import type {
   HtmlBlockToken,
   HtmlInlineToken,
   TableToken,
+  DirectiveToken,
   TextToken,
   StrongToken,
   EmToken,
@@ -165,6 +166,22 @@ export class HtmlRenderer implements Renderer {
   }
 
   /**
+   * Render directive (default: no-op, plugins override this)
+   */
+  directive(_token: DirectiveToken): string {
+    return ''
+  }
+
+  /**
+   * Apply renderer method overrides from plugins
+   */
+  applyOverrides(overrides: Map<keyof Renderer, Renderer[keyof Renderer]>): void {
+    for (const [method, fn] of overrides) {
+      ;(this as Record<string, unknown>)[method] = fn
+    }
+  }
+
+  /**
    * Render text
    */
   text(token: TextToken): string {
@@ -268,6 +285,8 @@ export class HtmlRenderer implements Renderer {
         return this.html(token)
       case 'table':
         return this.table(token)
+      case 'directive':
+        return this.directive(token)
       default:
         return ''
     }

@@ -13,6 +13,11 @@ export default defineConfig({
     // Presets
     'presets/commonmark': 'src/presets/commonmark.ts',
     'presets/gfm': 'src/presets/gfm.ts',
+    // Plugins
+    'plugins/highlight': 'src/plugins/highlight.ts',
+    'plugins/embeds': 'src/plugins/embeds.ts',
+    'plugins/toc': 'src/plugins/toc.ts',
+    'plugins/copy-code': 'src/plugins/copy-code.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

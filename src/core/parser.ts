@@ -6,6 +6,7 @@ import type { Parser, ParserOptions, BlockToken, ParagraphToken, HeadingToken, T
 import { Tokenizer } from './tokenizer.js'
 import { InlineTokenizer } from './inline-tokenizer.js'
 import { HtmlRenderer } from './renderer.js'
+import { PluginBuilderImpl } from './plugin-builder.js'
 
 /**
  * Markdown parser implementation
@@ -15,6 +16,8 @@ export class MarkdownParser implements Parser {
   private blockTokenizer: Tokenizer
   private inlineTokenizer: InlineTokenizer
   private renderer: HtmlRenderer
+  private tokenTransforms: Array<(tokens: BlockToken[]) => BlockToken[]>
+  private htmlTransforms: Array<(html: string) => string>
 
   constructor(options: ParserOptions = {}) {
     this.options = {
@@ -25,9 +28,29 @@ export class MarkdownParser implements Parser {
       ...options,
     }
 
-    this.blockTokenizer = new Tokenizer(this.options)
-    this.inlineTokenizer = new InlineTokenizer()
     this.renderer = new HtmlRenderer()
+
+    // Process plugins
+    const builder = new PluginBuilderImpl(this.renderer, this.options)
+
+    if (this.options.plugins) {
+      for (const plugin of this.options.plugins) {
+        plugin(builder)
+      }
+    }
+
+    // Apply renderer overrides from plugins
+    if (builder.rendererOverrides.size > 0) {
+      this.renderer.applyOverrides(builder.rendererOverrides)
+    }
+
+    // Store transforms
+    this.tokenTransforms = builder.tokenTransforms
+    this.htmlTransforms = builder.htmlTransforms
+
+    // Create tokenizers with custom rules from plugins
+    this.blockTokenizer = new Tokenizer(this.options, builder.blockRules)
+    this.inlineTokenizer = new InlineTokenizer(builder.inlineRules)
   }
 
   /**
@@ -37,8 +60,21 @@ export class MarkdownParser implements Parser {
    * @returns HTML string
    */
   parse(markdown: string): string {
-    const tokens = this.tokenize(markdown)
-    return this.render(tokens)
+    let tokens = this.tokenize(markdown)
+
+    // Apply token transforms from plugins
+    for (const transform of this.tokenTransforms) {
+      tokens = transform(tokens)
+    }
+
+    let html = this.render(tokens)
+
+    // Apply HTML transforms from plugins
+    for (const transform of this.htmlTransforms) {
+      html = transform(html)
+    }
+
+    return html
   }
 
   /**

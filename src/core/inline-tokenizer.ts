@@ -2,7 +2,7 @@
  * Inline tokenizer for parsing inline markdown elements
  */
 
-import type { InlineToken } from './types.js'
+import type { InlineRule, InlineToken } from './types.js'
 
 /**
  * Inline regex patterns
@@ -46,6 +46,54 @@ const PATTERNS = {
  * Inline tokenizer class
  */
 export class InlineTokenizer {
+  /** Custom inline rules indexed by trigger char code */
+  private customCharMap: Map<number, InlineRule[]>
+  /** Custom inline rules without trigger chars (checked as fallback) */
+  private customGeneralRules: InlineRule[]
+  /** Text pattern adapted for custom rule trigger chars */
+  private textPattern: RegExp
+
+  constructor(customRules: InlineRule[] = []) {
+    this.customCharMap = new Map()
+    this.customGeneralRules = []
+
+    const triggerCharSet = new Set<number>()
+    let hasGeneralRules = false
+
+    for (const rule of customRules) {
+      if (rule.triggerChars && rule.triggerChars.length > 0) {
+        for (const charCode of rule.triggerChars) {
+          triggerCharSet.add(charCode)
+          const existing = this.customCharMap.get(charCode)
+          if (existing) {
+            existing.push(rule)
+          } else {
+            this.customCharMap.set(charCode, [rule])
+          }
+        }
+      } else {
+        hasGeneralRules = true
+        this.customGeneralRules.push(rule)
+      }
+    }
+
+    // Build text pattern that stops at custom trigger chars
+    if (hasGeneralRules) {
+      // General rules need single-char text matching to get a chance at every position
+      this.textPattern = /^(?:(?!https?:\/\/|www\.)[^*_`[\n\\!~])/
+    } else if (triggerCharSet.size > 0) {
+      // Add trigger chars to the exclusion set so text doesn't consume them
+      const extra = [...triggerCharSet]
+        .map((c) => `\\u${c.toString(16).padStart(4, '0')}`)
+        .join('')
+      this.textPattern = new RegExp(
+        `^(?:(?!https?:\\/\\/|www\\.)[^*_\`[\\n\\\\!~${extra}])+`
+      )
+    } else {
+      this.textPattern = PATTERNS.text
+    }
+  }
+
   /**
    * Tokenize inline markdown string
    * Phase 6: Optimized with fast-path checks to avoid unnecessary regex execution
@@ -85,6 +133,31 @@ export class InlineTokenizer {
         token = this.tokenizeLink(text)
       } else if (char === 32 && text.charCodeAt(1) === 32) { // two spaces - potential line break
         token = this.tokenizeBr(text)
+      }
+
+      // Custom rules with matching trigger chars
+      if (!token) {
+        const charRules = this.customCharMap.get(char)
+        if (charRules) {
+          for (const rule of charRules) {
+            const result = rule.tokenize(text)
+            if (result) {
+              token = result
+              break
+            }
+          }
+        }
+      }
+
+      // Custom rules without trigger chars (general)
+      if (!token) {
+        for (const rule of this.customGeneralRules) {
+          const result = rule.tokenize(text)
+          if (result) {
+            token = result
+            break
+          }
+        }
       }
 
       // If no specific token matched, check autolinks then text pattern
@@ -459,9 +532,10 @@ export class InlineTokenizer {
 
   /**
    * Tokenize plain text
+   * Uses instance textPattern which may exclude custom trigger chars
    */
   private tokenizeText(src: string): { token: InlineToken; raw: string } | null {
-    const match = PATTERNS.text.exec(src)
+    const match = this.textPattern.exec(src)
     if (!match) return null
 
     const raw = match[0]

@@ -1,8 +1,21 @@
 /**
  * Core tokenizer for block-level markdown parsing
+ *
+ * Uses an ordered rule array for extensibility via the plugin system.
+ * Built-in rules have default priorities (code=900 ... paragraph=100).
+ * Custom rules slot in by numeric priority or positional constraint.
  */
 
-import type { BlockToken, ListItemToken, ParserOptions, TableCell } from './types.js'
+import type { BlockRule, BlockToken, ListItemToken, ParserOptions, TableCell } from './types.js'
+
+/**
+ * Internal rule representation (resolved priority, bound tokenize fn)
+ */
+interface InternalBlockRule {
+  name: string
+  priority: number
+  tokenize: (src: string) => { token: BlockToken; raw: string } | null
+}
 
 /**
  * Block-level regex patterns
@@ -48,9 +61,63 @@ const PATTERNS = {
  */
 export class Tokenizer {
   private options: ParserOptions
+  private rules: InternalBlockRule[]
 
-  constructor(options: ParserOptions = {}) {
+  constructor(options: ParserOptions = {}, customRules: BlockRule[] = []) {
     this.options = options
+    this.rules = this.buildRules(customRules)
+  }
+
+  /**
+   * Build the ordered rules array from built-in + custom rules
+   */
+  private buildRules(customRules: BlockRule[]): InternalBlockRule[] {
+    const builtins: InternalBlockRule[] = [
+      { name: 'code', priority: 900, tokenize: (src) => this.tokenizeCode(src) },
+      { name: 'setextHeading', priority: 850, tokenize: (src) => this.tokenizeSetextHeading(src) },
+      { name: 'heading', priority: 800, tokenize: (src) => this.tokenizeHeading(src) },
+      { name: 'hr', priority: 750, tokenize: (src) => this.tokenizeHr(src) },
+      { name: 'table', priority: 700, tokenize: (src) => this.tokenizeTable(src) },
+      { name: 'blockquote', priority: 650, tokenize: (src) => this.tokenizeBlockquote(src) },
+      { name: 'list', priority: 600, tokenize: (src) => this.tokenizeList(src) },
+      { name: 'html', priority: 550, tokenize: (src) => this.tokenizeHtml(src) },
+      { name: 'indentedCode', priority: 500, tokenize: (src) => this.tokenizeIndentedCode(src) },
+      { name: 'paragraph', priority: 100, tokenize: (src) => this.tokenizeParagraph(src) },
+    ]
+
+    if (customRules.length === 0) return builtins
+
+    const all = [...builtins]
+    for (const rule of customRules) {
+      const priority = this.resolveRulePriority(rule, all)
+      const opts = this.options
+      all.push({
+        name: rule.name,
+        priority,
+        tokenize: (src) => rule.tokenize(src, opts),
+      })
+    }
+
+    // Sort by priority descending (highest = tried first)
+    all.sort((a, b) => b.priority - a.priority)
+    return all
+  }
+
+  /**
+   * Resolve a custom rule's priority to a numeric value
+   */
+  private resolveRulePriority(rule: BlockRule, existing: InternalBlockRule[]): number {
+    if (rule.priority === undefined) return 150 // Default: before paragraph
+    if (typeof rule.priority === 'number') return rule.priority
+
+    // Positional constraint: "before:name" or "after:name"
+    const colonIdx = rule.priority.indexOf(':')
+    const position = rule.priority.slice(0, colonIdx)
+    const targetName = rule.priority.slice(colonIdx + 1)
+    const target = existing.find((r) => r.name === targetName)
+    if (!target) return 150
+
+    return position === 'before' ? target.priority + 1 : target.priority - 1
   }
 
   /**
@@ -68,24 +135,22 @@ export class Tokenizer {
       markdown += '\n'
     }
 
-    while (markdown) {
-      // Try each pattern in order
-      const token =
-        this.tokenizeCode(markdown) ||
-        this.tokenizeSetextHeading(markdown) ||
-        this.tokenizeHeading(markdown) ||
-        this.tokenizeHr(markdown) ||
-        this.tokenizeTable(markdown) ||
-        this.tokenizeBlockquote(markdown) ||
-        this.tokenizeList(markdown) ||
-        this.tokenizeHtml(markdown) ||
-        this.tokenizeIndentedCode(markdown) ||
-        this.tokenizeParagraph(markdown)
+    const rules = this.rules
 
-      if (token) {
-        tokens.push(token.token)
-        markdown = markdown.slice(token.raw.length)
-      } else {
+    while (markdown) {
+      let matched = false
+
+      for (let i = 0; i < rules.length; i++) {
+        const result = rules[i].tokenize(markdown)
+        if (result) {
+          tokens.push(result.token)
+          markdown = markdown.slice(result.raw.length)
+          matched = true
+          break
+        }
+      }
+
+      if (!matched) {
         // Skip single character if no match (shouldn't happen)
         markdown = markdown.slice(1)
       }
@@ -96,20 +161,35 @@ export class Tokenizer {
 
   /**
    * Tokenize fenced code block
+   * Splits fence info string into lang and meta
    */
   private tokenizeCode(src: string): { token: BlockToken; raw: string } | null {
     const match = PATTERNS.code.exec(src)
     if (!match) return null
 
     const raw = match[0]
-    const lang = match[3]?.trim() || undefined
+    const infoString = match[3]?.trim() ?? ''
     const text = match[4] || ''
+
+    let lang: string | undefined
+    let meta: string | undefined
+
+    if (infoString) {
+      const spaceIdx = infoString.indexOf(' ')
+      if (spaceIdx === -1) {
+        lang = infoString
+      } else {
+        lang = infoString.substring(0, spaceIdx)
+        meta = infoString.substring(spaceIdx + 1).trim() || undefined
+      }
+    }
 
     return {
       token: {
         type: 'code',
         raw,
         lang,
+        meta,
         text,
       },
       raw,

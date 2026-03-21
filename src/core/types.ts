@@ -14,6 +14,7 @@ export type BlockTokenType =
   | 'hr'
   | 'html'
   | 'table'
+  | 'directive'
 
 /**
  * Token types for inline elements
@@ -62,7 +63,19 @@ export interface ParagraphToken extends Token {
 export interface CodeToken extends Token {
   type: 'code'
   lang?: string
+  meta?: string
   text: string
+}
+
+/**
+ * Directive token (for plugins like embeds)
+ * Follows the CommonMark Generic Directives proposal
+ */
+export interface DirectiveToken extends Token {
+  type: 'directive'
+  name: string
+  label?: string
+  attributes: Record<string, string>
 }
 
 /**
@@ -219,6 +232,7 @@ export type BlockToken =
   | ListToken
   | HtmlBlockToken
   | TableToken
+  | DirectiveToken
 
 /**
  * Union of all inline tokens
@@ -272,6 +286,11 @@ export interface ParserOptions {
    * Custom renderer for overriding default HTML output
    */
   renderer?: Partial<Renderer>
+
+  /**
+   * Plugins to extend the parser
+   */
+  plugins?: MarkdownPlugin[]
 }
 
 /**
@@ -290,6 +309,7 @@ export interface Renderer {
   table(token: TableToken): string
   tablerow(cells: string[]): string
   tablecell(text: string, align: 'left' | 'center' | 'right' | null, header: boolean): string
+  directive(token: DirectiveToken): string
 
   // Inline renderers
   text(token: TextToken): string
@@ -320,4 +340,61 @@ export interface Parser {
    * Render tokens to HTML
    */
   render(tokens: BlockToken[]): string
+}
+
+// ---------------------------------------------------------------------------
+// Plugin System Types
+// ---------------------------------------------------------------------------
+
+/**
+ * A plugin is a plain function that receives a builder to configure extensions
+ */
+export type MarkdownPlugin = (builder: PluginBuilder) => void
+
+/**
+ * Builder interface provided to plugins for registering extensions
+ */
+export interface PluginBuilder {
+  /** Register a custom block-level tokenization rule */
+  addBlockRule(rule: BlockRule): void
+  /** Register a custom inline tokenization rule */
+  addInlineRule(rule: InlineRule): void
+  /** Override a renderer method */
+  setRenderer<K extends keyof Renderer>(method: K, fn: Renderer[K]): void
+  /** Add a token-level transform (runs after tokenization, before rendering) */
+  addTokenTransform(fn: (tokens: BlockToken[]) => BlockToken[]): void
+  /** Add an HTML-level transform (runs after rendering) */
+  addHtmlTransform(fn: (html: string) => string): void
+  /** Render inline tokens to HTML (utility for plugin authors) */
+  renderInline(tokens: InlineToken[]): string
+  /** Render block tokens to HTML (utility for plugin authors) */
+  renderBlock(tokens: BlockToken[]): string
+  /** Read-only access to parser options */
+  readonly options: Readonly<ParserOptions>
+}
+
+/**
+ * Custom block-level tokenization rule
+ */
+export interface BlockRule {
+  /** Unique name for this rule */
+  name: string
+  /** Numeric priority (higher = tried first) or positional constraint */
+  priority?: number | `before:${string}` | `after:${string}`
+  /** Tokenize function — returns token + consumed raw string, or null */
+  tokenize(src: string, options: ParserOptions): { token: BlockToken; raw: string } | null
+}
+
+/**
+ * Custom inline tokenization rule
+ */
+export interface InlineRule {
+  /** Unique name for this rule */
+  name: string
+  /** Numeric priority (higher = tried first) or positional constraint */
+  priority?: number | `before:${string}` | `after:${string}`
+  /** Character codes that trigger this rule (preserves fast-path optimization) */
+  triggerChars?: number[]
+  /** Tokenize function — returns token + consumed raw string, or null */
+  tokenize(src: string): { token: InlineToken; raw: string } | null
 }
