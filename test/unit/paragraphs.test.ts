@@ -29,7 +29,7 @@ describe('Paragraphs', () => {
 
   it('should parse paragraph with image', () => {
     const result = parse('![Alt text](https://example.com/image.png)')
-    expect(result).toBe('<p><img src="https://example.com/image.png" alt="Alt text"></p>\n')
+    expect(result).toBe('<p><img src="https://example.com/image.png" alt="Alt text" loading="lazy"></p>\n')
   })
 
   it('should parse multi-line paragraph as single paragraph', () => {

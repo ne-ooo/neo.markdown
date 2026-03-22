@@ -65,7 +65,9 @@ export class Tokenizer {
 
   constructor(options: ParserOptions = {}, customRules: BlockRule[] = []) {
     this.options = options
-    this.rules = this.buildRules(customRules)
+    this.rules = options.blocks
+      ? this.buildFromExternalRules(options.blocks, customRules)
+      : this.buildRules(customRules)
   }
 
   /**
@@ -99,6 +101,56 @@ export class Tokenizer {
     }
 
     // Sort by priority descending (highest = tried first)
+    all.sort((a, b) => b.priority - a.priority)
+    return all
+  }
+
+  /**
+   * Build rules from user-provided block rule list (tree-shaking mode).
+   * Uses the names from the provided rules to select which built-in rules to enable.
+   * Complex rules (blockquote, list) use the internal implementations for correct recursion.
+   */
+  private buildFromExternalRules(blocks: BlockRule[], customRules: BlockRule[]): InternalBlockRule[] {
+    const enabledNames = new Set(blocks.map((r) => r.name))
+
+    // Build only the enabled built-in rules
+    const builtinMap: Record<string, InternalBlockRule> = {
+      code: { name: 'code', priority: 900, tokenize: (src) => this.tokenizeCode(src) },
+      setextHeading: { name: 'setextHeading', priority: 850, tokenize: (src) => this.tokenizeSetextHeading(src) },
+      heading: { name: 'heading', priority: 800, tokenize: (src) => this.tokenizeHeading(src) },
+      hr: { name: 'hr', priority: 750, tokenize: (src) => this.tokenizeHr(src) },
+      table: { name: 'table', priority: 700, tokenize: (src) => this.tokenizeTable(src) },
+      blockquote: { name: 'blockquote', priority: 650, tokenize: (src) => this.tokenizeBlockquote(src) },
+      list: { name: 'list', priority: 600, tokenize: (src) => this.tokenizeList(src) },
+      html: { name: 'html', priority: 550, tokenize: (src) => this.tokenizeHtml(src) },
+      indentedCode: { name: 'indentedCode', priority: 500, tokenize: (src) => this.tokenizeIndentedCode(src) },
+      paragraph: { name: 'paragraph', priority: 100, tokenize: (src) => this.tokenizeParagraph(src) },
+    }
+
+    const all: InternalBlockRule[] = []
+
+    for (const name of enabledNames) {
+      const builtin = builtinMap[name]
+      if (builtin) {
+        all.push(builtin)
+      } else {
+        // External rule not matching a built-in — use as-is
+        const rule = blocks.find((r) => r.name === name)
+        if (rule) {
+          const opts = this.options
+          const priority = typeof rule.priority === 'number' ? rule.priority : 150
+          all.push({ name: rule.name, priority, tokenize: (src) => rule.tokenize(src, opts) })
+        }
+      }
+    }
+
+    // Add plugin custom rules
+    for (const rule of customRules) {
+      const priority = this.resolveRulePriority(rule, all)
+      const opts = this.options
+      all.push({ name: rule.name, priority, tokenize: (src) => rule.tokenize(src, opts) })
+    }
+
     all.sort((a, b) => b.priority - a.priority)
     return all
   }
@@ -560,8 +612,11 @@ export class Tokenizer {
 
   /**
    * Tokenize table (GFM extension - Phase 4)
+   * Only active when gfm option is not false
    */
   private tokenizeTable(src: string): { token: BlockToken; raw: string } | null {
+    if (this.options.gfm === false) return null
+
     const match = PATTERNS.table.exec(src)
     if (!match) return null
 

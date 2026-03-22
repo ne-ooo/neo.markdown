@@ -1,7 +1,7 @@
 ---
 name: best-practices
-description: Performance, security, tree-shaking, and token pipeline patterns for @lpm.dev/neo.markdown
-version: "1.1.0"
+description: Performance, security, tree-shaking, ugc, safeLinks, selective blocks, and token pipeline patterns for @lpm.dev/neo.markdown
+version: "1.2.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -47,42 +47,64 @@ import type { HeadingToken, ListToken, TableToken } from '@lpm.dev/neo.markdown/
 import type { LinkToken, StrongToken, EmToken } from '@lpm.dev/neo.markdown/inline'
 ```
 
+### Use selective block loading for smaller bundles
+
+If you only need a subset of block types (e.g., a comment renderer that only needs paragraphs, emphasis, and links), use the `blocks` option to include only the rules you need. Unused block rules are tree-shaken:
+
+```typescript
+import { createParser } from '@lpm.dev/neo.markdown'
+import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
+
+const parser = createParser({
+  blocks: [heading, paragraph, code, list],
+})
+```
+
 ## Security
 
-### HTML handling is binary
+### HTML handling — three modes
 
-The parser has two modes — there is no middle ground:
+1. **`allowHtml: false` (default):** HTML blocks are entity-escaped (`<` → `&lt;`). Safe for untrusted input.
 
-1. **`allowHtml: false` (default):** HTML blocks are never tokenized. They fall through to the paragraph parser and get entity-escaped (`<` → `&lt;`). This is safe for untrusted input.
+2. **`allowHtml: true, sanitize: true`:** HTML is allowed but passed through the built-in server-side sanitizer. Strips `<script>`, event handlers, and dangerous attributes while keeping safe tags. Use `allowedTags` and `allowedAttributes` to customize the allowlist.
 
-2. **`allowHtml: true`:** Raw HTML passes through verbatim via `HtmlBlockToken`. The renderer returns `token.text` as-is with no filtering.
+3. **`allowHtml: true` (without sanitize):** Raw HTML passes through verbatim. Only use with trusted content.
 
 ```typescript
 // Safe — all HTML escaped
 parse(userInput)
 
-// Unsafe — all HTML passes through, including <script>, <iframe>, event handlers
-parse(userInput, { allowHtml: true })
+// Safe — HTML allowed but sanitized
+parse(userInput, { allowHtml: true, sanitize: true })
+
+// Unsafe — only use with trusted content
+parse(trustedContent, { allowHtml: true })
 ```
 
-**Do not use `allowHtml: true` with untrusted input.** The `sanitize`, `allowedTags`, and `allowedAttributes` options exist in the type system but are not implemented — they provide no protection.
+### Use `ugc: true` for untrusted content
+
+For user-generated content (comments, forum posts, CMS), use the `ugc` shorthand. It enables sanitization, safe links, and disables raw HTML in one option:
+
+```typescript
+const html = parse(userComment, { ugc: true })
+```
+
+### Use `safeLinks: true` for README rendering
+
+When rendering README files or documentation, enable `safeLinks` to add `rel="noopener noreferrer"` and `target="_blank"` to external links:
+
+```typescript
+const html = parse(readme, { safeLinks: true })
+
+// With baseUrl for resolving relative links
+const html = parse(readme, {
+  safeLinks: { baseUrl: 'https://github.com/org/repo/blob/main/' },
+})
+```
 
 ### Dangerous protocols are always blocked
 
 Regardless of options, the renderer blocks dangerous URL protocols in links and images: `javascript:`, `data:`, `vbscript:`, `file:`, `about:`, `blob:`. This protection is in the `escape.ts` utilities and is always active.
-
-### If you need HTML allowlisting
-
-Since `sanitize` is not implemented, use an external sanitizer after parsing:
-
-```typescript
-import { parse } from '@lpm.dev/neo.markdown'
-import DOMPurify from 'dompurify'
-
-// Parse with HTML allowed, then sanitize externally
-const rawHtml = parse(userContent, { allowHtml: true })
-const safeHtml = DOMPurify.sanitize(rawHtml)
-```
 
 ## Token Pipelines
 

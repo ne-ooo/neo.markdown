@@ -1,11 +1,13 @@
 /**
  * Block-level element exports (tree-shakeable)
  *
- * Import only the block types you need for optimal bundle size
+ * Import only the block rules you need for optimal bundle size.
  *
  * @example
  * ```typescript
- * import { heading, paragraph } from '@lpm.dev/neo.markdown/blocks'
+ * import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
+ *
+ * const parser = createParser({ blocks: [heading, paragraph, code, list] })
  * ```
  */
 
@@ -23,6 +25,20 @@ export type {
   TableToken,
 } from '../core/types.js'
 
-// Note: Individual block implementations will be added in Phase 2
-// For now, use the full parser from core
+// Individual block rules (tree-shakeable)
+export {
+  code,
+  indentedCode,
+  heading,
+  setextHeading,
+  hr,
+  table,
+  blockquote,
+  list,
+  html,
+  paragraph,
+  allBlockRules,
+} from './rules.js'
+
+// Full tokenizer (for advanced usage)
 export { Tokenizer } from '../core/tokenizer.js'

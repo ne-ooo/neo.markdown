@@ -5,8 +5,10 @@
  */
 
 export interface UrlMatch {
-  provider: 'youtube' | 'vimeo' | 'twitter'
+  provider: 'youtube' | 'vimeo' | 'twitter' | 'codesandbox' | 'codepen' | 'gist' | 'loom'
   id: string
+  /** Extra metadata from URL parsing (e.g., CodePen user, Gist user) */
+  meta?: Record<string, string>
 }
 
 /**
@@ -59,5 +61,59 @@ export function matchEmbedUrl(url: string): UrlMatch | null {
     if (match?.[1]) return { provider: 'twitter', id: match[1] }
   }
 
+  for (const pattern of CODESANDBOX_PATTERNS) {
+    const match = pattern.exec(url)
+    if (match?.[1]) return { provider: 'codesandbox', id: match[1] }
+  }
+
+  for (const pattern of CODEPEN_PATTERNS) {
+    const match = pattern.exec(url)
+    if (match?.[1] && match?.[2]) return { provider: 'codepen', id: match[2], meta: { user: match[1] } }
+  }
+
+  for (const pattern of GIST_PATTERNS) {
+    const match = pattern.exec(url)
+    if (match?.[1] && match?.[2]) return { provider: 'gist', id: match[2], meta: { user: match[1] } }
+  }
+
+  for (const pattern of LOOM_PATTERNS) {
+    const match = pattern.exec(url)
+    if (match?.[1]) return { provider: 'loom', id: match[1] }
+  }
+
   return null
 }
+
+/**
+ * CodeSandbox URL patterns
+ * Matches: codesandbox.io/s/ID, codesandbox.io/p/sandbox/ID
+ */
+const CODESANDBOX_PATTERNS = [
+  /(?:https?:\/\/)?(?:www\.)?codesandbox\.io\/s\/([\w-]+)/,
+  /(?:https?:\/\/)?(?:www\.)?codesandbox\.io\/p\/sandbox\/([\w-]+)/,
+]
+
+/**
+ * CodePen URL patterns
+ * Matches: codepen.io/USER/pen/ID
+ */
+const CODEPEN_PATTERNS = [
+  /(?:https?:\/\/)?(?:www\.)?codepen\.io\/([\w-]+)\/pen\/([\w-]+)/,
+]
+
+/**
+ * GitHub Gist URL patterns
+ * Matches: gist.github.com/USER/ID
+ */
+const GIST_PATTERNS = [
+  /(?:https?:\/\/)?gist\.github\.com\/([\w-]+)\/([\da-f]+)/,
+]
+
+/**
+ * Loom URL patterns
+ * Matches: loom.com/share/ID, loom.com/embed/ID
+ */
+const LOOM_PATTERNS = [
+  /(?:https?:\/\/)?(?:www\.)?loom\.com\/share\/([\da-f]+)/,
+  /(?:https?:\/\/)?(?:www\.)?loom\.com\/embed\/([\da-f]+)/,
+]

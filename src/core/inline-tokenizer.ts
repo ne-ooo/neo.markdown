@@ -43,6 +43,16 @@ const PATTERNS = {
 }
 
 /**
+ * Options for inline tokenizer
+ */
+export interface InlineTokenizerOptions {
+  /** When true, bare newlines produce <br> (GFM-style line breaks) */
+  breaks?: boolean
+  /** When false, skip strikethrough and autolink parsing */
+  gfm?: boolean
+}
+
+/**
  * Inline tokenizer class
  */
 export class InlineTokenizer {
@@ -52,8 +62,11 @@ export class InlineTokenizer {
   private customGeneralRules: InlineRule[]
   /** Text pattern adapted for custom rule trigger chars */
   private textPattern: RegExp
+  /** Inline tokenizer options */
+  private inlineOptions: InlineTokenizerOptions
 
-  constructor(customRules: InlineRule[] = []) {
+  constructor(customRules: InlineRule[] = [], options: InlineTokenizerOptions = {}) {
+    this.inlineOptions = options
     this.customCharMap = new Map()
     this.customGeneralRules = []
 
@@ -125,13 +138,15 @@ export class InlineTokenizer {
         if (!token) {
           token = this.tokenizeEm(text)
         }
-      } else if (char === 126) { // '~' - strikethrough
+      } else if (char === 126 && this.inlineOptions.gfm !== false) { // '~' - strikethrough (GFM)
         if (text.charCodeAt(1) === 126) { // ~~
           token = this.tokenizeDel(text)
         }
       } else if (char === 33 || char === 91) { // '!' or '[' - link
         token = this.tokenizeLink(text)
       } else if (char === 32 && text.charCodeAt(1) === 32) { // two spaces - potential line break
+        token = this.tokenizeBr(text)
+      } else if (char === 10 && this.inlineOptions.breaks) { // '\n' - bare newline line break
         token = this.tokenizeBr(text)
       }
 
@@ -160,10 +175,13 @@ export class InlineTokenizer {
         }
       }
 
-      // If no specific token matched, check autolinks then text pattern
-      // Autolinks can start anywhere, so we check them before text
+      // If no specific token matched, check autolinks (GFM) then text pattern
       if (!token) {
-        token = this.tokenizeAutolink(text) || this.tokenizeText(text)
+        if (this.inlineOptions.gfm !== false) {
+          token = this.tokenizeAutolink(text) || this.tokenizeText(text)
+        } else {
+          token = this.tokenizeText(text)
+        }
       }
 
       if (token) {
@@ -514,8 +532,19 @@ export class InlineTokenizer {
 
   /**
    * Tokenize line break
+   * Supports both standard (two spaces + newline) and GFM breaks (bare newline)
    */
   private tokenizeBr(src: string): { token: InlineToken; raw: string } | null {
+    // When breaks: true, a bare newline also produces <br>
+    if (this.inlineOptions.breaks && src.charCodeAt(0) === 10) { // '\n'
+      // Don't match if followed by only whitespace (end of block)
+      if (/^\n\s*$/.test(src)) return null
+      return {
+        token: { type: 'br', raw: '\n' },
+        raw: '\n',
+      }
+    }
+
     const match = PATTERNS.br.exec(src)
     if (!match) return null
 

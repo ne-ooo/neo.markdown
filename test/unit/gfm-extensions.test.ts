@@ -1,25 +1,27 @@
 import { describe, it, expect } from 'vitest'
 import { parse } from '../../src/index.js'
 
+const gfm = { gfm: true }
+
 describe('GFM Extensions (Phase 4)', () => {
   describe('Strikethrough', () => {
     it('should parse basic strikethrough', () => {
-      const result = parse('~~strikethrough~~')
+      const result = parse('~~strikethrough~~', gfm)
       expect(result).toBe('<p><del>strikethrough</del></p>\n')
     })
 
     it('should parse strikethrough in middle of text', () => {
-      const result = parse('This is ~~deleted~~ text')
+      const result = parse('This is ~~deleted~~ text', gfm)
       expect(result).toBe('<p>This is <del>deleted</del> text</p>\n')
     })
 
     it('should parse multiple strikethrough sections', () => {
-      const result = parse('~~First~~ and ~~Second~~')
+      const result = parse('~~First~~ and ~~Second~~', gfm)
       expect(result).toBe('<p><del>First</del> and <del>Second</del></p>\n')
     })
 
     it('should parse nested emphasis in strikethrough', () => {
-      const result = parse('~~deleted **bold**~~')
+      const result = parse('~~deleted **bold**~~', gfm)
       expect(result).toContain('<del>')
       expect(result).toContain('<strong>')
       expect(result).toContain('deleted')
@@ -27,7 +29,7 @@ describe('GFM Extensions (Phase 4)', () => {
     })
 
     it('should parse strikethrough with emphasis', () => {
-      const result = parse('**bold ~~and deleted~~**')
+      const result = parse('**bold ~~and deleted~~**', gfm)
       expect(result).toContain('<strong>')
       expect(result).toContain('<del>')
       expect(result).toContain('bold')
@@ -80,7 +82,7 @@ describe('GFM Extensions (Phase 4)', () => {
   describe('Tables', () => {
     it('should parse basic table', () => {
       const markdown = '| Header 1 | Header 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |'
-      const result = parse(markdown)
+      const result = parse(markdown, gfm)
       expect(result).toContain('<table>')
       expect(result).toContain('<thead>')
       expect(result).toContain('<tbody>')
@@ -92,28 +94,28 @@ describe('GFM Extensions (Phase 4)', () => {
 
     it('should parse table with left alignment', () => {
       const markdown = '| Left |\n| :--- |\n| L1   |'
-      const result = parse(markdown)
+      const result = parse(markdown, gfm)
       expect(result).toContain('<th align="left">Left</th>')
       expect(result).toContain('<td align="left">L1</td>')
     })
 
     it('should parse table with center alignment', () => {
       const markdown = '| Center |\n| :----: |\n| C1     |'
-      const result = parse(markdown)
+      const result = parse(markdown, gfm)
       expect(result).toContain('<th align="center">Center</th>')
       expect(result).toContain('<td align="center">C1</td>')
     })
 
     it('should parse table with right alignment', () => {
       const markdown = '| Right |\n| ----: |\n| R1    |'
-      const result = parse(markdown)
+      const result = parse(markdown, gfm)
       expect(result).toContain('<th align="right">Right</th>')
       expect(result).toContain('<td align="right">R1</td>')
     })
 
     it('should parse table with mixed alignment', () => {
       const markdown = '| Left | Center | Right |\n| :--- | :----: | ----: |\n| L1   | C1     | R1    |'
-      const result = parse(markdown)
+      const result = parse(markdown, gfm)
       expect(result).toContain('<th align="left">Left</th>')
       expect(result).toContain('<th align="center">Center</th>')
       expect(result).toContain('<th align="right">Right</th>')
@@ -121,7 +123,7 @@ describe('GFM Extensions (Phase 4)', () => {
 
     it('should parse table with multiple rows', () => {
       const markdown = '| A | B |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |'
-      const result = parse(markdown)
+      const result = parse(markdown, gfm)
       expect(result).toContain('<td>1</td>')
       expect(result).toContain('<td>2</td>')
       expect(result).toContain('<td>3</td>')
@@ -130,45 +132,45 @@ describe('GFM Extensions (Phase 4)', () => {
 
     it('should parse table with inline emphasis', () => {
       const markdown = '| Header |\n| ------ |\n| **bold** |'
-      const result = parse(markdown)
+      const result = parse(markdown, gfm)
       expect(result).toContain('<strong>bold</strong>')
     })
   })
 
   describe('Extended Autolinks', () => {
     it('should auto-link https URLs', () => {
-      const result = parse('Visit https://example.com for info')
+      const result = parse('Visit https://example.com for info', gfm)
       expect(result).toContain('<a href="https://example.com">https://example.com</a>')
     })
 
     it('should auto-link http URLs', () => {
-      const result = parse('Check out http://example.com')
+      const result = parse('Check out http://example.com', gfm)
       expect(result).toContain('<a href="http://example.com">http://example.com</a>')
     })
 
     it('should auto-link www URLs with http:// prefix', () => {
-      const result = parse('Visit www.example.com')
+      const result = parse('Visit www.example.com', gfm)
       expect(result).toContain('<a href="http://www.example.com">www.example.com</a>')
     })
 
     it('should auto-link URLs with paths', () => {
-      const result = parse('See https://example.com/path/to/page')
+      const result = parse('See https://example.com/path/to/page', gfm)
       expect(result).toContain('<a href="https://example.com/path/to/page">https://example.com/path/to/page</a>')
     })
 
     it('should auto-link URLs with query strings', () => {
-      const result = parse('https://example.com?foo=bar&baz=qux')
+      const result = parse('https://example.com?foo=bar&baz=qux', gfm)
       expect(result).toContain('<a href="https://example.com?foo=bar&amp;baz=qux">https://example.com?foo=bar&amp;baz=qux</a>')
     })
 
     it('should auto-link multiple URLs in same paragraph', () => {
-      const result = parse('Visit https://example.com and http://another.com')
+      const result = parse('Visit https://example.com and http://another.com', gfm)
       expect(result).toContain('<a href="https://example.com">https://example.com</a>')
       expect(result).toContain('<a href="http://another.com">http://another.com</a>')
     })
 
     it('should not auto-link inside code', () => {
-      const result = parse('Use `https://example.com` as template')
+      const result = parse('Use `https://example.com` as template', gfm)
       expect(result).not.toContain('<a href="https://example.com">')
       expect(result).toContain('<code>https://example.com</code>')
     })

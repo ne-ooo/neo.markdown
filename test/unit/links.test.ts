@@ -52,17 +52,17 @@ describe('Links and Images', () => {
   describe('Images', () => {
     it('should parse simple image', () => {
       const result = parse('![Alt](https://example.com/image.png)')
-      expect(result).toBe('<p><img src="https://example.com/image.png" alt="Alt"></p>\n')
+      expect(result).toBe('<p><img src="https://example.com/image.png" alt="Alt" loading="lazy"></p>\n')
     })
 
     it('should parse image with title', () => {
       const result = parse('![Alt](https://example.com/image.png "Title")')
-      expect(result).toBe('<p><img src="https://example.com/image.png" alt="Alt" title="Title"></p>\n')
+      expect(result).toBe('<p><img src="https://example.com/image.png" alt="Alt" title="Title" loading="lazy"></p>\n')
     })
 
     it('should parse image with empty alt text', () => {
       const result = parse('![](https://example.com/image.png)')
-      expect(result).toBe('<p><img src="https://example.com/image.png" alt=""></p>\n')
+      expect(result).toBe('<p><img src="https://example.com/image.png" alt="" loading="lazy"></p>\n')
     })
 
     it('should escape HTML in alt text', () => {

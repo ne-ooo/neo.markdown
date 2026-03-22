@@ -29,9 +29,28 @@ import type {
 import { escape, sanitizeUrl } from '../utils/escape.js'
 
 /**
+ * Options controlling default renderer behavior
+ */
+export interface HtmlRendererOptions {
+  /** Add loading="lazy" to all images (default: true) */
+  lazyImages?: boolean
+  /** Safe link handling for user-generated content */
+  safeLinks?: {
+    externalRel?: string
+    externalTarget?: string
+    baseUrl?: string
+  } | boolean
+}
+
+/**
  * Default HTML renderer implementation
  */
 export class HtmlRenderer implements Renderer {
+  private rendererOptions: HtmlRendererOptions
+
+  constructor(options: HtmlRendererOptions = {}) {
+    this.rendererOptions = options
+  }
   /**
    * Render heading
    */
@@ -224,30 +243,57 @@ export class HtmlRenderer implements Renderer {
    * Render link
    */
   link(token: LinkToken): string {
-    const href = sanitizeUrl(token.href)
+    let href = sanitizeUrl(token.href)
     if (!href) {
       // Dangerous URL, render as text
       return this.renderInline(token.tokens)
     }
 
+    const safeLinks = this.rendererOptions.safeLinks
+    let extraAttrs = ''
+
+    if (safeLinks) {
+      const config = typeof safeLinks === 'object' ? safeLinks : {}
+      const isExternal = href.startsWith('http://') || href.startsWith('https://')
+      const isAnchor = href.startsWith('#')
+
+      if (isExternal) {
+        const rel = config.externalRel ?? 'nofollow noopener noreferrer'
+        const target = config.externalTarget ?? '_blank'
+        extraAttrs = ` rel="${rel}" target="${target}"`
+      } else if (!isAnchor && config.baseUrl) {
+        // Resolve relative links against baseUrl
+        const base = config.baseUrl.endsWith('/') ? config.baseUrl : config.baseUrl + '/'
+        href = base + href.replace(/^\.\//, '')
+      }
+    }
+
     const title = token.title ? ` title="${escape(token.title)}"` : ''
     const text = this.renderInline(token.tokens)
-    return `<a href="${escape(href)}"${title}>${text}</a>`
+    return `<a href="${escape(href)}"${title}${extraAttrs}>${text}</a>`
   }
 
   /**
    * Render image
    */
   image(token: ImageToken): string {
-    const src = sanitizeUrl(token.href)
+    let src = sanitizeUrl(token.href)
     if (!src) {
       // Dangerous URL, render as text
       return escape(token.text)
     }
 
+    // Resolve relative image URLs against baseUrl
+    const safeLinks = this.rendererOptions.safeLinks
+    if (safeLinks && typeof safeLinks === 'object' && safeLinks.baseUrl && src && !src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('#')) {
+      const base = safeLinks.baseUrl.endsWith('/') ? safeLinks.baseUrl : safeLinks.baseUrl + '/'
+      src = base + src.replace(/^\.\//, '')
+    }
+
     const title = token.title ? ` title="${escape(token.title)}"` : ''
     const alt = escape(token.text)
-    return `<img src="${escape(src)}" alt="${alt}"${title}>`
+    const loading = this.rendererOptions.lazyImages !== false ? ' loading="lazy"' : ''
+    return `<img src="${escape(src)}" alt="${alt}"${title}${loading}>`
   }
 
   /**

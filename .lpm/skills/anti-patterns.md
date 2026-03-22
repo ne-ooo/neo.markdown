@@ -1,7 +1,7 @@
 ---
 name: anti-patterns
 description: Common mistakes and silent failures when using @lpm.dev/neo.markdown — prioritized wrong/correct pairs
-version: "1.1.0"
+version: "1.2.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -11,124 +11,85 @@ globs:
 
 # Anti-Patterns
 
-### [CRITICAL] Custom renderer option is silently ignored
+### [FIXED in v1.2.0] Custom renderer option — now works
 
-Wrong:
+Previously, the `renderer` option was silently ignored. As of v1.2.0, it is applied correctly. The renderer option is merged before plugin overrides, so plugins take precedence.
 
 ```typescript
+// Works in v1.2.0+
 const parser = createParser({
   renderer: {
     heading: (token) => `<h${token.level} class="custom">${token.text}</h${token.level}>\n`
   }
 })
-// Output uses default HtmlRenderer — custom heading is never called
 ```
 
-Correct:
+Override priority: `renderer` option < plugin `setRenderer()` calls (plugins win). If you use both, the plugin override replaces the option-level override for the same method.
 
-```typescript
-// The renderer option is not wired into the implementation.
-// In src/core/parser.ts:30, the constructor always creates new HtmlRenderer()
-// and ignores options.renderer entirely.
-// Use tokenize + render with your own rendering logic instead:
-const parser = createParser()
-const tokens = parser.tokenize(markdown)
+### [FIXED in v1.2.0] sanitize / allowedTags / allowedAttributes — now works
 
-function renderTokens(tokens: BlockToken[]): string {
-  return tokens.map(token => {
-    if (token.type === 'heading') {
-      return `<h${token.level} class="custom">${token.text}</h${token.level}>\n`
-    }
-    // ... handle other token types
-    return parser.render([token]) // fallback to default for unhandled types
-  }).join('')
-}
-```
-
-`options.renderer` is accepted by `ParserOptions` types but the `MarkdownParser` constructor creates `new HtmlRenderer()` unconditionally and never reads the renderer option.
-
-Source: `src/core/parser.ts:29-30` — `this.renderer = new HtmlRenderer()`
-
-### [CRITICAL] sanitize / allowedTags / allowedAttributes have no effect
-
-Wrong:
-
-```typescript
-// Looks safe — sanitize with allowlist
-const parser = createParser({
-  allowHtml: true,
-  sanitize: true,
-  allowedTags: ['p', 'strong', 'em', 'a'],
-  allowedAttributes: ['href']
-})
-const html = parser.parse(userInput) // ⚠️ ALL HTML passes through unsanitized
-```
-
-Correct:
+Previously, these options existed in the types but had no effect. As of v1.2.0, the built-in server-side sanitizer is fully functional.
 
 ```typescript
 import { parse } from '@lpm.dev/neo.markdown'
-import DOMPurify from 'dompurify'
 
-// Option 1: Don't allow HTML at all (default, safe)
-const safeHtml = parse(userInput)
+// Allow HTML but sanitize it (strips <script>, event handlers, etc.)
+const safeHtml = parse(userInput, { allowHtml: true, sanitize: true })
 
-// Option 2: Allow HTML + sanitize externally
-const rawHtml = parse(userInput, { allowHtml: true })
-const safeHtml = DOMPurify.sanitize(rawHtml)
+// Extend the default allowed tags (defaults include p, strong, em, a, ul, ol, li, etc.)
+const safeHtml = parse(userInput, {
+  allowHtml: true,
+  sanitize: true,
+  allowedTags: ['details', 'summary', 'video'],  // added ON TOP of defaults
+})
+
+// allowedAttributes is a per-tag Record
+const safeHtml = parse(userInput, {
+  allowHtml: true,
+  sanitize: true,
+  allowedAttributes: {
+    a: ['href', 'title'],
+    img: ['src', 'alt', 'width', 'height'],
+    video: ['src', 'controls'],
+  },
+})
 ```
 
-The `sanitize`, `allowedTags`, and `allowedAttributes` options exist in the `ParserOptions` type but are never read by any code path. There is no HTML tag/attribute filter in the codebase. The `escape.ts` utilities only handle entity escaping and URL protocol blocking.
+Note: `sanitize: true` requires `allowHtml: true` — without `allowHtml`, HTML is already entity-escaped so there is nothing to sanitize. External sanitizers like DOMPurify are no longer needed for standard use cases.
 
-Source: maintainer interview — "Accepted by the types but never implemented. There is no HTML tag/attribute whitelist filter anywhere in the codebase."
+### [FIXED in v1.2.0] gfm option — now gates GFM features correctly
 
-### [HIGH] gfm option has no effect — GFM features are always active
-
-Wrong:
+Previously, the `gfm` option was stored but never checked — GFM features were always active. As of v1.2.0, tables, strikethrough, and autolinks are gated on the `gfm` option.
 
 ```typescript
-// Expecting strict CommonMark with no GFM extensions
+// GFM features enabled
+const parser = createParser({ gfm: true })
+parser.parse('| A | B |\n|---|---|\n| 1 | 2 |') // Renders table
+
+// Strict CommonMark — no GFM extensions
 const parser = createParser({ gfm: false })
-parser.parse('| A | B |\n|---|---|\n| 1 | 2 |')
-// ⚠️ Table still renders — gfm flag is stored but never checked
+parser.parse('| A | B |\n|---|---|\n| 1 | 2 |') // No table, treated as paragraph
+parser.parse('~~deleted~~')                       // No strikethrough
 ```
 
-Correct:
+Note: `gfm` defaults to `false`. Set `gfm: true` explicitly to enable tables, strikethrough, and autolinks.
+
+### [FIXED in v1.2.0] breaks option — now produces `<br>` on bare newlines
+
+Previously, the `breaks` option was not wired into `InlineTokenizer`. As of v1.2.0, bare newlines produce `<br>` when `breaks: true`.
 
 ```typescript
-// GFM features (tables, strikethrough, task lists, autolinks) are always active
-// regardless of the gfm option value. The tokenizer always includes these patterns.
-// There is no way to disable them in the current version.
-const parser = createParser()
-parser.parse('| A | B |\n|---|---|\n| 1 | 2 |') // Table renders
-```
-
-The `gfm` option is stored in `this.options` but the `Tokenizer` never checks it. Table tokenization, strikethrough, task lists, and autolinks are always in the parsing chain.
-
-Source: maintainer interview — "The `gfm` option is stored but never checked. The only option that gates behavior is `allowHtml`."
-
-### [HIGH] breaks option has no effect
-
-Wrong:
-
-```typescript
-// Expecting newlines to become <br>
+// Bare newlines become <br>
 const html = parse('Line 1\nLine 2', { breaks: true })
-// ⚠️ Output: <p>Line 1\nLine 2</p> — no <br> inserted
-```
+// Output: <p>Line 1<br>Line 2</p>
 
-Correct:
+// Without breaks (default), only two trailing spaces + newline produces <br>
+const html = parse('Line 1\nLine 2')
+// Output: <p>Line 1\nLine 2</p>
 
-```typescript
-// The breaks option is not implemented. InlineTokenizer does not accept or read options.
-// Only two trailing spaces + newline produces <br> (hardcoded pattern: / {2,}\n/):
 const html = parse('Line 1  \nLine 2')
 // Output: <p>Line 1<br>Line 2</p>
 ```
-
-`InlineTokenizer` is constructed without options (`src/core/parser.ts:29`) and has a hardcoded `br` pattern that only matches two or more trailing spaces followed by a newline. The `breaks` option is never passed to it.
-
-Source: `src/core/inline-tokenizer.ts:48` — InlineTokenizer constructor takes no arguments
 
 ### [HIGH] Calling parse() in a loop instead of reusing createParser()
 
@@ -182,30 +143,18 @@ In `src/core/renderer.ts:132-148`, `table()` calls `tablecell()` for each cell, 
 
 Source: `src/core/renderer.ts:132-148` — table rendering pipeline
 
-### [MEDIUM] Using planned block-selection API that doesn't exist
+### [FIXED in v1.2.0] Block-selection API — now implemented
 
-Wrong:
-
-```typescript
-// This API appears in modernization plans but is NOT implemented
-import { createParser } from '@lpm.dev/neo.markdown/core'
-import { heading, paragraph } from '@lpm.dev/neo.markdown/blocks'
-
-const parser = createParser({ blocks: [heading, paragraph] })
-```
-
-Correct:
+Previously, the `blocks` option was planned but not implemented. As of v1.2.0, individual block rules are exported from `@lpm.dev/neo.markdown/blocks` and can be selectively included via the `blocks` option. This enables tree-shaking for smaller bundles.
 
 ```typescript
-// The blocks and inline sub-paths export the monolithic Tokenizer/InlineTokenizer
-// classes and type re-exports. There are no individual block/inline functions.
-// src/blocks/index.ts says "Individual block implementations will be added in Phase 2"
 import { createParser } from '@lpm.dev/neo.markdown'
-import type { HeadingToken } from '@lpm.dev/neo.markdown/blocks'
+import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
 
-const parser = createParser()
+// Only include the block rules you need — unused rules are tree-shaken
+const parser = createParser({
+  blocks: [heading, paragraph, code, list],
+})
 ```
 
-The `blocks` and `inline` sub-path exports only re-export types and the monolithic tokenizer classes. Individual block/inline functions for selective composition are planned but not implemented.
-
-Source: `src/blocks/index.ts` — "Note: Individual block implementations will be added in Phase 2"
+If the `blocks` option is omitted, all block rules are included (same behavior as before).

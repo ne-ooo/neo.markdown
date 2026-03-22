@@ -17,6 +17,7 @@ import { createParser } from './core/parser.js'
 export type * from './core/types.js'
 export { createParser } from './core/parser.js'
 export { HtmlRenderer } from './core/renderer.js'
+export { DEFAULT_ALLOWED_TAGS, DEFAULT_ALLOWED_ATTRIBUTES } from './core/sanitizer.js'
 
 /**
  * Parse markdown to HTML

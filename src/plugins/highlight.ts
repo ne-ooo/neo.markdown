@@ -58,6 +58,8 @@ export interface HighlightOptions {
   renderToHTML(tokens: unknown[], options?: Record<string, unknown>): string
   /** getThemeStylesheet function from @lpm.dev/neo.highlight (generates CSS for token colors) */
   getThemeStylesheet?(theme: Theme, classPrefix?: string): string
+  /** validateThemeContrast function from @lpm.dev/neo.highlight (WCAG AA validation) */
+  validateThemeContrast?(theme: Theme): { passed: boolean; results: Array<{ token: string; color: string; ratio: number; pass: boolean }> }
   /** Theme for syntax coloring (pass a theme object or name from @lpm.dev/neo.highlight) */
   theme?: Theme
   /** Show line numbers (default: false) */
@@ -116,6 +118,7 @@ export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
     tokenize: tokenizeFn,
     renderToHTML: renderFn,
     getThemeStylesheet: getStylesheetFn,
+    validateThemeContrast: validateContrastFn,
     theme,
     lineNumbers = false,
     classPrefix = 'neo-hl',
@@ -131,6 +134,24 @@ export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
       }
     }
   }
+
+  // Dev-mode: validate theme contrast (WCAG AA)
+  if (validateContrastFn && theme && typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
+    const report = validateContrastFn(theme)
+    if (!report.passed) {
+      for (const result of report.results) {
+        if (!result.pass) {
+          console.warn(
+            `neo.highlight: theme "${(theme as { name?: string }).name ?? 'unknown'}" ${result.token} color ${result.color} ` +
+            `has contrast ratio ${result.ratio}:1 against background (needs 4.5:1 for WCAG AA)`
+          )
+        }
+      }
+    }
+  }
+
+  // Track unknown languages for dev warnings
+  const warnedLanguages = new Set<string>()
 
   // Pre-generate the theme stylesheet (CSS for token color classes)
   const themeCSS = getStylesheetFn && theme
@@ -151,8 +172,16 @@ export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
     builder.setRenderer('code', (token: CodeToken) => {
       const grammar = token.lang ? registry.get(token.lang) : undefined
 
-      // No grammar match — fallback to default rendering
+      // No grammar match — fallback to default rendering (plain <code>)
       if (!grammar) {
+        // Dev-mode: warn about unknown language strings (catch typos)
+        if (token.lang && typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
+          if (!warnedLanguages.has(token.lang)) {
+            warnedLanguages.add(token.lang)
+            console.warn(`neo.highlight: no grammar found for language "${token.lang}". Code block rendered as plain text.`)
+          }
+        }
+
         const code = escape(token.text)
         const langClass = token.lang ? ` class="language-${escape(token.lang)}"` : ''
         return `<pre><code${langClass}>${code}</code></pre>\n`

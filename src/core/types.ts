@@ -263,14 +263,21 @@ export interface ParserOptions {
   sanitize?: boolean
 
   /**
-   * Allowed HTML tags when sanitize is true
+   * Additional HTML tags to allow when sanitize is true (extends defaults)
    */
   allowedTags?: string[]
 
   /**
-   * Allowed HTML attributes when sanitize is true
+   * Additional HTML attributes to allow per tag when sanitize is true (extends defaults)
+   * Keys are tag names, values are arrays of attribute names.
+   * @example { iframe: ['src', 'width', 'height'] }
    */
-  allowedAttributes?: string[]
+  allowedAttributes?: Record<string, string[]>
+
+  /**
+   * Allow inline style attributes when sanitize is true (default: false)
+   */
+  allowStyle?: boolean
 
   /**
    * Enable GitHub Flavored Markdown (GFM) features
@@ -281,6 +288,41 @@ export interface ParserOptions {
    * Enable line breaks as <br> (GFM behavior)
    */
   breaks?: boolean
+
+  /**
+   * Add loading="lazy" to all rendered images (default: true)
+   */
+  lazyImages?: boolean
+
+  /**
+   * Safe link handling for user-generated content.
+   * When true, uses defaults: rel="nofollow noopener noreferrer" target="_blank" for external links.
+   * When object, allows customization of rel, target, and baseUrl for relative link resolution.
+   */
+  safeLinks?: {
+    externalRel?: string
+    externalTarget?: string
+    baseUrl?: string
+  } | boolean
+
+  /**
+   * Shorthand: enables sanitize + safeLinks + sets allowHtml to false.
+   * Designed for rendering untrusted user-generated content safely.
+   */
+  ugc?: boolean
+
+  /**
+   * Custom set of block rules for tree-shaking.
+   * When provided, only these rules are used (instead of all built-in rules).
+   * Import individual rules from '@lpm.dev/neo.markdown/blocks'.
+   *
+   * @example
+   * ```typescript
+   * import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
+   * const parser = createParser({ blocks: [heading, paragraph, code, list] })
+   * ```
+   */
+  blocks?: BlockRule[]
 
   /**
    * Custom renderer for overriding default HTML output

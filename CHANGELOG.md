@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.0] - 2026-03-21
+
+### Fixed
+
+- **[CRITICAL] HTML sanitization now works** — `sanitize: true` with `allowHtml: true` now runs a server-side HTML sanitizer (no DOM dependency). Strips dangerous tags (`<script>`, `<iframe>`, `<style>`, etc.), event handlers (`onclick`, `onerror`), and dangerous URL protocols (`javascript:`, `data:`). Default allowlist is GitHub README-compatible
+- **[CRITICAL] `renderer` option now works** — Custom renderer methods passed via `options.renderer` are applied to the `HtmlRenderer` instance. Plugin overrides take precedence over user overrides
+- **[HIGH] `gfm` option now works** — Tables, strikethrough (`~~text~~`), and autolinks are now gated on `gfm: true`. When `gfm: false`, strict CommonMark parsing is used
+- **[HIGH] `breaks` option now works** — When `breaks: true`, bare newlines produce `<br>` tags (GFM-style line breaks)
+
+### Added
+
+- **Built-in HTML sanitizer** (`src/core/sanitizer.ts`) — Server-side, regex-based, zero DOM dependencies. Works in Node.js, Deno, Bun, and edge runtimes
+- **`allowedTags`** option — Extend default allowed tags when `sanitize: true` (always-blocked tags like `<script>` cannot be overridden)
+- **`allowedAttributes`** option — Per-tag attribute allowlist (`Record<string, string[]>`) extending defaults
+- **`allowStyle`** option — Opt-in for inline `style` attributes (default: `false`)
+- **`safeLinks`** option — Add `rel="nofollow noopener noreferrer"` and `target="_blank"` to external links. Supports `baseUrl` for resolving relative links and images
+- **`ugc`** shorthand — Enables `sanitize + safeLinks + allowHtml: false` in one option for safe rendering of user-generated content
+- **`lazyImages`** option — Adds `loading="lazy"` to all rendered images (default: `true`)
+- **`blocks`** option — Tree-shakeable block selection. Import individual rules from `@lpm.dev/neo.markdown/blocks` and pass only the ones you need
+- **New embed providers** — CodeSandbox, CodePen, GitHub Gist, and Loom support in the embed plugin (directive syntax + auto-embed)
+- **Production-quality embed output** — YouTube uses `youtube-nocookie.com` (privacy), Vimeo adds `?dnt=1`, Tweet adds `data-dnt="true"`. All embeds have responsive 16:9 containers, `loading="lazy"`, and accessible titles
+- **GDPR consent mode** for embeds — `consent: true` renders a placeholder button instead of the iframe; clicking loads the embed
+- **React embed components** (`@lpm.dev/neo.markdown/plugins/embeds/react`) — `<YouTube>`, `<Vimeo>`, `<Tweet>`, `<CodeSandbox>`, `<CodePen>`, `<Loom>` with IntersectionObserver lazy loading, script deduplication (Tweet), dark mode support
+- **Highlight plugin contrast validation** — Pass `validateThemeContrast` from neo.highlight to get dev-mode warnings for WCAG AA failures
+- **Unknown language warnings** — Dev-mode `console.warn` when a code block specifies an unregistered language
+- **Exported sanitizer defaults** — `DEFAULT_ALLOWED_TAGS`, `DEFAULT_ALLOWED_ATTRIBUTES` available for inspection and extension
+- Individual block rules exported from `@lpm.dev/neo.markdown/blocks`: `code`, `indentedCode`, `heading`, `setextHeading`, `hr`, `table`, `blockquote`, `list`, `html`, `paragraph`, `allBlockRules`
+- Sub-path export: `/plugins/embeds/react`
+- 471 tests (up from 306)
+
+### Changed
+
+- **`allowedAttributes` type** changed from `string[]` to `Record<string, string[]>` for per-tag control
+- **Embed plugin** — YouTube defaults to privacy-enhanced mode (`youtube-nocookie.com`), Vimeo adds DNT, Tweet adds `data-dnt="true"`, all use responsive containers
+- **`EmbedOptions`** interface expanded — `vimeo` and `twitter` accept option objects, new `codesandbox`, `codepen`, `gist`, `loom`, `consent`, `consentMessage`, `responsive` options
+- React added as optional peer dependency (for embed React components only)
+- `tsconfig.json` updated with `"jsx": "react-jsx"` and DOM lib
+
 ## [1.1.0] - 2026-03-21
 
 ### Added

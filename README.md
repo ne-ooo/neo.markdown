@@ -63,9 +63,60 @@ parser.parse('**bold** text')
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `allowHtml` | `boolean` | `false` | Allow raw HTML in output |
-| `gfm` | `boolean` | `false` | Enable GFM features (tables, strikethrough, task lists) |
-| `breaks` | `boolean` | `false` | Convert `\n` to `<br>` |
+| `sanitize` | `boolean` | `false` | Sanitize HTML (strip dangerous tags/attributes). Requires `allowHtml: true` |
+| `allowedTags` | `string[]` | — | Extend default allowed tags when `sanitize: true` |
+| `allowedAttributes` | `Record<string, string[]>` | — | Extend default per-tag attributes when `sanitize: true` |
+| `allowStyle` | `boolean` | `false` | Allow inline `style` attributes when `sanitize: true` |
+| `gfm` | `boolean` | `false` | Enable GFM features (tables, strikethrough, autolinks) |
+| `breaks` | `boolean` | `false` | Convert bare `\n` to `<br>` |
+| `lazyImages` | `boolean` | `true` | Add `loading="lazy"` to all images |
+| `safeLinks` | `boolean \| object` | `false` | Add `rel="nofollow noopener noreferrer"` + `target="_blank"` to external links. Object: `{ externalRel?, externalTarget?, baseUrl? }` |
+| `ugc` | `boolean` | `false` | Shorthand: enables `sanitize` + `safeLinks` + disables `allowHtml` |
+| `blocks` | `BlockRule[]` | — | Selective block rules for tree-shaking (import from `/blocks`) |
+| `renderer` | `Partial<Renderer>` | — | Override default renderer methods |
 | `plugins` | `MarkdownPlugin[]` | `[]` | Plugins to extend the parser |
+
+### HTML Sanitization
+
+Render untrusted HTML safely with the built-in server-side sanitizer:
+
+```typescript
+// Allow HTML but sanitize dangerous content
+const parser = createParser({
+  allowHtml: true,
+  sanitize: true,
+})
+
+parser.parse('<script>alert("xss")</script>')  // script stripped entirely
+parser.parse('<img onerror="hack" src="x">')   // onerror stripped, tag kept
+parser.parse('<a href="javascript:evil">click</a>')  // href stripped
+parser.parse('<details><summary>OK</summary>Safe</details>')  // preserved
+```
+
+### User-Generated Content
+
+One-line safe rendering for READMEs, comments, and user content:
+
+```typescript
+const parser = createParser({
+  ugc: true,  // sanitize + safeLinks + no raw HTML
+  safeLinks: {
+    baseUrl: 'https://github.com/user/repo/blob/main',  // resolve relative links
+  },
+})
+```
+
+### Tree-Shakeable Blocks
+
+Import only the block rules you need:
+
+```typescript
+import { createParser } from '@lpm.dev/neo.markdown'
+import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
+
+const parser = createParser({
+  blocks: [heading, paragraph, code, list],  // skip tables, hr, html, etc.
+})
 
 ## Plugins
 
@@ -131,7 +182,7 @@ The `lang` and `meta` are split automatically — `lang: "typescript"`, `meta: "
 
 ### Embed Plugin
 
-YouTube, Vimeo, and Twitter/X embeds via directive syntax or bare-URL auto-embed.
+YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, GitHub Gist, and Loom embeds with privacy-enhanced defaults, responsive containers, and GDPR consent mode.
 
 ```typescript
 import { embedPlugin } from '@lpm.dev/neo.markdown/plugins/embeds'
@@ -139,10 +190,16 @@ import { embedPlugin } from '@lpm.dev/neo.markdown/plugins/embeds'
 const html = parse(markdown, {
   plugins: [
     embedPlugin({
-      youtube: { privacyEnhanced: true },
-      twitter: true,
-      vimeo: true,
-      autoEmbed: true,
+      youtube: { privacyEnhanced: true },  // youtube-nocookie.com (default)
+      vimeo: { dnt: true },                // Do Not Track (default)
+      twitter: { dnt: true, theme: 'dark' },
+      codesandbox: true,
+      codepen: true,
+      gist: true,
+      loom: true,
+      autoEmbed: true,   // bare URLs → embeds
+      responsive: true,  // 16:9 container (default)
+      consent: false,     // GDPR consent placeholder
     })
   ]
 })
@@ -152,15 +209,29 @@ const html = parse(markdown, {
 
 ```markdown
 ::youtube[dQw4w9WgXcQ]
-::vimeo[53373707]{title="My Video" width="640"}
+::vimeo[53373707]{title="My Video"}
 ::tweet[1234567890]
+::codesandbox[my-sandbox-id]
+::codepen[pen-id]{user="username"}
+::gist[abc123def]{user="username" file="index.ts"}
+::loom[video-hash]
 ```
 
-**Auto-embed:** A paragraph containing only a YouTube, Vimeo, or Twitter URL is automatically converted to an embed:
+**Auto-embed:** A paragraph containing only a supported URL is automatically converted to an embed.
 
-```markdown
-https://www.youtube.com/watch?v=dQw4w9WgXcQ
+**GDPR consent mode:** With `consent: true`, embeds render as a "Click to load external content" button. The actual embed loads only after user interaction.
+
+**React components** are also available:
+
+```tsx
+import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
+
+<YouTube id="dQw4w9WgXcQ" />
+<Vimeo id="53373707" />
+<Tweet id="1234567890" theme="dark" />
 ```
+
+React components include IntersectionObserver lazy loading, script deduplication (Tweet), and proper cleanup on unmount.
 
 ### TOC Plugin
 
@@ -374,12 +445,13 @@ import { parse } from '@lpm.dev/neo.markdown/gfm'
 |--------|-------------|
 | `@lpm.dev/neo.markdown` | Main entry — `parse()` and `createParser()` |
 | `@lpm.dev/neo.markdown/core` | Core classes (Tokenizer, InlineTokenizer, HtmlRenderer, PluginBuilderImpl) |
-| `@lpm.dev/neo.markdown/blocks` | Block token types and Tokenizer |
+| `@lpm.dev/neo.markdown/blocks` | Individual block rules for tree-shaking (`heading`, `paragraph`, `code`, `list`, etc.) |
 | `@lpm.dev/neo.markdown/inline` | Inline token types and InlineTokenizer |
 | `@lpm.dev/neo.markdown/commonmark` | CommonMark preset |
 | `@lpm.dev/neo.markdown/gfm` | GFM preset |
 | `@lpm.dev/neo.markdown/plugins/highlight` | Syntax highlighting plugin |
-| `@lpm.dev/neo.markdown/plugins/embeds` | YouTube/Vimeo/Twitter embed plugin |
+| `@lpm.dev/neo.markdown/plugins/embeds` | Embed plugin (YouTube, Vimeo, Twitter, CodeSandbox, CodePen, Gist, Loom) |
+| `@lpm.dev/neo.markdown/plugins/embeds/react` | React embed components with IntersectionObserver |
 | `@lpm.dev/neo.markdown/plugins/toc` | Table of contents plugin |
 | `@lpm.dev/neo.markdown/plugins/copy-code` | Copy-to-clipboard button plugin |
 
@@ -469,7 +541,7 @@ const html = parser.parse(markdown)
 | `rehype-slug` | `tocPlugin({ anchorLinks: false })` |
 | `rehype-autolink-headings` | `tocPlugin({ anchorLinks: true })` |
 | Custom embed components | `embedPlugin({ youtube: true, twitter: true })` |
-| `rehype-raw` + `rehype-sanitize` | Built-in XSS protection (default) |
+| `rehype-raw` + `rehype-sanitize` | `allowHtml: true, sanitize: true` (built-in server-side sanitizer) |
 
 ## License
 

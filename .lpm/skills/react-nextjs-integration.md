@@ -1,7 +1,7 @@
 ---
 name: react-nextjs-integration
-description: Using @lpm.dev/neo.markdown in React and Next.js — SSR, hydration, module-scope parser, and serverless patterns
-version: "1.1.0"
+description: Using @lpm.dev/neo.markdown in React and Next.js — SSR, hydration, module-scope parser, serverless patterns, and React embed components
+version: "1.2.0"
 globs:
   - "**/*.tsx"
   - "**/*.jsx"
@@ -157,16 +157,45 @@ export function renderWithToc(md: string): { html: string; toc: TocEntry[] } {
 }
 ```
 
-## Security with User-Generated Markdown
+## React Embed Components
 
-In apps where users submit markdown (comments, forum posts, CMS), never use `allowHtml: true`:
+Pre-built React components for embedding YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, GitHub Gist, and Loom. Import from `@lpm.dev/neo.markdown/plugins/embeds/react`:
 
 ```tsx
-// Safe for user content — default behavior escapes all HTML
+import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Gist, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
+
+export function BlogPost({ content }: { content: string }) {
+  return (
+    <article>
+      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+      <YouTube id="dQw4w9WgXcQ" privacyEnhanced />
+      <Tweet id="2034382182353871105" />
+      <CodeSandbox id="abc123" />
+    </article>
+  )
+}
+```
+
+These components use IntersectionObserver for lazy loading — the embed iframe is only inserted when the component scrolls into view. This avoids loading heavy third-party scripts until needed.
+
+## Security with User-Generated Markdown
+
+For user-generated content, use the `ugc` shorthand for safe defaults:
+
+```tsx
+// Recommended — ugc: true enables sanitization and safe links
 export function UserComment({ markdown }: { markdown: string }) {
-  const html = useMemo(() => renderMarkdown(markdown), [markdown])
+  const html = useMemo(() => parse(markdown, { ugc: true }), [markdown])
   return <div dangerouslySetInnerHTML={{ __html: html }} />
 }
 ```
 
-The `sanitize` option is not implemented — if you need to allow some HTML in trusted contexts, use an external sanitizer like DOMPurify after parsing.
+If you need to allow some HTML (e.g., in a CMS), use `sanitize: true` with `allowHtml: true`:
+
+```tsx
+const html = parse(cmsContent, {
+  allowHtml: true,
+  sanitize: true,
+  allowedTags: ['details', 'summary'],
+})
+```

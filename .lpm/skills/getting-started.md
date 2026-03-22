@@ -1,7 +1,7 @@
 ---
 name: getting-started
-description: How to use @lpm.dev/neo.markdown — parse(), createParser(), plugin system (highlight, embeds, TOC, copy-code), PluginBuilder API, custom block/inline rules, renderer overrides, token transforms, CodeToken.meta, directive syntax, sub-path exports
-version: "1.1.0"
+description: How to use @lpm.dev/neo.markdown — parse(), createParser(), plugin system (highlight, embeds, TOC, copy-code), PluginBuilder API, custom block/inline rules, renderer overrides, token transforms, CodeToken.meta, directive syntax, sub-path exports, sanitization, ugc, safeLinks, blocks
+version: "1.2.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -36,13 +36,87 @@ const html2 = parser.parse(doc2)
 ```typescript
 interface ParserOptions {
   allowHtml?: boolean         // Allow raw HTML in output (default: false)
-  gfm?: boolean               // Enable GFM features (default: false)
-  breaks?: boolean             // Convert \n to <br> (default: false)
+  gfm?: boolean               // Enable GFM tables, strikethrough, autolinks (default: false)
+  breaks?: boolean             // Convert bare \n to <br> (default: false)
+  sanitize?: boolean           // Sanitize HTML when allowHtml is true (default: false)
+  allowedTags?: string[]       // Extend default allowed tags (requires sanitize: true)
+  allowedAttributes?: Record<string, string[]>  // Per-tag allowed attributes
+  allowStyle?: boolean         // Allow style attributes in sanitized HTML (default: false)
+  safeLinks?: boolean | SafeLinkOptions  // External link rel/target, baseUrl resolution
+  ugc?: boolean                // Shorthand for safe user-generated content rendering
+  lazyImages?: boolean         // Add loading="lazy" to images (default: true)
+  blocks?: BlockRule[]         // Selective block rules for tree-shaking
   plugins?: MarkdownPlugin[]   // Plugins to extend the parser
 }
 ```
 
-GFM features (tables, strikethrough, task lists, autolinks) are available via the tokenizer regardless of the `gfm` flag — the flag controls preset behavior.
+## Sanitization
+
+When `allowHtml: true`, you can enable the built-in server-side sanitizer to strip dangerous HTML while keeping safe tags:
+
+```typescript
+const html = parse(userInput, {
+  allowHtml: true,
+  sanitize: true,
+})
+```
+
+`allowedTags` extends the defaults (it does not replace them). `allowedAttributes` is a per-tag record:
+
+```typescript
+const html = parse(userInput, {
+  allowHtml: true,
+  sanitize: true,
+  allowedTags: ['details', 'summary'],
+  allowedAttributes: { a: ['href', 'title'], img: ['src', 'alt'] },
+})
+```
+
+To allow inline `style` attributes on sanitized elements, set `allowStyle: true`.
+
+## Safe Links
+
+`safeLinks` adds `rel="noopener noreferrer"` and `target="_blank"` to external links, and resolves relative URLs against a `baseUrl`:
+
+```typescript
+const html = parse(readme, { safeLinks: true })
+
+// With baseUrl for relative link resolution
+const html = parse(readme, {
+  safeLinks: { baseUrl: 'https://github.com/org/repo/blob/main/' },
+})
+```
+
+## User-Generated Content (UGC)
+
+`ugc: true` is a one-line shorthand that enables safe defaults for untrusted content. It turns on `sanitize`, `safeLinks`, and disables `allowHtml`:
+
+```typescript
+const html = parse(commentBody, { ugc: true })
+```
+
+## Lazy Images
+
+Images get `loading="lazy"` by default. Disable with `lazyImages: false`:
+
+```typescript
+const html = parse(md, { lazyImages: false })
+```
+
+## Selective Block Loading
+
+Import individual block rules from `@lpm.dev/neo.markdown/blocks` and pass them via the `blocks` option. Unused rules are tree-shaken out of the bundle:
+
+```typescript
+import { createParser } from '@lpm.dev/neo.markdown'
+import { heading, paragraph, code, list, blockquote } from '@lpm.dev/neo.markdown/blocks'
+
+const parser = createParser({
+  blocks: [heading, paragraph, code, list, blockquote],
+})
+```
+
+Omitting `blocks` includes all block rules (default behavior).
 
 ## Plugin System
 
@@ -95,7 +169,7 @@ Code block meta strings are parsed: `` ```ts {1,3-5} `` → `lang: "ts"`, `meta:
 
 ### Embed Plugin
 
-YouTube, Vimeo, Twitter/X embeds via directive syntax:
+YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, GitHub Gist, and Loom embeds via directive syntax:
 
 ```typescript
 import { embedPlugin } from '@lpm.dev/neo.markdown/plugins/embeds'
@@ -104,7 +178,12 @@ embedPlugin({
   youtube: { privacyEnhanced: true },
   vimeo: true,
   twitter: true,
+  codesandbox: true,
+  codepen: true,
+  githubGist: true,
+  loom: true,
   autoEmbed: true, // bare URLs in paragraphs become embeds
+  consent: true,   // GDPR consent mode — shows placeholder until user opts in
 })
 ```
 
@@ -114,6 +193,24 @@ Directive syntax in markdown:
 ::youtube[dQw4w9WgXcQ]
 ::vimeo[361905857]
 ::tweet[2034382182353871105]
+::codesandbox[abc123]
+::codepen[user/pen/xyz]
+::gist[username/gist_id]
+::loom[share_id]
+```
+
+#### React Embed Components
+
+Pre-built React components for embeds, using IntersectionObserver for lazy loading:
+
+```tsx
+import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Gist, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
+
+<YouTube id="dQw4w9WgXcQ" privacyEnhanced />
+<Vimeo id="361905857" />
+<Tweet id="2034382182353871105" />
+<CodeSandbox id="abc123" />
+<Loom id="share_id" />
 ```
 
 ### TOC Plugin
@@ -234,12 +331,13 @@ const wrapper: MarkdownPlugin = (builder) => {
 |-------------|-------------|
 | `@lpm.dev/neo.markdown` | `parse`, `createParser`, `HtmlRenderer`, all types |
 | `@lpm.dev/neo.markdown/core` | Core parser, tokenizers, renderer, PluginBuilderImpl, types |
-| `@lpm.dev/neo.markdown/blocks` | Block token types and `Tokenizer` class |
+| `@lpm.dev/neo.markdown/blocks` | Block token types, `Tokenizer` class, individual block rules (`heading`, `paragraph`, `code`, etc.) |
 | `@lpm.dev/neo.markdown/inline` | Inline token types and `InlineTokenizer` class |
 | `@lpm.dev/neo.markdown/commonmark` | CommonMark preset |
 | `@lpm.dev/neo.markdown/gfm` | GFM preset |
 | `@lpm.dev/neo.markdown/plugins/highlight` | Syntax highlighting plugin |
-| `@lpm.dev/neo.markdown/plugins/embeds` | Embed plugin (YouTube, Vimeo, Twitter) |
+| `@lpm.dev/neo.markdown/plugins/embeds` | Embed plugin (YouTube, Vimeo, Twitter, CodeSandbox, CodePen, Gist, Loom) |
+| `@lpm.dev/neo.markdown/plugins/embeds/react` | React embed components (`<YouTube>`, `<Vimeo>`, `<Tweet>`, etc.) |
 | `@lpm.dev/neo.markdown/plugins/toc` | TOC plugin (heading anchors) |
 | `@lpm.dev/neo.markdown/plugins/copy-code` | Copy-code button plugin |
 
