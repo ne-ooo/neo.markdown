@@ -100,14 +100,16 @@ export class MarkdownParser implements Parser {
 
     let html = this.render(tokens)
 
-    // Apply HTML transforms from plugins
-    for (const transform of this.htmlTransforms) {
-      html = transform(html)
-    }
-
-    // Sanitize HTML as the last step (after all plugin transforms)
+    // Sanitize user-provided HTML before plugin transforms.
+    // Plugins inject trusted HTML (buttons, scripts, wrappers) that must
+    // not be stripped by the sanitizer.
     if (this.sanitizerConfig) {
       html = sanitizeHtml(html, this.sanitizerConfig)
+    }
+
+    // Apply HTML transforms from plugins (after sanitization)
+    for (const transform of this.htmlTransforms) {
+      html = transform(html)
     }
 
     return html

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.1] - 2026-03-22
+
+### Fixed
+
+- **Sanitizer runs before plugin HTML transforms** — Plugins like copy-code inject trusted HTML (`<script>`, `<button>`) that must not be stripped. Sanitization now processes user-provided HTML first, then plugins apply their transforms after
+
+### Changed
+
+- **Copy-code plugin rewritten** — Now includes inline `<script>` for click-to-copy (no external JS needed), default CSS styles with hover-to-reveal, `copiedText` option for feedback text, `injectStyles` option, and proper handling of `<pre>` tags with attributes (e.g., from highlight plugin)
+
 ## [1.2.0] - 2026-03-21
 
 ### Fixed

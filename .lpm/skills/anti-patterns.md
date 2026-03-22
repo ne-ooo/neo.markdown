@@ -1,7 +1,7 @@
 ---
 name: anti-patterns
 description: Common mistakes and silent failures when using @lpm.dev/neo.markdown — prioritized wrong/correct pairs
-version: "1.2.0"
+version: "1.2.1"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -90,6 +90,30 @@ const html = parse('Line 1\nLine 2')
 const html = parse('Line 1  \nLine 2')
 // Output: <p>Line 1<br>Line 2</p>
 ```
+
+### [FIXED in v1.2.1] Sanitizer strips plugin-injected HTML when sanitize runs after plugins
+
+Previously, when `sanitize: true` was used with plugins like `copyCodePlugin`, the sanitizer ran AFTER plugin HTML transforms. This caused the sanitizer to strip the plugin's `<script>` and `<button>` elements, breaking copy-code functionality.
+
+Wrong (pre-v1.2.1 behavior):
+
+```
+1. Parse markdown → tokens
+2. Render tokens → HTML
+3. Plugin HTML transforms (copy-code injects <button> + <script>)
+4. Sanitizer strips <button> and <script> → copy button gone
+```
+
+Correct (v1.2.1+ behavior):
+
+```
+1. Parse markdown → tokens
+2. Render tokens → HTML
+3. Sanitizer runs on user-authored HTML
+4. Plugin HTML transforms (copy-code injects <button> + <script>) → preserved
+```
+
+Fixed: the sanitizer now runs BEFORE plugin HTML transforms, so plugins can safely inject trusted HTML like copy buttons and inline scripts. Do not attempt to reorder sanitization to run after plugins — the current order is intentional.
 
 ### [HIGH] Calling parse() in a loop instead of reusing createParser()
 

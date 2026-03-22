@@ -1,7 +1,7 @@
 ---
 name: best-practices
 description: Performance, security, tree-shaking, ugc, safeLinks, selective blocks, and token pipeline patterns for @lpm.dev/neo.markdown
-version: "1.2.0"
+version: "1.2.1"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -99,6 +99,19 @@ const html = parse(readme, { safeLinks: true })
 // With baseUrl for resolving relative links
 const html = parse(readme, {
   safeLinks: { baseUrl: 'https://github.com/org/repo/blob/main/' },
+})
+```
+
+### Sanitization order — sanitizer runs before plugin HTML transforms
+
+The sanitizer runs BEFORE plugin HTML transforms. This means plugins like `copyCodePlugin` can safely inject trusted HTML (buttons, inline scripts) without the sanitizer stripping them. This order is intentional (fixed in v1.2.1) — do not reorder sanitization to run after plugins.
+
+```typescript
+// Safe — sanitizer cleans user HTML, then copy-code injects its button + script
+const parser = createParser({
+  allowHtml: true,
+  sanitize: true,
+  plugins: [copyCodePlugin()],
 })
 ```
 

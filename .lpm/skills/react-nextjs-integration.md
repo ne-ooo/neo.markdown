@@ -1,7 +1,7 @@
 ---
 name: react-nextjs-integration
 description: Using @lpm.dev/neo.markdown in React and Next.js — SSR, hydration, module-scope parser, serverless patterns, and React embed components
-version: "1.2.0"
+version: "1.2.1"
 globs:
   - "**/*.tsx"
   - "**/*.jsx"

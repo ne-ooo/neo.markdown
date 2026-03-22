@@ -1,7 +1,7 @@
 ---
 name: getting-started
 description: How to use @lpm.dev/neo.markdown — parse(), createParser(), plugin system (highlight, embeds, TOC, copy-code), PluginBuilder API, custom block/inline rules, renderer overrides, token transforms, CodeToken.meta, directive syntax, sub-path exports, sanitization, ugc, safeLinks, blocks
-version: "1.2.0"
+version: "1.2.1"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -237,13 +237,20 @@ Produces: `<h1 id="title"><a class="anchor" href="#title">Title</a></h1>`
 
 ### Copy-Code Plugin
 
-Injects a copy button into `<pre>` blocks:
+Injects a copy button into `<pre>` blocks. Includes an inline `<script>` for click-to-copy (no external JS needed) and default CSS styles with hover-to-reveal behavior:
 
 ```typescript
 import { copyCodePlugin } from '@lpm.dev/neo.markdown/plugins/copy-code'
 
-copyCodePlugin({ buttonText: 'Copy', buttonClass: 'copy-code-button' })
+copyCodePlugin({
+  buttonText: 'Copy',       // Text shown on the button (default: 'Copy')
+  copiedText: 'Copied!',    // Text shown after copying (default: 'Copied!')
+  buttonClass: 'copy-code-button',
+  injectStyles: true,        // Inject default CSS for hover-to-reveal (default: true)
+})
 ```
+
+Set `injectStyles: false` if you provide your own CSS for the copy button. When `injectStyles` is true (default), the plugin injects a `<style>` block that hides the button until the user hovers over the code block.
 
 ## Writing Custom Plugins
 
