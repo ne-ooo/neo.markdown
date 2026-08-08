@@ -1,6 +1,6 @@
 # @lpm.dev/neo.markdown
 
-Modern, tree-shakeable markdown parser. Zero dependencies, TypeScript-first, XSS-safe by default. Extensible via a simple plugin system.
+Modern, tree-shakeable Markdown-subset parser. TypeScript-first, XSS-safe by default, and extensible through a simple plugin system.
 
 ## Install
 
@@ -19,12 +19,12 @@ const html = parse('# Hello\n\nWorld')
 
 ## Features
 
-- **CommonMark** compliant parsing
+- **Markdown subset** — continuously measured against CommonMark 0.31.2 fixtures
 - **GFM** (GitHub Flavored Markdown) — tables, task lists, strikethrough
 - **XSS protection** — HTML escaped by default
 - **Plugin system** — highlight, embeds, TOC, copy-code, or write your own
 - **Tree-shakeable** — sub-path imports for each layer
-- **Zero dependencies**
+- **Structural HTML sanitization** through `sanitize-html`
 - **TypeScript** — full type declarations
 
 ## API
@@ -67,12 +67,13 @@ parser.parse('**bold** text')
 | `allowedTags` | `string[]` | — | Extend default allowed tags when `sanitize: true` |
 | `allowedAttributes` | `Record<string, string[]>` | — | Extend default per-tag attributes when `sanitize: true` |
 | `allowStyle` | `boolean` | `false` | Allow inline `style` attributes when `sanitize: true` |
-| `gfm` | `boolean` | `false` | Enable GFM features (tables, strikethrough, autolinks) |
+| `gfm` | `boolean` | `false` | Enable GFM features (tables, task lists, strikethrough, autolinks) |
 | `breaks` | `boolean` | `false` | Convert bare `\n` to `<br>` |
+| `maxNestingDepth` | `number` | `100` | Limit nested blockquotes/lists; hard-capped at 100 |
 | `lazyImages` | `boolean` | `true` | Add `loading="lazy"` to all images |
 | `safeLinks` | `boolean \| object` | `false` | Add `rel="nofollow noopener noreferrer"` + `target="_blank"` to external links. Object: `{ externalRel?, externalTarget?, baseUrl? }` |
-| `ugc` | `boolean` | `false` | Shorthand: enables `sanitize` + `safeLinks` + disables `allowHtml` |
-| `blocks` | `BlockRule[]` | — | Selective block rules for tree-shaking (import from `/blocks`) |
+| `ugc` | `boolean` | `false` | Enforces `sanitize` + `safeLinks` + `allowHtml:false`; these invariants cannot be overridden |
+| `blocks` | `BlockRule[]` | — | Select block rules. Import `createParser` from `/core` for a bundle containing only those rules |
 | `renderer` | `Partial<Renderer>` | — | Override default renderer methods |
 | `plugins` | `MarkdownPlugin[]` | `[]` | Plugins to extend the parser |
 
@@ -99,10 +100,7 @@ One-line safe rendering for READMEs, comments, and user content:
 
 ```typescript
 const parser = createParser({
-  ugc: true,  // sanitize + safeLinks + no raw HTML
-  safeLinks: {
-    baseUrl: 'https://github.com/user/repo/blob/main',  // resolve relative links
-  },
+  ugc: true,  // enforced sanitization, safe links, and no raw HTML
 })
 ```
 
@@ -111,12 +109,15 @@ const parser = createParser({
 Import only the block rules you need:
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown'
+import { createParser } from '@lpm.dev/neo.markdown/core'
 import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
 
 const parser = createParser({
   blocks: [heading, paragraph, code, list],  // skip tables, hr, html, etc.
 })
+```
+
+The main entry includes the complete default rule set so `createParser()` works without configuration. Use the `/core` factory with explicit `/blocks` imports when bundle-level removal matters.
 
 ## Plugins
 
@@ -272,10 +273,13 @@ Duplicate headings get suffixed automatically: `intro`, `intro-1`, `intro-2`.
 
 ### Copy-Code Plugin
 
-Injects a copy-to-clipboard button into every `<pre>` code block.
+Injects an inert copy-to-clipboard button into every `<pre>` code block. The plugin does not emit inline JavaScript. Install the delegated client initializer after mounting the rendered HTML.
 
 ```typescript
-import { copyCodePlugin } from '@lpm.dev/neo.markdown/plugins/copy-code'
+import {
+  copyCodePlugin,
+  initializeCopyCode,
+} from '@lpm.dev/neo.markdown/plugins/copy-code'
 
 const html = parse(markdown, {
   plugins: [
@@ -286,13 +290,16 @@ const html = parse(markdown, {
     })
   ]
 })
+
+// Client entry point; call once and retain the cleanup function if needed.
+const cleanupCopyCode = initializeCopyCode()
 ```
 
 **Output:**
 
 ```html
-<div class="code-block">
-  <button class="copy-code-button" type="button">Copy</button>
+<div class="code-block" data-copy-code-wrapper>
+  <button class="copy-code-button" type="button" data-copy-code>Copy</button>
   <pre><code>...</code></pre>
 </div>
 ```
@@ -332,6 +339,7 @@ const notePlugin: MarkdownPlugin = (builder) => {
   builder.addBlockRule({
     name: 'note',
     priority: 'before:paragraph',
+    starts: (src) => src.startsWith(':::note\n'),
     tokenize(src, options) {
       const match = /^:::note\n([\s\S]*?)\n:::(?:\n|$)/.exec(src)
       if (!match) return null
@@ -344,7 +352,7 @@ const notePlugin: MarkdownPlugin = (builder) => {
 }
 ```
 
-Rules support numeric priority (higher = tried first) or positional constraints: `'before:paragraph'`, `'after:code'`.
+Rules support numeric priority (higher = tried first) or positional constraints such as `'before:paragraph'` and `'after:code'`. A rule that can interrupt a paragraph should provide a cheap `starts()` check. Every successful rule must return a non-empty `raw` value that is an exact source prefix; invalid results throw instead of risking an infinite loop.
 
 ### Custom Inline Rule
 
@@ -352,6 +360,7 @@ Rules support numeric priority (higher = tried first) or positional constraints:
 const highlightPlugin: MarkdownPlugin = (builder) => {
   builder.addInlineRule({
     name: 'highlight',
+    priority: 'before:em',
     triggerChars: [61], // '=' char code
     tokenize(src) {
       const match = /^==(.*?)==/.exec(src)
@@ -364,6 +373,8 @@ const highlightPlugin: MarkdownPlugin = (builder) => {
   })
 }
 ```
+
+Inline priorities can target `escape`, `code`, `strong`, `em`, `del`, `link`, `html`, `br`, `autolink`, or `text`.
 
 ### Token Transform
 
@@ -432,7 +443,7 @@ Paragraph text with **bold**, *italic*, and `code`.
 ## Presets
 
 ```typescript
-// CommonMark preset (strict spec compliance)
+// Core Markdown-subset preset (GFM extensions disabled)
 import { parse } from '@lpm.dev/neo.markdown/commonmark'
 
 // GFM preset (GitHub Flavored Markdown — tables, task lists, strikethrough)
@@ -454,6 +465,10 @@ import { parse } from '@lpm.dev/neo.markdown/gfm'
 | `@lpm.dev/neo.markdown/plugins/embeds/react` | React embed components with IntersectionObserver |
 | `@lpm.dev/neo.markdown/plugins/toc` | Table of contents plugin |
 | `@lpm.dev/neo.markdown/plugins/copy-code` | Copy-to-clipboard button plugin |
+
+## Conformance
+
+This package implements a Markdown subset; it does not claim full CommonMark or GFM compliance. The mandatory CommonMark 0.31.2 fixture test currently matches at least 284 of 652 official examples after normalizing void-tag style and quote entities. Selected official GFM 0.29 extension fixtures are also mandatory. Structural containers and full delimiter-stack parsing remain future work.
 
 ## Migration from marked
 

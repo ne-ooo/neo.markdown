@@ -93,15 +93,15 @@ const html = parse('Line 1  \nLine 2')
 
 ### [FIXED in v1.2.1] Sanitizer strips plugin-injected HTML when sanitize runs after plugins
 
-Previously, when `sanitize: true` was used with plugins like `copyCodePlugin`, the sanitizer ran AFTER plugin HTML transforms. This caused the sanitizer to strip the plugin's `<script>` and `<button>` elements, breaking copy-code functionality.
+Previously, when `sanitize: true` was used with plugins like `copyCodePlugin`, the sanitizer ran after plugin HTML transforms. This stripped plugin elements and broke copy-code functionality.
 
 Wrong (pre-v1.2.1 behavior):
 
 ```
 1. Parse markdown → tokens
 2. Render tokens → HTML
-3. Plugin HTML transforms (copy-code injects <button> + <script>)
-4. Sanitizer strips <button> and <script> → copy button gone
+3. Plugin HTML transforms add elements
+4. Sanitizer strips those elements → plugin output is gone
 ```
 
 Correct (v1.2.1+ behavior):
@@ -110,10 +110,10 @@ Correct (v1.2.1+ behavior):
 1. Parse markdown → tokens
 2. Render tokens → HTML
 3. Sanitizer runs on user-authored HTML
-4. Plugin HTML transforms (copy-code injects <button> + <script>) → preserved
+4. Trusted plugin HTML transforms run after sanitization
 ```
 
-Fixed: the sanitizer now runs BEFORE plugin HTML transforms, so plugins can safely inject trusted HTML like copy buttons and inline scripts. Do not attempt to reorder sanitization to run after plugins — the current order is intentional.
+Fixed: the sanitizer now runs before plugin HTML transforms. The current copy-code plugin emits escaped inert markup and uses an explicit client initializer instead of inline JavaScript.
 
 ### [HIGH] Calling parse() in a loop instead of reusing createParser()
 
@@ -169,10 +169,10 @@ Source: `src/core/renderer.ts:132-148` — table rendering pipeline
 
 ### [FIXED in v1.2.0] Block-selection API — now implemented
 
-Previously, the `blocks` option was planned but not implemented. As of v1.2.0, individual block rules are exported from `@lpm.dev/neo.markdown/blocks` and can be selectively included via the `blocks` option. This enables tree-shaking for smaller bundles.
+Individual block rules are exported from `@lpm.dev/neo.markdown/blocks`. Use them with the generic `/core` parser so unselected rule implementations are absent from the consumer bundle.
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown'
+import { createParser } from '@lpm.dev/neo.markdown/core'
 import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
 
 // Only include the block rules you need — unused rules are tree-shaken
@@ -181,4 +181,4 @@ const parser = createParser({
 })
 ```
 
-If the `blocks` option is omitted, all block rules are included (same behavior as before).
+The main entry includes all default rules. Its `blocks` option is useful for runtime behavior selection, but it is not a bundle-size boundary.

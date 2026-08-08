@@ -68,37 +68,77 @@ export interface HighlightOptions {
   classPrefix?: string
 }
 
+/** Hard limit for expanded highlight metadata. */
+export const MAX_HIGHLIGHT_LINES = 10_000
+
+function countHighlightableLines(code: string): number {
+  if (code.length === 0) return 0
+
+  let lines = 1
+  for (let i = 0; i < code.length && lines < MAX_HIGHLIGHT_LINES; i++) {
+    if (code.charCodeAt(i) === 10) lines++
+  }
+  return lines
+}
+
 /**
  * Parse highlight line ranges from meta string
  *
  * Supports formats: {1,3-5}, {1}, {1,2,3}
  *
  * @param meta - Code block meta string
+ * @param maxLines - Highest line number to return (hard-capped at 10,000)
  * @returns Array of 1-indexed line numbers to highlight, or undefined
  */
-export function parseHighlightLines(meta?: string): number[] | undefined {
+export function parseHighlightLines(
+  meta?: string,
+  maxLines: number = MAX_HIGHLIGHT_LINES
+): number[] | undefined {
   if (!meta) return undefined
+
+  const boundedMax = Number.isSafeInteger(maxLines) && maxLines > 0
+    ? Math.min(maxLines, MAX_HIGHLIGHT_LINES)
+    : 0
+  if (boundedMax === 0) return undefined
 
   const match = /\{([\d,\s-]+)\}/.exec(meta)
   if (!match) return undefined
 
   const lines: number[] = []
+  const seen = new Set<number>()
   const parts = match[1].split(',')
+
+  const addLine = (line: number): void => {
+    if (line <= boundedMax && !seen.has(line) && lines.length < boundedMax) {
+      seen.add(line)
+      lines.push(line)
+    }
+  }
 
   for (const part of parts) {
     const trimmed = part.trim()
     const rangeMatch = /^(\d+)-(\d+)$/.exec(trimmed)
 
     if (rangeMatch) {
-      const start = parseInt(rangeMatch[1], 10)
-      const end = parseInt(rangeMatch[2], 10)
-      for (let i = start; i <= end; i++) {
-        lines.push(i)
+      const start = Number(rangeMatch[1])
+      const end = Number(rangeMatch[2])
+      if (
+        !Number.isSafeInteger(start)
+        || !Number.isSafeInteger(end)
+        || start < 1
+        || end < start
+        || start > boundedMax
+      ) {
+        continue
+      }
+      const boundedEnd = Math.min(end, boundedMax)
+      for (let i = start; i <= boundedEnd; i++) {
+        addLine(i)
       }
     } else {
-      const num = parseInt(trimmed, 10)
-      if (!isNaN(num)) {
-        lines.push(num)
+      const num = Number(trimmed)
+      if (Number.isSafeInteger(num) && num >= 1) {
+        addLine(num)
       }
     }
   }
@@ -150,9 +190,6 @@ export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
     }
   }
 
-  // Track unknown languages for dev warnings
-  const warnedLanguages = new Set<string>()
-
   // Pre-generate the theme stylesheet (CSS for token color classes)
   const themeCSS = getStylesheetFn && theme
     ? `<style>${getStylesheetFn(theme, classPrefix)}</style>`
@@ -161,12 +198,7 @@ export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
   return (builder) => {
     // Inject theme CSS into the output once (at the beginning)
     if (themeCSS) {
-      let injected = false
-      builder.addHtmlTransform((html) => {
-        if (injected) return html
-        injected = true
-        return themeCSS + html
-      })
+      builder.addHtmlTransform((html) => themeCSS + html)
     }
 
     builder.setRenderer('code', (token: CodeToken) => {
@@ -176,10 +208,7 @@ export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
       if (!grammar) {
         // Dev-mode: warn about unknown language strings (catch typos)
         if (token.lang && typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-          if (!warnedLanguages.has(token.lang)) {
-            warnedLanguages.add(token.lang)
-            console.warn(`neo.highlight: no grammar found for language "${token.lang}". Code block rendered as plain text.`)
-          }
+          console.warn(`neo.highlight: no grammar found for language "${token.lang}". Code block rendered as plain text.`)
         }
 
         const code = escape(token.text)
@@ -188,7 +217,8 @@ export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
       }
 
       // Parse highlight lines from meta
-      const highlightLines = parseHighlightLines(token.meta)
+      const lineCount = countHighlightableLines(token.text)
+      const highlightLines = parseHighlightLines(token.meta, lineCount)
 
       // Tokenize and render with neo.highlight
       const tokens = tokenizeFn(token.text, grammar)

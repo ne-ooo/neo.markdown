@@ -20,7 +20,7 @@
  */
 
 import type { ParserOptions } from '../core/types.js'
-import { createParser } from '../core/parser.js'
+import { createParser } from '../create-parser.js'
 
 /**
  * Parse markdown using GFM preset
@@ -42,4 +42,4 @@ export function parse(markdown: string, options?: Partial<ParserOptions>): strin
 
 // Re-export types
 export type * from '../core/types.js'
-export { createParser } from '../core/parser.js'
+export { createParser } from '../create-parser.js'

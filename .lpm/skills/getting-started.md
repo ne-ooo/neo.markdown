@@ -108,7 +108,7 @@ const html = parse(md, { lazyImages: false })
 Import individual block rules from `@lpm.dev/neo.markdown/blocks` and pass them via the `blocks` option. Unused rules are tree-shaken out of the bundle:
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown'
+import { createParser } from '@lpm.dev/neo.markdown/core'
 import { heading, paragraph, code, list, blockquote } from '@lpm.dev/neo.markdown/blocks'
 
 const parser = createParser({
@@ -116,7 +116,7 @@ const parser = createParser({
 })
 ```
 
-Omitting `blocks` includes all block rules (default behavior).
+The `/core` factory requires an explicit `blocks` array. Import from the main package when you want all default rules. Passing `blocks` to the main factory changes behavior but does not reduce the main entry bundle.
 
 ## Plugin System
 
@@ -237,10 +237,14 @@ Produces: `<h1 id="title"><a class="anchor" href="#title">Title</a></h1>`
 
 ### Copy-Code Plugin
 
-Injects a copy button into `<pre>` blocks. Includes an inline `<script>` for click-to-copy (no external JS needed) and default CSS styles with hover-to-reveal behavior:
+Injects an inert copy button into `<pre>` blocks. It does not emit inline scripts. Call the explicit initializer once from client code:
 
 ```typescript
-import { copyCodePlugin } from '@lpm.dev/neo.markdown/plugins/copy-code'
+import {
+  copyCodePlugin,
+  getCopyCodeStyles,
+  initializeCopyCode,
+} from '@lpm.dev/neo.markdown/plugins/copy-code'
 
 copyCodePlugin({
   buttonText: 'Copy',       // Text shown on the button (default: 'Copy')
@@ -248,9 +252,11 @@ copyCodePlugin({
   buttonClass: 'copy-code-button',
   injectStyles: true,        // Inject default CSS for hover-to-reveal (default: true)
 })
+
+const cleanup = initializeCopyCode()
 ```
 
-Set `injectStyles: false` if you provide your own CSS for the copy button. When `injectStyles` is true (default), the plugin injects a `<style>` block that hides the button until the user hovers over the code block.
+Set `injectStyles: false` for a strict style CSP. Use `getCopyCodeStyles()` to write the default CSS to an external stylesheet. Class names are validated as single CSS identifiers, and all labels are HTML-escaped.
 
 ## Writing Custom Plugins
 
@@ -274,6 +280,7 @@ const notePlugin: MarkdownPlugin = (builder) => {
   builder.addBlockRule({
     name: 'note',
     priority: 'before:paragraph', // or numeric: 800
+    starts: (src) => src.startsWith(':::note\n'),
     tokenize(src, options) {
       const match = /^:::note\n([\s\S]*?)\n:::(?:\n|$)/.exec(src)
       if (!match) return null
@@ -286,12 +293,15 @@ const notePlugin: MarkdownPlugin = (builder) => {
 }
 ```
 
+Use `starts()` when the rule can interrupt a paragraph. A successful block or inline rule must consume a non-empty source prefix in `raw`; the parser rejects invalid rule results.
+
 ### Custom Inline Rule
 
 ```typescript
 const highlightPlugin: MarkdownPlugin = (builder) => {
   builder.addInlineRule({
     name: 'highlight',
+    priority: 'before:em',
     triggerChars: [61], // '=' char code — preserves fast-path optimization
     tokenize(src) {
       const match = /^==(.*?)==/.exec(src)

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { parse } from '../../src/index.js'
+import { createParser, parse } from '../../src/index.js'
 import { tocPlugin } from '../../src/plugins/toc.js'
 import type { TocEntry } from '../../src/plugins/toc.js'
 import { slugify, createSlugger } from '../../src/utils/slug.js'
@@ -110,6 +110,13 @@ describe('tocPlugin - Heading Rendering', () => {
     expect(result).toContain('id="hello"')
     expect(result).toContain('id="hello-1"')
     expect(result).toContain('id="hello-2"')
+  })
+
+  it('should reset document slugs when a parser is reused', () => {
+    const parser = createParser({ plugins: [tocPlugin({ anchorLinks: false })] })
+    expect(parser.parse('# Same')).toContain('id="same"')
+    expect(parser.parse('# Same')).toContain('id="same"')
+    expect(parser.parse('# Same')).not.toContain('id="same-1"')
   })
 
   it('should handle headings with inline formatting', () => {

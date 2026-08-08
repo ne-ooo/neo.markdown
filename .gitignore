@@ -3,3 +3,9 @@ dist
 .build
 *.tsbuildinfo
 coverage
+
+# LPM wrapper tree (auto-generated)
+.lpm/wrappers/
+
+# LPM hoisted state (auto-generated)
+.lpm/hoisted/

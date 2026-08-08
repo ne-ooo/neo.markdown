@@ -4,7 +4,7 @@
  * Tests directive parsing, each embed type, auto-embed, and XSS prevention.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { parse } from '../../src/index.js'
 import { embedPlugin } from '../../src/plugins/embeds.js'
 import { matchEmbedUrl } from '../../src/utils/url-patterns.js'
@@ -410,6 +410,18 @@ describe('embedPlugin - GDPR Consent Mode', () => {
     const result = parse('::youtube[dQw4w9WgXcQ]', { plugins: [plugin] })
     // The onclick uses atob() to decode base64-encoded embed HTML
     expect(result).toContain('atob(')
+  })
+
+  it('should encode Unicode embed HTML without Node Buffer', () => {
+    vi.stubGlobal('Buffer', undefined)
+    try {
+      const plugin = embedPlugin({ youtube: true, consent: true })
+      const render = () => parse('::youtube[id]{title="你好 👋"}', { plugins: [plugin] })
+      expect(render).not.toThrow()
+      expect(render()).toContain('new TextDecoder().decode')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('should not show consent when consent: false (default)', () => {

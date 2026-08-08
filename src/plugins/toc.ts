@@ -62,22 +62,14 @@ export function tocPlugin(options: TocOptions = {}): MarkdownPlugin {
   } = options
 
   return (builder) => {
-    const slugger = createSlugger()
-    const tocEntries: TocEntry[] = []
-    // Ordered array of slugs matching headings in document order
-    const headingSlugs: string[] = []
-    let renderIdx = 0
-
     // 1. Token transform: collect headings and assign slug IDs
     builder.addTokenTransform((tokens) => {
-      // Reset for each parse call
-      tocEntries.length = 0
-      headingSlugs.length = 0
-      renderIdx = 0
+      const slugger = createSlugger()
+      const tocEntries: TocEntry[] = []
 
-      for (const token of tokens) {
-        if (token.type !== 'heading') continue
-        if (token.level < minDepth || token.level > maxDepth) continue
+      const transformed = tokens.map((token) => {
+        if (token.type !== 'heading') return token
+        if (token.level < minDepth || token.level > maxDepth) return token
 
         // Render inline tokens to get plain-ish text for slugification
         const text = builder.renderInline(token.tokens)
@@ -85,16 +77,16 @@ export function tocPlugin(options: TocOptions = {}): MarkdownPlugin {
         const plainText = text.replace(/<[^>]*>/g, '')
         const id = slugger.slug(plainText)
 
-        headingSlugs.push(id)
         tocEntries.push({ level: token.level, text: plainText, id })
-      }
+        return { ...token, tocId: id }
+      })
 
       // Deliver TOC entries via callback
       if (onToc && tocEntries.length > 0) {
         onToc([...tocEntries])
       }
 
-      return tokens
+      return transformed
     })
 
     // 2. Override heading renderer to add IDs and anchor links
@@ -106,7 +98,7 @@ export function tocPlugin(options: TocOptions = {}): MarkdownPlugin {
         return `<h${token.level}>${text}</h${token.level}>\n`
       }
 
-      const id = headingSlugs[renderIdx++]
+      const id = (token as HeadingToken & { tocId?: string }).tocId
 
       if (!id) {
         return `<h${token.level}>${text}</h${token.level}>\n`

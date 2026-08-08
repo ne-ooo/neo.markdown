@@ -104,6 +104,26 @@ describe('HTML sanitization', () => {
         expect(html).not.toContain('javascript')
       })
 
+      it('strips javascript with an entity-encoded colon', () => {
+        const html = sanitize('<a href="javascript&colon;alert(1)">click</a>')
+        expect(html).not.toContain('href=')
+      })
+
+      it('strips javascript with encoded URL whitespace', () => {
+        const newline = sanitize('<a href="java&#10;script:alert(1)">click</a>')
+        const tab = sanitize('<a href="java&#9;script:alert(1)">click</a>')
+        expect(newline).not.toContain('href=')
+        expect(tab).not.toContain('href=')
+      })
+
+      it('does not throw on oversized numeric entities', () => {
+        const decimalEntity = `&#${'9'.repeat(500)};`
+        const hexadecimalEntity = `&#x${'f'.repeat(500)};`
+
+        expect(() => sanitize(`<a href="${decimalEntity}">decimal</a>`)).not.toThrow()
+        expect(() => sanitize(`<a href="${hexadecimalEntity}">hexadecimal</a>`)).not.toThrow()
+      })
+
       it('allows safe protocols', () => {
         expect(sanitize('<a href="https://example.com">safe</a>')).toContain('href="https://example.com"')
         expect(sanitize('<a href="http://example.com">safe</a>')).toContain('href="http://example.com"')
@@ -287,7 +307,7 @@ describe('HTML sanitization', () => {
       it('handles entity-encoded angle brackets', () => {
         const html = sanitize('&#60;script&#62;alert(1)&#60;/script&#62;')
         expect(html).not.toContain('<script')
-        expect(html).not.toContain('alert')
+        expect(html).toBe('&lt;script&gt;alert(1)&lt;/script&gt;')
       })
 
       it('handles hex-encoded angle brackets', () => {
@@ -344,6 +364,17 @@ describe('HTML sanitization', () => {
       expect(html).not.toContain('alert')
     })
 
+    it('sanitizes tokenized input passed to the public render method', () => {
+      const parser = createParser({ allowHtml: true, sanitize: true })
+      const markdown = '<script>alert("xss")</script>\n\n<p>safe</p>'
+      const rendered = parser.render(parser.tokenize(markdown))
+
+      expect(rendered).toBe(parser.parse(markdown))
+      expect(rendered).not.toContain('<script')
+      expect(rendered).not.toContain('alert')
+      expect(rendered).toContain('<p>safe</p>')
+    })
+
     it('preserves markdown-generated HTML through sanitization', () => {
       const md = '# Title\n\n**bold** and *italic*\n\n- list item\n\n```js\ncode\n```'
       const html = sanitizedParse(md)
@@ -353,6 +384,19 @@ describe('HTML sanitization', () => {
       expect(html).toContain('<ul>')
       expect(html).toContain('<pre>')
       expect(html).toContain('<code')
+    })
+
+    it('preserves generated disabled task-list checkboxes', () => {
+      const html = sanitizedParse('- [x] done', { gfm: true })
+      expect(html).toContain('<input')
+      expect(html).toContain('type="checkbox"')
+      expect(html).toContain('disabled')
+      expect(html).toContain('checked')
+    })
+
+    it('removes user-authored interactive inputs', () => {
+      const html = sanitizedParse('<input type="text" value="secret">')
+      expect(html).not.toContain('<input')
     })
 
     it('strips script from mixed markdown and HTML', () => {

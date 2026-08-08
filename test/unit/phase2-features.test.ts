@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parse } from '../../src/index.js'
+import { createParser, parse } from '../../src/index.js'
 
 describe('Phase 2 Features', () => {
   describe('Setext Headings', () => {
@@ -85,6 +85,30 @@ describe('Phase 2 Features', () => {
       expect(result).toContain('Quote line')
       expect(result).toContain('Lazy line')
       expect(result).toContain('<p>New paragraph</p>')
+    })
+
+    it('should safely cap adversarial blockquote nesting', () => {
+      const markdown = '>'.repeat(5000) + ' x'
+      expect(() => parse(markdown)).not.toThrow()
+
+      const html = parse(markdown)
+      expect(html.match(/<blockquote>/g)?.length).toBe(100)
+      expect(html).toContain('&gt;')
+    })
+
+    it('should honor a smaller configured nesting limit', () => {
+      const parser = createParser({ maxNestingDepth: 2 })
+      const html = parser.parse('>>>> x')
+
+      expect(html.match(/<blockquote>/g)?.length).toBe(2)
+      expect(html).toContain('&gt;&gt; x')
+    })
+
+    it('should enforce the hard nesting cap on larger configured values', () => {
+      const parser = createParser({ maxNestingDepth: 5000 })
+      const html = parser.parse('>'.repeat(1000) + ' x')
+
+      expect(html.match(/<blockquote>/g)?.length).toBe(100)
     })
   })
 })

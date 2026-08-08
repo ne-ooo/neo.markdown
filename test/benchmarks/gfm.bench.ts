@@ -3,16 +3,18 @@
  * Tests performance of GitHub Flavored Markdown extensions
  */
 
-import { bench, describe } from 'vitest'
-import { parse as neoParse } from '../../src/index.js'
+import { beforeAll, bench, describe, expect } from 'vitest'
+import { createParser } from '../../src/index.js'
 import { marked } from 'marked'
 import MarkdownIt from 'markdown-it'
+import taskLists from 'markdown-it-task-lists'
 
 // Configure marked for GFM
 marked.setOptions({ gfm: true })
 
 // Configure markdown-it for GFM
-const md = new MarkdownIt()
+const neo = createParser({ gfm: true })
+const md = new MarkdownIt({ linkify: true }).use(taskLists)
 
 // GFM test data
 const samples = {
@@ -66,10 +68,31 @@ Visit https://github.com for more info.
   `.trim(),
 }
 
+function canonicalize(html: string): string {
+  return html
+    .replace(/<(\/?)s>/g, '<$1del>')
+    .replace(/ style="text-align:(left|center|right)"/g, ' align="$1"')
+    .replace(/\sclass="[^"]*"/g, '')
+    .replace(/<input\b([^>]*)>/g, (_match, attributes: string) => (
+      `<input type="checkbox"${/\bchecked(?:="")?/.test(attributes) ? ' checked' : ''} disabled>`
+    ))
+    .replace(/>\s+</g, '><')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+beforeAll(() => {
+  for (const markdown of Object.values(samples)) {
+    const expected = canonicalize(neo.parse(markdown))
+    expect(canonicalize(String(marked.parse(markdown)))).toBe(expected)
+    expect(canonicalize(md.render(markdown))).toBe(expected)
+  }
+})
+
 describe('GFM Features Performance', () => {
   describe('Strikethrough', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.strikethrough)
+      neo.parse(samples.strikethrough)
     })
 
     bench('marked', () => {
@@ -83,7 +106,7 @@ describe('GFM Features Performance', () => {
 
   describe('Task Lists', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.taskList)
+      neo.parse(samples.taskList)
     })
 
     bench('marked', () => {
@@ -97,7 +120,7 @@ describe('GFM Features Performance', () => {
 
   describe('Tables', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.table)
+      neo.parse(samples.table)
     })
 
     bench('marked', () => {
@@ -111,7 +134,7 @@ describe('GFM Features Performance', () => {
 
   describe('Tables with Alignment', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.tableAligned)
+      neo.parse(samples.tableAligned)
     })
 
     bench('marked', () => {
@@ -125,7 +148,7 @@ describe('GFM Features Performance', () => {
 
   describe('Autolinks', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.autolinks)
+      neo.parse(samples.autolinks)
     })
 
     bench('marked', () => {
@@ -139,7 +162,7 @@ describe('GFM Features Performance', () => {
 
   describe('Mixed GFM Features', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.mixedGFM)
+      neo.parse(samples.mixedGFM)
     })
 
     bench('marked', () => {

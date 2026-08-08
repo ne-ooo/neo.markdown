@@ -14,6 +14,7 @@ export type BlockTokenType =
   | 'hr'
   | 'html'
   | 'table'
+  | 'definition'
   | 'directive'
 
 /**
@@ -140,6 +141,19 @@ export interface TableCell {
   tokens: InlineToken[]
 }
 
+/** Link reference definition, for example `[label]: https://example.com`. */
+export interface DefinitionToken extends Token {
+  type: 'definition'
+  label: string
+  href: string
+  title?: string
+}
+
+export interface LinkReference {
+  href: string
+  title?: string
+}
+
 /**
  * Text token
  */
@@ -232,6 +246,7 @@ export type BlockToken =
   | ListToken
   | HtmlBlockToken
   | TableToken
+  | DefinitionToken
   | DirectiveToken
 
 /**
@@ -290,6 +305,12 @@ export interface ParserOptions {
   breaks?: boolean
 
   /**
+   * Maximum blockquote/list nesting depth (default and hard maximum: 100).
+   * Set to 0 to disable nested block containers.
+   */
+  maxNestingDepth?: number
+
+  /**
    * Add loading="lazy" to all rendered images (default: true)
    */
   lazyImages?: boolean
@@ -312,12 +333,13 @@ export interface ParserOptions {
   ugc?: boolean
 
   /**
-   * Custom set of block rules for tree-shaking.
-   * When provided, only these rules are used (instead of all built-in rules).
-   * Import individual rules from '@lpm.dev/neo.markdown/blocks'.
+   * Custom set of block rules.
+   * The `/core` parser contains only the rules explicitly imported by a consumer.
+   * The main entry still includes its complete default rule set.
    *
    * @example
    * ```typescript
+   * import { createParser } from '@lpm.dev/neo.markdown/core'
    * import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
    * const parser = createParser({ blocks: [heading, paragraph, code, list] })
    * ```
@@ -423,8 +445,24 @@ export interface BlockRule {
   name: string
   /** Numeric priority (higher = tried first) or positional constraint */
   priority?: number | `before:${string}` | `after:${string}`
-  /** Tokenize function — returns token + consumed raw string, or null */
-  tokenize(src: string, options: ParserOptions): { token: BlockToken; raw: string } | null
+  /** Optional cheap start check used when deciding whether a block interrupts a paragraph. */
+  starts?(src: string, options: Readonly<ParserOptions>): boolean
+  /** Tokenize function — returns token + consumed raw prefix, or null. */
+  tokenize(
+    src: string,
+    options: Readonly<ParserOptions>,
+    context?: BlockRuleContext
+  ): { token: BlockToken; raw: string } | null
+}
+
+/** Safe recursive services exposed to block rules by the tokenizer. */
+export interface BlockRuleContext {
+  readonly depth: number
+  readonly maxNestingDepth: number
+  /** Tokenize nested block content at an explicit container depth. */
+  tokenize(src: string, depth: number): BlockToken[]
+  /** Return true when a higher-priority enabled rule starts at src. */
+  interruptsParagraph(src: string, paragraphPriority: number): boolean
 }
 
 /**

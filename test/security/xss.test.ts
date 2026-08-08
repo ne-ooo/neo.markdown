@@ -98,9 +98,9 @@ describe('XSS Protection', () => {
       expect(result).toContain('<script>')
     })
 
-    it('should still escape text content', () => {
+    it('should preserve syntactically valid inline HTML', () => {
       const result = parse('Normal text with <tags>', { allowHtml: true })
-      expect(result).toContain('&lt;tags&gt;')
+      expect(result).toContain('<tags>')
     })
   })
 

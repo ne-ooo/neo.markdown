@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { parse, createParser } from '../../src/index.js'
-import { highlightPlugin, parseHighlightLines } from '../../src/plugins/highlight.js'
+import { highlightPlugin, MAX_HIGHLIGHT_LINES, parseHighlightLines } from '../../src/plugins/highlight.js'
 import type { CodeToken } from '../../src/core/types.js'
 
 // Mock tokenize/renderToHTML for testing without neo.highlight installed
@@ -56,6 +56,26 @@ describe('parseHighlightLines', () => {
 
   it('should extract from meta with other attributes', () => {
     expect(parseHighlightLines('{1,3} title="example.ts"')).toEqual([1, 3])
+  })
+
+  it('should cap very large ranges', () => {
+    const lines = parseHighlightLines('{1-100000000}')
+    expect(lines).toHaveLength(MAX_HIGHLIGHT_LINES)
+    expect(lines?.[0]).toBe(1)
+    expect(lines?.at(-1)).toBe(MAX_HIGHLIGHT_LINES)
+  })
+
+  it('should safely ignore integers outside the safe range', () => {
+    const hugeEndpoint = '9'.repeat(500)
+    expect(parseHighlightLines(`{1-${hugeEndpoint}}`)).toBeUndefined()
+  })
+
+  it('should ignore zero, negative, and reversed ranges', () => {
+    expect(parseHighlightLines('{0,-1,5-3}')).toBeUndefined()
+  })
+
+  it('should clamp ranges to an explicit line count', () => {
+    expect(parseHighlightLines('{1-100000000}', 3)).toEqual([1, 2, 3])
   })
 })
 
@@ -151,8 +171,23 @@ describe('highlightPlugin', () => {
       renderToHTML: spyRender,
     })
 
-    parse('```ts {1,3-5}\ncode\n```', { plugins: [plugin] })
+    parse('```ts {1,3-5}\none\ntwo\nthree\nfour\nfive\n```', { plugins: [plugin] })
     expect(receivedOpts['highlightLines']).toEqual([1, 3, 4, 5])
+  })
+
+  it('should clamp highlight metadata to the code block line count', () => {
+    let receivedOpts: Record<string, unknown> = {}
+    const plugin = highlightPlugin({
+      grammars: [{ name: 'typescript', aliases: ['ts'], tokens: {} }],
+      tokenize: mockTokenize,
+      renderToHTML: (_tokens, opts) => {
+        receivedOpts = opts ?? {}
+        return '<pre>highlighted</pre>'
+      },
+    })
+
+    parse('```ts {1-100000000}\none\ntwo\nthree\n```', { plugins: [plugin] })
+    expect(receivedOpts['highlightLines']).toEqual([1, 2, 3])
   })
 
   it('should preserve meta in code token for rendering', () => {
@@ -161,5 +196,19 @@ describe('highlightPlugin', () => {
     const code = tokens[0] as CodeToken
     expect(code.lang).toBe('ts')
     expect(code.meta).toBe('{1,3} title="test"')
+  })
+
+  it('should include theme styles in every document when a parser is reused', () => {
+    const plugin = highlightPlugin({
+      grammars: [],
+      tokenize: mockTokenize,
+      renderToHTML: mockRenderToHTML,
+      theme: { name: 'test' },
+      getThemeStylesheet: () => '.token{color:red}',
+    })
+    const parser = createParser({ plugins: [plugin] })
+
+    expect(parser.parse('# One')).toContain('<style>.token{color:red}</style>')
+    expect(parser.parse('# Two')).toContain('<style>.token{color:red}</style>')
   })
 })
