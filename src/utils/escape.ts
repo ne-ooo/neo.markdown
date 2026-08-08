@@ -47,11 +47,26 @@ export function unescape(html: string): string {
     .replace(/&#39;/g, "'")
 }
 
-/**
- * Dangerous protocols that should be blocked in links
- * Phase 5: Enhanced to block more attack vectors
- */
-const DANGEROUS_PROTOCOLS = /^(javascript|data|vbscript|file|about|blob):/i
+const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'ftp:', 'mailto:', 'tel:'])
+const SCHEME_RE = /^([a-z][a-z\d+.-]*):/i
+
+function decodeNumericEntity(match: string, code: string, radix: number): string {
+  const codePoint = Number.parseInt(code, radix)
+  if (!Number.isSafeInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+    return match
+  }
+
+  return String.fromCodePoint(codePoint)
+}
+
+function decodeProtocolEntities(value: string): string {
+  return value
+    .replace(/&#(\d+);?/g, (match, code: string) => decodeNumericEntity(match, code, 10))
+    .replace(/&#x([\da-f]+);?/gi, (match, code: string) => decodeNumericEntity(match, code, 16))
+    .replace(/&colon;/gi, ':')
+    .replace(/&tab;/gi, '\t')
+    .replace(/&newline;/gi, '\n')
+}
 
 /**
  * Check if a URL uses a dangerous protocol
@@ -60,8 +75,10 @@ const DANGEROUS_PROTOCOLS = /^(javascript|data|vbscript|file|about|blob):/i
  * @returns true if URL is safe
  */
 export function isSafeUrl(url: string): boolean {
-  const trimmed = url.trim()
-  return !DANGEROUS_PROTOCOLS.test(trimmed)
+  const normalized = decodeProtocolEntities(url)
+    .replace(/[\u0000-\u0020\u007F]/g, '')
+  const scheme = SCHEME_RE.exec(normalized)
+  return !scheme || SAFE_PROTOCOLS.has(`${scheme[1].toLowerCase()}:`)
 }
 
 /**

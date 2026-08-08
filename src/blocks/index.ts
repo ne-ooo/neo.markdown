@@ -5,6 +5,7 @@
  *
  * @example
  * ```typescript
+ * import { createParser } from '@lpm.dev/neo.markdown/core'
  * import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
  *
  * const parser = createParser({ blocks: [heading, paragraph, code, list] })
@@ -28,6 +29,7 @@ export type {
 // Individual block rules (tree-shakeable)
 export {
   code,
+  definition,
   indentedCode,
   heading,
   setextHeading,

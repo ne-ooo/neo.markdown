@@ -20,7 +20,7 @@
  * ```
  */
 
-import { useState, useEffect, useRef, useCallback, type FC } from 'react'
+import { useState, useEffect, useRef, type FC } from 'react'
 
 // ---------------------------------------------------------------------------
 // Shared
@@ -184,6 +184,43 @@ declare global {
   }
 }
 
+export const TWEET_WIDGET_RETRY_INTERVAL_MS = 100
+export const TWEET_WIDGET_MAX_RETRIES = 100
+
+export interface TweetWidgetPollOptions {
+  intervalMs?: number
+  maxAttempts?: number
+}
+
+/** Poll a widget loader with a hard attempt limit and return a cancellation function. */
+export function pollTweetWidgets(
+  tryLoad: () => boolean,
+  options: TweetWidgetPollOptions = {}
+): () => void {
+  const intervalMs = Number.isFinite(options.intervalMs) && (options.intervalMs ?? -1) >= 0
+    ? options.intervalMs ?? TWEET_WIDGET_RETRY_INTERVAL_MS
+    : TWEET_WIDGET_RETRY_INTERVAL_MS
+  const maxAttempts = Number.isSafeInteger(options.maxAttempts) && (options.maxAttempts ?? 0) > 0
+    ? Math.min(options.maxAttempts ?? TWEET_WIDGET_MAX_RETRIES, TWEET_WIDGET_MAX_RETRIES)
+    : TWEET_WIDGET_MAX_RETRIES
+  let cancelled = false
+  let attempts = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const check = (): void => {
+    if (cancelled || attempts >= maxAttempts) return
+    attempts++
+    if (tryLoad()) return
+    timer = globalThis.setTimeout(check, intervalMs)
+  }
+
+  check()
+  return () => {
+    cancelled = true
+    if (timer !== undefined) globalThis.clearTimeout(timer)
+  }
+}
+
 export const Tweet: FC<TweetProps> = ({
   id,
   dnt = true,
@@ -194,45 +231,54 @@ export const Tweet: FC<TweetProps> = ({
   const [ref, inView] = useInView()
   const [loaded, setLoaded] = useState(false)
 
-  const loadWidget = useCallback(() => {
-    if (!containerRef.current) return
+  useEffect(() => {
+    if (!inView || loaded || !containerRef.current) return
 
-    const twttr = window.twttr
-    if (twttr?.widgets) {
-      twttr.widgets.load(containerRef.current)
+    let cancelled = false
+    let stopPolling = (): void => undefined
+
+    const load = (): boolean => {
+      if (cancelled || !window.twttr?.widgets) return false
+      stopPolling()
+      window.twttr.widgets.load(containerRef.current ?? undefined)
       setLoaded(true)
-      return
+      return true
     }
 
-    // Check if script already exists
-    if (!document.querySelector('script[src*="platform.twitter.com/widgets.js"]')) {
-      const script = document.createElement('script')
+    const startPolling = (): void => {
+      stopPolling()
+      stopPolling = pollTweetWidgets(load)
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src*="platform.twitter.com/widgets.js"]'
+    )
+    let script = existingScript
+    let removeLoadListener = false
+
+    const onLoad = (): void => {
+      if (!load()) startPolling()
+    }
+
+    if (!script) {
+      script = document.createElement('script')
       script.src = 'https://platform.twitter.com/widgets.js'
       script.async = true
-      script.onload = () => {
-        window.twttr?.widgets.load(containerRef.current ?? undefined)
-        setLoaded(true)
-      }
+      script.addEventListener('load', onLoad, { once: true })
+      removeLoadListener = true
       document.head.appendChild(script)
-    } else {
-      // Script exists but might not be ready
-      const check = () => {
-        if (window.twttr?.widgets) {
-          window.twttr.widgets.load(containerRef.current ?? undefined)
-          setLoaded(true)
-        } else {
-          setTimeout(check, 100)
-        }
-      }
-      check()
+    } else if (!load()) {
+      script.addEventListener('load', onLoad, { once: true })
+      removeLoadListener = true
+      startPolling()
     }
-  }, [])
 
-  useEffect(() => {
-    if (inView && !loaded) {
-      loadWidget()
+    return () => {
+      cancelled = true
+      stopPolling()
+      if (removeLoadListener) script?.removeEventListener('load', onLoad)
     }
-  }, [inView, loaded, loadWidget])
+  }, [inView, loaded])
 
   return (
     <div

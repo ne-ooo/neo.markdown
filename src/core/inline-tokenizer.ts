@@ -2,7 +2,7 @@
  * Inline tokenizer for parsing inline markdown elements
  */
 
-import type { InlineRule, InlineToken } from './types.js'
+import type { InlineRule, InlineToken, LinkReference } from './types.js'
 
 /**
  * Inline regex patterns
@@ -28,18 +28,43 @@ const PATTERNS = {
 
   // Extended autolink (GFM) - Phase 4
   // Phase 6: Optimized - use greedy match
-  autolink: /^((?:https?:\/\/|www\.)[^\s<]+)/,
+  autolink: /^((?:https?:\/\/|ftp:\/\/|www\.)[^\s<]+)/i,
 
   // Link ![alt](url "title") or [text](url "title")
   // Greedy match to handle URLs with parens (e.g., javascript:alert(1))
   link: /^!?\[([^\]]*)\]\(([^\s]+)(?:\s+"([^"]*)")?\)/,
+
+  // Raw inline HTML (only emitted when allowHtml is true)
+  html: /^(?:<!--[\s\S]*?(?:-->|$)|<\?[\s\S]*?(?:\?>|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<![A-Z][^>\n]*>|<\/?[A-Za-z][^>\n]*>)/,
 
   // Line break (two spaces + newline)
   br: /^ {2,}\n(?!\s*$)/,
 
   // Plain text (everything else)
   // Phase 6: Keep negative lookahead for autolinks (necessary for correct parsing)
-  text: /^(?:(?!https?:\/\/|www\.)[^*_`[\n\\!~])+/,
+  text: /^(?:(?!https?:\/\/|ftp:\/\/|www\.)[^*_`[<\n\\!~])+/i,
+}
+
+const INLINE_RULE_PRIORITIES: Readonly<Record<string, number>> = {
+  escape: 1000,
+  code: 900,
+  strong: 800,
+  em: 700,
+  del: 650,
+  link: 600,
+  html: 550,
+  br: 500,
+  autolink: 400,
+  text: 0,
+}
+const DEFAULT_CUSTOM_PRIORITY = 750
+
+type InlineResult = { token: InlineToken; raw: string }
+
+interface ResolvedInlineRule {
+  rule: InlineRule
+  priority: number
+  order: number
 }
 
 /**
@@ -50,6 +75,8 @@ export interface InlineTokenizerOptions {
   breaks?: boolean
   /** When false, skip strikethrough and autolink parsing */
   gfm?: boolean
+  /** When true, preserve raw inline HTML tokens. */
+  allowHtml?: boolean
 }
 
 /**
@@ -57,9 +84,9 @@ export interface InlineTokenizerOptions {
  */
 export class InlineTokenizer {
   /** Custom inline rules indexed by trigger char code */
-  private customCharMap: Map<number, InlineRule[]>
+  private customCharMap: Map<number, ResolvedInlineRule[]>
   /** Custom inline rules without trigger chars (checked as fallback) */
-  private customGeneralRules: InlineRule[]
+  private customGeneralRules: ResolvedInlineRule[]
   /** Text pattern adapted for custom rule trigger chars */
   private textPattern: RegExp
   /** Inline tokenizer options */
@@ -73,34 +100,46 @@ export class InlineTokenizer {
     const triggerCharSet = new Set<number>()
     let hasGeneralRules = false
 
-    for (const rule of customRules) {
+    for (const [order, rule] of customRules.entries()) {
+      const resolved = {
+        rule,
+        priority: this.resolveRulePriority(rule),
+        order,
+      }
       if (rule.triggerChars && rule.triggerChars.length > 0) {
         for (const charCode of rule.triggerChars) {
           triggerCharSet.add(charCode)
           const existing = this.customCharMap.get(charCode)
           if (existing) {
-            existing.push(rule)
+            existing.push(resolved)
           } else {
-            this.customCharMap.set(charCode, [rule])
+            this.customCharMap.set(charCode, [resolved])
           }
         }
       } else {
         hasGeneralRules = true
-        this.customGeneralRules.push(rule)
+        this.customGeneralRules.push(resolved)
       }
     }
+
+    const byPriority = (left: ResolvedInlineRule, right: ResolvedInlineRule): number => (
+      right.priority - left.priority || left.order - right.order
+    )
+    this.customGeneralRules.sort(byPriority)
+    for (const rules of this.customCharMap.values()) rules.sort(byPriority)
 
     // Build text pattern that stops at custom trigger chars
     if (hasGeneralRules) {
       // General rules need single-char text matching to get a chance at every position
-      this.textPattern = /^(?:(?!https?:\/\/|www\.)[^*_`[\n\\!~])/
+      this.textPattern = /^(?:(?!https?:\/\/|ftp:\/\/|www\.)[^*_`[<\n\\!~])/i
     } else if (triggerCharSet.size > 0) {
       // Add trigger chars to the exclusion set so text doesn't consume them
       const extra = [...triggerCharSet]
         .map((c) => `\\u${c.toString(16).padStart(4, '0')}`)
         .join('')
       this.textPattern = new RegExp(
-        `^(?:(?!https?:\\/\\/|www\\.)[^*_\`[\\n\\\\!~${extra}])+`
+        `^(?:(?!https?:\\/\\/|ftp:\\/\\/|www\\.)[^*_\`[<\\n\\\\!~${extra}])+`,
+        'i'
       )
     } else {
       this.textPattern = PATTERNS.text
@@ -114,91 +153,150 @@ export class InlineTokenizer {
    * @param src - Inline markdown source
    * @returns Array of inline tokens
    */
-  tokenize(src: string): InlineToken[] {
+  tokenize(
+    src: string,
+    references: ReadonlyMap<string, LinkReference> = new Map()
+  ): InlineToken[] {
     const tokens: InlineToken[] = []
-    let text = src
+    let cursor = 0
+    let previousChar = ''
 
-    while (text) {
-      // Phase 6: Fast-path checks using character codes to avoid regex overhead
+    while (cursor < src.length) {
+      const text = src.slice(cursor)
       const char = text.charCodeAt(0)
-      let token = null
-
-      // Check for common patterns first using character codes
-      // This avoids running regex on every character
-
-      if (char === 92) { // '\' - escape
-        token = this.tokenizeEscape(text)
-      } else if (char === 96) { // '`' - code
-        token = this.tokenizeCode(text)
-      } else if (char === 42 || char === 95) { // '*' or '_' - strong/em
-        // Check for strong first (higher precedence)
-        if (text.charCodeAt(1) === char) { // double char like ** or __
-          token = this.tokenizeStrong(text)
-        }
-        if (!token) {
-          token = this.tokenizeEm(text)
-        }
-      } else if (char === 126 && this.inlineOptions.gfm !== false) { // '~' - strikethrough (GFM)
-        if (text.charCodeAt(1) === 126) { // ~~
-          token = this.tokenizeDel(text)
-        }
-      } else if (char === 33 || char === 91) { // '!' or '[' - link
-        token = this.tokenizeLink(text)
-      } else if (char === 32 && text.charCodeAt(1) === 32) { // two spaces - potential line break
-        token = this.tokenizeBr(text)
-      } else if (char === 10 && this.inlineOptions.breaks) { // '\n' - bare newline line break
-        token = this.tokenizeBr(text)
-      }
-
-      // Custom rules with matching trigger chars
-      if (!token) {
-        const charRules = this.customCharMap.get(char)
-        if (charRules) {
-          for (const rule of charRules) {
-            const result = rule.tokenize(text)
-            if (result) {
-              token = result
-              break
-            }
-          }
-        }
-      }
-
-      // Custom rules without trigger chars (general)
-      if (!token) {
-        for (const rule of this.customGeneralRules) {
-          const result = rule.tokenize(text)
-          if (result) {
-            token = result
-            break
-          }
-        }
-      }
-
-      // If no specific token matched, check autolinks (GFM) then text pattern
-      if (!token) {
-        if (this.inlineOptions.gfm !== false) {
-          token = this.tokenizeAutolink(text) || this.tokenizeText(text)
-        } else {
-          token = this.tokenizeText(text)
-        }
-      }
+      const token = this.tokenizeAt(text, char, references, previousChar)
 
       if (token) {
+        this.assertProgress('inline tokenizer', text, token.raw)
         tokens.push(token.token)
-        text = text.slice(token.raw.length)
+        previousChar = token.raw.at(-1) ?? previousChar
+        cursor += token.raw.length
       } else {
-        // Skip single character if no match
         tokens.push({
           type: 'text',
           raw: text[0],
           text: text[0],
         })
-        text = text.slice(1)
+        previousChar = text[0]
+        cursor++
       }
     }
 
     return tokens
+  }
+
+  private resolveRulePriority(rule: InlineRule): number {
+    if (rule.priority === undefined) return DEFAULT_CUSTOM_PRIORITY
+    if (typeof rule.priority === 'number') {
+      return Number.isFinite(rule.priority) ? rule.priority : DEFAULT_CUSTOM_PRIORITY
+    }
+
+    const separator = rule.priority.indexOf(':')
+    const position = rule.priority.slice(0, separator)
+    const targetName = rule.priority.slice(separator + 1)
+    const target = INLINE_RULE_PRIORITIES[targetName]
+    if (target === undefined) return DEFAULT_CUSTOM_PRIORITY
+    return position === 'before' ? target + 1 : target - 1
+  }
+
+  private tokenizeAt(
+    src: string,
+    char: number,
+    references: ReadonlyMap<string, LinkReference>,
+    previousChar: string
+  ): InlineResult | null {
+    const customRules = this.getCustomRules(char)
+    let customIndex = 0
+
+    const tryCustomBefore = (priority: number): InlineResult | null => {
+      while (customIndex < customRules.length && customRules[customIndex].priority > priority) {
+        const candidate = customRules[customIndex++]
+        const result = candidate.rule.tokenize(src)
+        if (result) {
+          this.assertProgress(candidate.rule.name, src, result.raw)
+          return result
+        }
+      }
+      return null
+    }
+
+    const tryBuiltin = (priority: number, tokenize: () => InlineResult | null): InlineResult | null => (
+      tryCustomBefore(priority) || tokenize()
+    )
+
+    let result: InlineResult | null = null
+
+    if (char === 92) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['escape'], () => this.tokenizeEscape(src))
+    } else if (char === 96) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['code'], () => this.tokenizeCode(src))
+    } else if (char === 42 || char === 95) {
+      result = tryBuiltin(
+        INLINE_RULE_PRIORITIES['strong'],
+        () => this.tokenizeStrong(src, references, previousChar)
+      )
+      if (!result) {
+        result = tryBuiltin(
+          INLINE_RULE_PRIORITIES['em'],
+          () => this.tokenizeEm(src, references, previousChar)
+        )
+      }
+    } else if (char === 126 && this.inlineOptions.gfm !== false) {
+      result = tryBuiltin(
+        INLINE_RULE_PRIORITIES['del'],
+        () => this.tokenizeDel(src, references)
+      )
+    } else if (char === 33 || char === 91) {
+      result = tryBuiltin(
+        INLINE_RULE_PRIORITIES['link'],
+        () => this.tokenizeLink(src, references)
+      )
+    } else if (char === 60 && this.inlineOptions.allowHtml) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['html'], () => this.tokenizeHtml(src))
+    } else if (
+      (char === 32 && src.charCodeAt(1) === 32)
+      || (char === 10 && this.inlineOptions.breaks)
+    ) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['br'], () => this.tokenizeBr(src))
+    }
+    if (result) return result
+
+    if (this.inlineOptions.gfm !== false) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['autolink'], () => this.tokenizeAutolink(src))
+      if (result) return result
+    }
+
+    result = tryBuiltin(INLINE_RULE_PRIORITIES['text'], () => this.tokenizeText(src))
+    if (result) return result
+
+    while (customIndex < customRules.length) {
+      const candidate = customRules[customIndex++]
+      result = candidate.rule.tokenize(src)
+      if (result) {
+        this.assertProgress(candidate.rule.name, src, result.raw)
+        return result
+      }
+    }
+    return null
+  }
+
+  private getCustomRules(char: number): ResolvedInlineRule[] {
+    const charRules = this.customCharMap.get(char) ?? []
+    if (charRules.length === 0) return this.customGeneralRules
+    if (this.customGeneralRules.length === 0) return charRules
+
+    return [...charRules, ...this.customGeneralRules].sort((left, right) => (
+      right.priority - left.priority || left.order - right.order
+    ))
+  }
+
+  private assertProgress(ruleName: string, src: string, raw: string): void {
+    if (typeof raw !== 'string' || raw.length === 0) {
+      throw new TypeError(`Inline rule "${ruleName}" must consume a non-empty prefix`)
+    }
+    if (!src.startsWith(raw)) {
+      throw new TypeError(`Inline rule "${ruleName}" returned raw text that is not a source prefix`)
+    }
   }
 
   /**
@@ -244,13 +342,17 @@ export class InlineTokenizer {
   /**
    * Tokenize strong (bold)
    */
-  private tokenizeStrong(src: string): { token: InlineToken; raw: string } | null {
+  private tokenizeStrong(
+    src: string,
+    references: ReadonlyMap<string, LinkReference>,
+    previousChar: string
+  ): { token: InlineToken; raw: string } | null {
     // Try ** or __ delimiters
     if (src.startsWith('**')) {
       const result = this.findClosingDelimiter(src, '**', 2)
       if (result) {
         const { content, raw } = result
-        const tokens = this.tokenize(content)
+        const tokens = this.tokenize(content, references)
         return {
           token: {
             type: 'strong',
@@ -264,10 +366,13 @@ export class InlineTokenizer {
     }
 
     if (src.startsWith('__')) {
+      if (/[\p{L}\p{N}]/u.test(previousChar) && /[\p{L}\p{N}]/u.test(src[2] ?? '')) {
+        return null
+      }
       const result = this.findClosingDelimiter(src, '__', 2)
       if (result) {
         const { content, raw } = result
-        const tokens = this.tokenize(content)
+        const tokens = this.tokenize(content, references)
         return {
           token: {
             type: 'strong',
@@ -286,13 +391,17 @@ export class InlineTokenizer {
   /**
    * Tokenize emphasis (italic)
    */
-  private tokenizeEm(src: string): { token: InlineToken; raw: string } | null {
+  private tokenizeEm(
+    src: string,
+    references: ReadonlyMap<string, LinkReference>,
+    previousChar: string
+  ): { token: InlineToken; raw: string } | null {
     // Try * or _ delimiters (but not ** or __)
     if (src.startsWith('*') && !src.startsWith('**')) {
       const result = this.findClosingDelimiter(src, '*', 1)
       if (result) {
         const { content, raw } = result
-        const tokens = this.tokenize(content)
+        const tokens = this.tokenize(content, references)
         return {
           token: {
             type: 'em',
@@ -306,10 +415,13 @@ export class InlineTokenizer {
     }
 
     if (src.startsWith('_') && !src.startsWith('__')) {
+      if (/[\p{L}\p{N}]/u.test(previousChar) && /[\p{L}\p{N}]/u.test(src[1] ?? '')) {
+        return null
+      }
       const result = this.findClosingDelimiter(src, '_', 1)
       if (result) {
         const { content, raw } = result
-        const tokens = this.tokenize(content)
+        const tokens = this.tokenize(content, references)
         return {
           token: {
             type: 'em',
@@ -329,7 +441,10 @@ export class InlineTokenizer {
    * Tokenize strikethrough (del)
    * Phase 4: GFM extension for ~~strikethrough~~
    */
-  private tokenizeDel(src: string): { token: InlineToken; raw: string } | null {
+  private tokenizeDel(
+    src: string,
+    references: ReadonlyMap<string, LinkReference>
+  ): { token: InlineToken; raw: string } | null {
     const match = PATTERNS.del.exec(src)
     if (!match) return null
 
@@ -337,7 +452,7 @@ export class InlineTokenizer {
     const text = match[1]
 
     // Recursively tokenize content
-    const tokens = this.tokenize(text)
+    const tokens = this.tokenize(text, references)
 
     return {
       token: {
@@ -390,9 +505,19 @@ export class InlineTokenizer {
         }
 
         const prevChar = i > 0 ? src[i - 1] : ' '
+        const nextChar = src[i + runLength] ?? ''
 
         // Content must end with non-whitespace
         if (!/\S/.test(prevChar)) {
+          i += runLength
+          continue
+        }
+
+        if (
+          char === '_'
+          && /[\p{L}\p{N}]/u.test(prevChar)
+          && /[\p{L}\p{N}]/u.test(nextChar)
+        ) {
           i += runLength
           continue
         }
@@ -463,11 +588,32 @@ export class InlineTokenizer {
     const match = PATTERNS.autolink.exec(src)
     if (!match) return null
 
-    const raw = match[0]
+    let raw = match[0]
+
+    // GFM excludes trailing punctuation from extended autolinks.
+    raw = raw.replace(/[?!.,:*_~]+$/, '')
+
+    if (raw.endsWith(')')) {
+      let open = 0
+      let close = 0
+      for (const char of raw) {
+        if (char === '(') open++
+        if (char === ')') close++
+      }
+      while (close > open && raw.endsWith(')')) {
+        raw = raw.slice(0, -1)
+        close--
+      }
+    }
+
+    const entitySuffix = /&[a-z\d]+;$/i.exec(raw)
+    if (entitySuffix) raw = raw.slice(0, entitySuffix.index)
+    if (!raw) return null
+
     const text = raw
 
     // Optimized: check first char instead of startsWith
-    const href = raw.charCodeAt(0) === 119 ? 'http://' + raw : raw // 119 = 'w'
+    const href = /^www\./i.test(raw) ? 'http://' + raw : raw
 
     // Create link token (reuse raw string where possible)
     return {
@@ -491,9 +637,12 @@ export class InlineTokenizer {
   /**
    * Tokenize link or image
    */
-  private tokenizeLink(src: string): { token: InlineToken; raw: string } | null {
+  private tokenizeLink(
+    src: string,
+    references: ReadonlyMap<string, LinkReference>
+  ): { token: InlineToken; raw: string } | null {
     const match = PATTERNS.link.exec(src)
-    if (!match) return null
+    if (!match) return this.tokenizeReferenceLink(src, references)
 
     const raw = match[0]
     const isImage = raw.startsWith('!')
@@ -515,7 +664,7 @@ export class InlineTokenizer {
     }
 
     // Recursively tokenize link text
-    const tokens = this.tokenize(text)
+    const tokens = this.tokenize(text, references)
 
     return {
       token: {
@@ -528,6 +677,51 @@ export class InlineTokenizer {
       },
       raw,
     }
+  }
+
+  private tokenizeReferenceLink(
+    src: string,
+    references: ReadonlyMap<string, LinkReference>
+  ): { token: InlineToken; raw: string } | null {
+    const match = /^(!?)\[([^\]\n]+)\](?:\[([^\]\n]*)\])?/.exec(src)
+    if (!match) return null
+
+    const text = match[2]
+    const explicitLabel = match[3]
+    const label = explicitLabel === undefined || explicitLabel === '' ? text : explicitLabel
+    const reference = references.get(InlineTokenizer.normalizeReferenceLabel(label))
+    if (!reference) return null
+
+    const raw = match[0]
+    if (match[1] === '!') {
+      return {
+        token: { type: 'image', raw, text, href: reference.href, title: reference.title },
+        raw,
+      }
+    }
+
+    return {
+      token: {
+        type: 'link',
+        raw,
+        text,
+        href: reference.href,
+        title: reference.title,
+        tokens: this.tokenize(text, references),
+      },
+      raw,
+    }
+  }
+
+  private tokenizeHtml(src: string): { token: InlineToken; raw: string } | null {
+    const match = PATTERNS.html.exec(src)
+    if (!match) return null
+    const raw = match[0]
+    return { token: { type: 'html', raw, text: raw }, raw }
+  }
+
+  static normalizeReferenceLabel(label: string): string {
+    return label.trim().replace(/\s+/g, ' ').toLowerCase()
   }
 
   /**

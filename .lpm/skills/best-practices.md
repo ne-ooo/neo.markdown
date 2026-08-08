@@ -34,16 +34,15 @@ This applies equally to preset imports — `@lpm.dev/neo.markdown/gfm` and `@lpm
 
 ### Use sub-path imports for smaller bundles
 
-The package is tree-shakeable (`"sideEffects": false`). Import from sub-paths when you only need types:
+The package is tree-shakeable (`"sideEffects": false`). Import from sub-paths when you only need types or a selective parser:
 
 ```typescript
-// Full bundle: ~29.6 KB gzipped
+// Default entry includes the complete built-in parser
 import { parse } from '@lpm.dev/neo.markdown'
 
-// Block types only: ~12.6 KB gzipped (57% smaller)
+// Type-only imports emit no JavaScript
 import type { HeadingToken, ListToken, TableToken } from '@lpm.dev/neo.markdown/blocks'
 
-// Inline types only: ~8.3 KB gzipped (71% smaller)
 import type { LinkToken, StrongToken, EmToken } from '@lpm.dev/neo.markdown/inline'
 ```
 
@@ -52,13 +51,15 @@ import type { LinkToken, StrongToken, EmToken } from '@lpm.dev/neo.markdown/inli
 If you only need a subset of block types (e.g., a comment renderer that only needs paragraphs, emphasis, and links), use the `blocks` option to include only the rules you need. Unused block rules are tree-shaken:
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown'
+import { createParser } from '@lpm.dev/neo.markdown/core'
 import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
 
 const parser = createParser({
   blocks: [heading, paragraph, code, list],
 })
 ```
+
+The main entry imports all default block rules. Passing `blocks` there changes runtime behavior but cannot remove those default imports from the entry bundle.
 
 ## Security
 
@@ -104,10 +105,10 @@ const html = parse(readme, {
 
 ### Sanitization order — sanitizer runs before plugin HTML transforms
 
-The sanitizer runs BEFORE plugin HTML transforms. This means plugins like `copyCodePlugin` can safely inject trusted HTML (buttons, inline scripts) without the sanitizer stripping them. This order is intentional (fixed in v1.2.1) — do not reorder sanitization to run after plugins.
+The sanitizer runs before plugin HTML transforms. Only install trusted plugins because their transforms run outside the user-HTML sanitizer. `copyCodePlugin` emits escaped, inert markup and requires an explicit client initializer; it does not emit inline scripts.
 
 ```typescript
-// Safe — sanitizer cleans user HTML, then copy-code injects its button + script
+// Sanitizer cleans user HTML, then copy-code adds escaped inert markup
 const parser = createParser({
   allowHtml: true,
   sanitize: true,

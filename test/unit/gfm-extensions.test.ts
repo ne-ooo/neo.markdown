@@ -39,41 +39,41 @@ describe('GFM Extensions (Phase 4)', () => {
 
   describe('Task Lists', () => {
     it('should parse unchecked task list item', () => {
-      const result = parse('- [ ] Unchecked task')
+      const result = parse('- [ ] Unchecked task', gfm)
       expect(result).toBe('<ul>\n<li><input type="checkbox" disabled> Unchecked task</li>\n</ul>\n')
     })
 
     it('should parse checked task list item (lowercase x)', () => {
-      const result = parse('- [x] Checked task')
+      const result = parse('- [x] Checked task', gfm)
       expect(result).toBe('<ul>\n<li><input type="checkbox" checked disabled> Checked task</li>\n</ul>\n')
     })
 
     it('should parse checked task list item (uppercase X)', () => {
-      const result = parse('- [X] Checked task')
+      const result = parse('- [X] Checked task', gfm)
       expect(result).toBe('<ul>\n<li><input type="checkbox" checked disabled> Checked task</li>\n</ul>\n')
     })
 
     it('should parse multiple task list items', () => {
-      const result = parse('- [ ] Task 1\n- [x] Task 2\n- [ ] Task 3')
+      const result = parse('- [ ] Task 1\n- [x] Task 2\n- [ ] Task 3', gfm)
       expect(result).toContain('<input type="checkbox" disabled> Task 1')
       expect(result).toContain('<input type="checkbox" checked disabled> Task 2')
       expect(result).toContain('<input type="checkbox" disabled> Task 3')
     })
 
     it('should parse mixed task and regular list items', () => {
-      const result = parse('- [ ] Task item\n- Regular item')
+      const result = parse('- [ ] Task item\n- Regular item', gfm)
       expect(result).toContain('<input type="checkbox" disabled> Task item')
       expect(result).toContain('<li>Regular item</li>')
     })
 
     it('should work with ordered lists', () => {
-      const result = parse('1. [ ] Task 1\n2. [x] Task 2')
+      const result = parse('1. [ ] Task 1\n2. [x] Task 2', gfm)
       expect(result).toContain('<input type="checkbox" disabled> Task 1')
       expect(result).toContain('<input type="checkbox" checked disabled> Task 2')
     })
 
     it('should parse task list with emphasis', () => {
-      const result = parse('- [x] **Bold** task')
+      const result = parse('- [x] **Bold** task', gfm)
       expect(result).toContain('<input type="checkbox" checked disabled>')
       expect(result).toContain('<strong>Bold</strong>')
     })
@@ -135,6 +135,18 @@ describe('GFM Extensions (Phase 4)', () => {
       const result = parse(markdown, gfm)
       expect(result).toContain('<strong>bold</strong>')
     })
+
+    it('should keep escaped pipes inside cells', () => {
+      const markdown = '| f\\|oo |\n| --- |\n| b **\\|** im |'
+      const result = parse(markdown, gfm)
+      expect(result).toContain('<th>f|oo</th>')
+      expect(result).toContain('<td>b <strong>|</strong> im</td>')
+    })
+
+    it('should reject invalid delimiter rows and width mismatches', () => {
+      expect(parse('| a | b |\n| : | - |', gfm)).not.toContain('<table>')
+      expect(parse('| a | b |\n| --- |', gfm)).not.toContain('<table>')
+    })
   })
 
   describe('Extended Autolinks', () => {
@@ -173,6 +185,11 @@ describe('GFM Extensions (Phase 4)', () => {
       const result = parse('Use `https://example.com` as template', gfm)
       expect(result).not.toContain('<a href="https://example.com">')
       expect(result).toContain('<code>https://example.com</code>')
+    })
+
+    it('should exclude trailing punctuation and unmatched parentheses', () => {
+      const result = parse('Visit https://example.com/path).', gfm)
+      expect(result).toContain('<a href="https://example.com/path">https://example.com/path</a>).')
     })
   })
 })

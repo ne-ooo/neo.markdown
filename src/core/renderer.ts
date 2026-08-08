@@ -42,6 +42,34 @@ export interface HtmlRendererOptions {
   } | boolean
 }
 
+function isExternalHttpUrl(url: string): boolean {
+  if (url.startsWith('//')) return true
+  try {
+    const protocol = new URL(url).protocol.toLowerCase()
+    return protocol === 'http:' || protocol === 'https:' || protocol === 'ftp:'
+  } catch {
+    return false
+  }
+}
+
+function isRelativeUrl(url: string): boolean {
+  return !url.startsWith('#') && !url.startsWith('//') && !/^[a-z][a-z\d+.-]*:/i.test(url)
+}
+
+function resolveAgainstBase(url: string, baseUrl: string): string {
+  const safeBase = sanitizeUrl(baseUrl)
+  if (!safeBase) return url
+
+  try {
+    const directoryBase = safeBase.endsWith('/') ? safeBase : `${safeBase}/`
+    const base = new URL(directoryBase)
+    if (base.protocol !== 'http:' && base.protocol !== 'https:') return url
+    return sanitizeUrl(new URL(url, base).href) || url
+  } catch {
+    return url
+  }
+}
+
 /**
  * Default HTML renderer implementation
  */
@@ -254,17 +282,15 @@ export class HtmlRenderer implements Renderer {
 
     if (safeLinks) {
       const config = typeof safeLinks === 'object' ? safeLinks : {}
-      const isExternal = href.startsWith('http://') || href.startsWith('https://')
+      const isExternal = isExternalHttpUrl(href)
       const isAnchor = href.startsWith('#')
 
       if (isExternal) {
         const rel = config.externalRel ?? 'nofollow noopener noreferrer'
         const target = config.externalTarget ?? '_blank'
-        extraAttrs = ` rel="${rel}" target="${target}"`
-      } else if (!isAnchor && config.baseUrl) {
-        // Resolve relative links against baseUrl
-        const base = config.baseUrl.endsWith('/') ? config.baseUrl : config.baseUrl + '/'
-        href = base + href.replace(/^\.\//, '')
+        extraAttrs = ` rel="${escape(rel)}" target="${escape(target)}"`
+      } else if (!isAnchor && config.baseUrl && isRelativeUrl(href)) {
+        href = resolveAgainstBase(href, config.baseUrl)
       }
     }
 
@@ -285,9 +311,13 @@ export class HtmlRenderer implements Renderer {
 
     // Resolve relative image URLs against baseUrl
     const safeLinks = this.rendererOptions.safeLinks
-    if (safeLinks && typeof safeLinks === 'object' && safeLinks.baseUrl && src && !src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('#')) {
-      const base = safeLinks.baseUrl.endsWith('/') ? safeLinks.baseUrl : safeLinks.baseUrl + '/'
-      src = base + src.replace(/^\.\//, '')
+    if (
+      safeLinks
+      && typeof safeLinks === 'object'
+      && safeLinks.baseUrl
+      && isRelativeUrl(src)
+    ) {
+      src = resolveAgainstBase(src, safeLinks.baseUrl)
     }
 
     const title = token.title ? ` title="${escape(token.title)}"` : ''
@@ -331,6 +361,8 @@ export class HtmlRenderer implements Renderer {
         return this.html(token)
       case 'table':
         return this.table(token)
+      case 'definition':
+        return ''
       case 'directive':
         return this.directive(token)
       default:

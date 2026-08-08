@@ -2,7 +2,9 @@
  * Quick performance test to verify optimizations
  */
 
-import { parse as neoParse } from '../src/index.js'
+import { createParser } from '../src/index.js'
+
+const parser = createParser({ gfm: true })
 
 const listSample = `
 - Item 1
@@ -21,7 +23,7 @@ Or www.example.com works as well.
 console.log('Testing list parsing performance...')
 const listStart = performance.now()
 for (let i = 0; i < 10000; i++) {
-  neoParse(listSample)
+  parser.parse(listSample)
 }
 const listEnd = performance.now()
 console.log(`10,000 list parses: ${(listEnd - listStart).toFixed(2)}ms`)
@@ -29,7 +31,7 @@ console.log(`10,000 list parses: ${(listEnd - listStart).toFixed(2)}ms`)
 console.log('\nTesting autolink parsing performance...')
 const autolinkStart = performance.now()
 for (let i = 0; i < 10000; i++) {
-  neoParse(autolinkSample)
+  parser.parse(autolinkSample)
 }
 const autolinkEnd = performance.now()
 console.log(`10,000 autolink parses: ${(autolinkEnd - autolinkStart).toFixed(2)}ms`)

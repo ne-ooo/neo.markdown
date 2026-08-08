@@ -232,6 +232,34 @@ describe('Plugin System - addHtmlTransform', () => {
     expect(result).toContain('<div class="content">')
     expect(result).toContain('<h1 class="title">')
   })
+
+  it('should apply transforms exactly once through parse and public render', () => {
+    let tokenTransformCalls = 0
+    let htmlTransformCalls = 0
+    const plugin: MarkdownPlugin = (builder) => {
+      builder.addTokenTransform((tokens) => {
+        tokenTransformCalls++
+        return tokens
+      })
+      builder.addHtmlTransform((html) => {
+        htmlTransformCalls++
+        return `<article>${html}</article>`
+      })
+    }
+    const parser = createParser({ plugins: [plugin] })
+
+    const rendered = parser.render(parser.tokenize('# Render'))
+    expect(tokenTransformCalls).toBe(1)
+    expect(htmlTransformCalls).toBe(1)
+    expect(rendered.match(/<article>/g)).toHaveLength(1)
+
+    tokenTransformCalls = 0
+    htmlTransformCalls = 0
+    const parsed = parser.parse('# Parse')
+    expect(tokenTransformCalls).toBe(1)
+    expect(htmlTransformCalls).toBe(1)
+    expect(parsed.match(/<article>/g)).toHaveLength(1)
+  })
 })
 
 // ---------------------------------------------------------------------------

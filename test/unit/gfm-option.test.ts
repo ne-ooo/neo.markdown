@@ -32,6 +32,13 @@ describe('gfm option', () => {
       expect(html).toContain('www.example.com')
     })
 
+    it('task markers remain literal text', () => {
+      const parser = createParser({ gfm: false })
+      const html = parser.parse('- [x] task')
+      expect(html).not.toContain('<input')
+      expect(html).toContain('[x] task')
+    })
+
     it('standard markdown features still work', () => {
       const parser = createParser({ gfm: false })
 

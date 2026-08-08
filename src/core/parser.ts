@@ -2,7 +2,7 @@
  * Main markdown parser
  */
 
-import type { Parser, ParserOptions, BlockToken, ParagraphToken, HeadingToken, TableToken } from './types.js'
+import type { Parser, ParserOptions, BlockRule, BlockToken, ParagraphToken, HeadingToken, LinkReference, TableToken } from './types.js'
 import { Tokenizer } from './tokenizer.js'
 import { InlineTokenizer } from './inline-tokenizer.js'
 import { HtmlRenderer } from './renderer.js'
@@ -21,11 +21,18 @@ export class MarkdownParser implements Parser {
   private htmlTransforms: Array<(html: string) => string>
   private sanitizerConfig: SanitizerConfig | null
 
-  constructor(options: ParserOptions = {}) {
-    // Handle ugc shorthand: enables sanitize + safeLinks + disables allowHtml
-    const resolved = options?.ugc
-      ? { sanitize: true, safeLinks: true, allowHtml: false, ...options, ugc: true }
-      : options ?? {}
+  constructor(options: ParserOptions = {}, blockRules: BlockRule[] = options.blocks ?? []) {
+    // UGC mode is a security boundary, not a set of overridable defaults.
+    const supplied = options ?? {}
+    const resolved = supplied.ugc
+      ? {
+          ...supplied,
+          allowHtml: false,
+          sanitize: true,
+          safeLinks: true,
+          ugc: true,
+        }
+      : supplied
 
     this.options = {
       allowHtml: false,
@@ -77,10 +84,11 @@ export class MarkdownParser implements Parser {
       : null
 
     // Create tokenizers with custom rules from plugins
-    this.blockTokenizer = new Tokenizer(this.options, builder.blockRules)
+    this.blockTokenizer = new Tokenizer(this.options, blockRules, builder.blockRules)
     this.inlineTokenizer = new InlineTokenizer(builder.inlineRules, {
       breaks: this.options.breaks,
       gfm: this.options.gfm,
+      allowHtml: this.options.allowHtml,
     })
   }
 
@@ -91,14 +99,24 @@ export class MarkdownParser implements Parser {
    * @returns HTML string
    */
   parse(markdown: string): string {
-    let tokens = this.tokenize(markdown)
+    return this.render(this.tokenize(markdown))
+  }
+
+  /**
+   * Render tokens through the same transforms and security pipeline as parse().
+   *
+   * @param tokens - Array of block tokens
+   * @returns HTML string
+   */
+  render(tokens: BlockToken[]): string {
+    let transformedTokens = tokens
 
     // Apply token transforms from plugins
     for (const transform of this.tokenTransforms) {
-      tokens = transform(tokens)
+      transformedTokens = transform(transformedTokens)
     }
 
-    let html = this.render(tokens)
+    let html = this.renderer.renderBlock(transformedTokens)
 
     // Sanitize user-provided HTML before plugin transforms.
     // Plugins inject trusted HTML (buttons, scripts, wrappers) that must
@@ -123,9 +141,29 @@ export class MarkdownParser implements Parser {
    */
   tokenize(markdown: string): BlockToken[] {
     const blockTokens = this.blockTokenizer.tokenize(markdown)
+    const references = new Map<string, LinkReference>()
+    this.collectReferenceDefinitions(blockTokens, references)
 
     // Parse inline content recursively
-    return this.processInlineTokens(blockTokens)
+    return this.processInlineTokens(blockTokens, references)
+  }
+
+  private collectReferenceDefinitions(
+    tokens: BlockToken[],
+    references: Map<string, LinkReference>
+  ): void {
+    for (const token of tokens) {
+      if (token.type === 'definition') {
+        const label = InlineTokenizer.normalizeReferenceLabel(token.label)
+        if (!references.has(label)) {
+          references.set(label, { href: token.href, title: token.title })
+        }
+      } else if (token.type === 'blockquote') {
+        this.collectReferenceDefinitions(token.tokens, references)
+      } else if (token.type === 'list') {
+        for (const item of token.items) this.collectReferenceDefinitions(item.tokens, references)
+      }
+    }
   }
 
   /**
@@ -134,26 +172,29 @@ export class MarkdownParser implements Parser {
    * @param tokens - Array of block tokens
    * @returns Array of block tokens with inline tokens processed
    */
-  private processInlineTokens(tokens: BlockToken[]): BlockToken[] {
+  private processInlineTokens(
+    tokens: BlockToken[],
+    references: ReadonlyMap<string, LinkReference>
+  ): BlockToken[] {
     return tokens.map((token) => {
       if (token.type === 'paragraph') {
         return {
           ...token,
-          tokens: this.inlineTokenizer.tokenize(token.text),
+          tokens: this.inlineTokenizer.tokenize(token.text, references),
         } as ParagraphToken
       }
 
       if (token.type === 'heading') {
         return {
           ...token,
-          tokens: this.inlineTokenizer.tokenize(token.text),
+          tokens: this.inlineTokenizer.tokenize(token.text, references),
         } as HeadingToken
       }
 
       if (token.type === 'blockquote') {
         return {
           ...token,
-          tokens: this.processInlineTokens(token.tokens),
+          tokens: this.processInlineTokens(token.tokens, references),
         }
       }
 
@@ -162,7 +203,7 @@ export class MarkdownParser implements Parser {
           ...token,
           items: token.items.map((item) => ({
             ...item,
-            tokens: this.processInlineTokens(item.tokens),
+            tokens: this.processInlineTokens(item.tokens, references),
           })),
         }
       }
@@ -172,12 +213,12 @@ export class MarkdownParser implements Parser {
           ...token,
           header: token.header.map((cell) => ({
             ...cell,
-            tokens: this.inlineTokenizer.tokenize(cell.text),
+            tokens: this.inlineTokenizer.tokenize(cell.text, references),
           })),
           rows: token.rows.map((row) =>
             row.map((cell) => ({
               ...cell,
-              tokens: this.inlineTokenizer.tokenize(cell.text),
+              tokens: this.inlineTokenizer.tokenize(cell.text, references),
             }))
           ),
         } as TableToken
@@ -187,15 +228,6 @@ export class MarkdownParser implements Parser {
     })
   }
 
-  /**
-   * Render tokens to HTML
-   *
-   * @param tokens - Array of block tokens
-   * @returns HTML string
-   */
-  render(tokens: BlockToken[]): string {
-    return this.renderer.renderBlock(tokens)
-  }
 }
 
 /**
@@ -204,6 +236,6 @@ export class MarkdownParser implements Parser {
  * @param options - Parser options
  * @returns Parser instance
  */
-export function createParser(options?: ParserOptions): Parser {
-  return new MarkdownParser(options)
+export function createParser(options: ParserOptions & { blocks: BlockRule[] }): Parser {
+  return new MarkdownParser(options, options.blocks)
 }

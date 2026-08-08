@@ -311,10 +311,19 @@ function renderLoom(id: string, attrs: Record<string, string>, responsive: boole
  * Shows a button instead of the embed — clicking it replaces the placeholder with the actual content.
  */
 function wrapWithConsent(embedHtml: string, providerName: string, message: string): string {
-  // Encode the embed HTML as a data attribute (base64 to avoid escaping issues)
-  const encoded = typeof Buffer !== 'undefined'
-    ? Buffer.from(embedHtml).toString('base64')
-    : btoa(embedHtml)
+  // Encode UTF-8 bytes rather than passing a Unicode string directly to btoa().
+  const bytes = new TextEncoder().encode(embedHtml)
+  let encoded: string
+  if (typeof Buffer !== 'undefined') {
+    encoded = Buffer.from(bytes).toString('base64')
+  } else {
+    let binary = ''
+    const chunkSize = 0x8000
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+    }
+    encoded = btoa(binary)
+  }
 
   return (
     `<div class="embed embed-consent embed-consent-${escape(providerName)}" ` +
@@ -322,7 +331,7 @@ function wrapWithConsent(embedHtml: string, providerName: string, message: strin
     `<button type="button" ` +
     `style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:12px 24px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;cursor:pointer;font-size:14px;z-index:1" ` +
     `aria-label="${escape(message)} (${escape(providerName)})" ` +
-    `onclick="var p=this.parentElement;p.innerHTML=atob('${encoded}')">${escape(message)}</button>` +
+    `onclick="var b=atob('${encoded}'),u=Uint8Array.from(b,function(c){return c.charCodeAt(0)}),p=this.parentElement;p.innerHTML=new TextDecoder().decode(u)">${escape(message)}</button>` +
     `</div>\n`
   )
 }

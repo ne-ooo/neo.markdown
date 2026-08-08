@@ -1,98 +1,80 @@
-/**
- * Copy-code plugin tests
- */
-
 import { describe, it, expect } from 'vitest'
-import { parse } from '../../src/index.js'
-import { copyCodePlugin } from '../../src/plugins/copy-code.js'
+import { createParser, parse } from '../../src/index.js'
+import {
+  copyCodePlugin,
+  getCopyCodeStyles,
+  initializeCopyCode,
+} from '../../src/plugins/copy-code.js'
 
 describe('copyCodePlugin', () => {
-  it('should wrap code blocks with copy button', () => {
-    const plugin = copyCodePlugin()
-    const result = parse('```\ncode()\n```', { plugins: [plugin] })
-    expect(result).toContain('<div class="code-block">')
-    expect(result).toContain('<button class="copy-code-button" type="button">Copy</button>')
-    expect(result).toContain('<pre>')
+  it('wraps code blocks with an inert copy button', () => {
+    const result = parse('```\ncode()\n```', { plugins: [copyCodePlugin()] })
+    expect(result).toContain('<div class="code-block" data-copy-code-wrapper>')
+    expect(result).toContain('<button class="copy-code-button" type="button" data-copy-code')
+    expect(result).toContain('>Copy</button>')
     expect(result).toContain('</pre></div>')
+    expect(result).not.toContain('<script')
   })
 
-  it('should wrap <pre> with attributes (e.g. from highlight plugin)', () => {
-    const plugin = copyCodePlugin()
-    const result = parse('```js\nconst x = 1\n```', { plugins: [plugin] })
-    expect(result).toContain('<div class="code-block">')
-    expect(result).toContain('copy-code-button')
-    // The <pre> retains its attributes
+  it('retains pre attributes', () => {
+    const result = parse('```js\nconst x = 1\n```', { plugins: [copyCodePlugin()] })
     expect(result).toContain('language-js')
   })
 
-  it('should use custom button text', () => {
-    const plugin = copyCodePlugin({ buttonText: 'Copy Code' })
-    const result = parse('```\ntest\n```', { plugins: [plugin] })
-    expect(result).toContain('>Copy Code</button>')
-  })
-
-  it('should use custom copied text option', () => {
-    const plugin = copyCodePlugin({ copiedText: 'Done!' })
-    const result = parse('```\ntest\n```', { plugins: [plugin] })
-    // copiedText is used by the inline script, not the initial button
-    expect(result).toContain("'Done!'")
-  })
-
-  it('should use custom button class', () => {
-    const plugin = copyCodePlugin({ buttonClass: 'btn-copy' })
-    const result = parse('```\ntest\n```', { plugins: [plugin] })
-    expect(result).toContain('class="btn-copy"')
-  })
-
-  it('should use custom wrapper class', () => {
-    const plugin = copyCodePlugin({ wrapperClass: 'highlight' })
-    const result = parse('```\ntest\n```', { plugins: [plugin] })
-    expect(result).toContain('<div class="highlight">')
-  })
-
-  it('should handle multiple code blocks', () => {
-    const plugin = copyCodePlugin()
-    const md = '```\nfirst\n```\n\nParagraph\n\n```\nsecond\n```'
-    const result = parse(md, { plugins: [plugin] })
-    const buttonCount = (result.match(/copy-code-button/g) ?? []).length
-    // 2 buttons + 1 script reference = buttons in markup
-    expect(buttonCount).toBeGreaterThanOrEqual(2)
-  })
-
-  it('should close wrapper div even without trailing newline after </pre>', () => {
-    const plugin = copyCodePlugin()
-    const result = parse('```\ncode\n```', { plugins: [plugin] })
-    const openDivs = (result.match(/<div class="code-block">/g) ?? []).length
-    const closeDivs = (result.match(/<\/pre><\/div>/g) ?? []).length
-    expect(closeDivs).toBe(openDivs)
-  })
-
-  it('should inject copy script', () => {
-    const plugin = copyCodePlugin()
-    const result = parse('```\ncode\n```', { plugins: [plugin] })
-    expect(result).toContain('<script>')
-    expect(result).toContain('clipboard.writeText')
-  })
-
-  it('should not affect non-code content', () => {
-    const plugin = copyCodePlugin()
-    const result = parse('# Heading\n\nParagraph', { plugins: [plugin] })
-    expect(result).not.toContain('copy-code-button')
-    expect(result).not.toContain('code-block')
-    expect(result).not.toContain('<script>')
-    expect(result).toContain('<h1>Heading</h1>')
-    expect(result).toContain('<p>Paragraph</p>')
-  })
-
-  it('should compose with other plugins', () => {
-    const copy = copyCodePlugin()
-
-    // Just verify copy-code works alongside another plugin
-    const result = parse('```js\nconst x = 1\n```', {
-      plugins: [copy],
+  it('escapes all user-configured labels', () => {
+    const plugin = copyCodePlugin({
+      buttonText: '<img src=x onerror=alert(1)>',
+      copiedText: '\" onmouseover=\"alert(1)',
     })
-    expect(result).toContain('code-block')
-    expect(result).toContain('copy-code-button')
-    expect(result).toContain('language-js')
+    const result = parse('```\ntest\n```', { plugins: [plugin] })
+
+    expect(result).not.toContain('<img')
+    expect(result).not.toContain('" onmouseover=')
+    expect(result).toContain('&lt;img')
+    expect(result).toContain('&quot; onmouseover=&quot;')
+  })
+
+  it('uses custom valid classes and rejects selector injection', () => {
+    const result = parse('```\ntest\n```', {
+      plugins: [copyCodePlugin({ buttonClass: 'btn-copy', wrapperClass: 'highlight' })],
+    })
+    expect(result).toContain('class="btn-copy"')
+    expect(result).toContain('class="highlight"')
+    expect(() => copyCodePlugin({ buttonClass: 'x, body' })).toThrow(TypeError)
+    expect(() => copyCodePlugin({ wrapperClass: 'x{color:red}' })).toThrow(TypeError)
+  })
+
+  it('wraps every code block', () => {
+    const md = '```\nfirst\n```\n\nParagraph\n\n```\nsecond\n```'
+    const result = parse(md, { plugins: [copyCodePlugin()] })
+    expect(result.match(/data-copy-code-wrapper/g)).toHaveLength(2)
+    expect(result.match(/<button /g)).toHaveLength(2)
+  })
+
+  it('does not affect non-code content', () => {
+    const result = parse('# Heading\n\nParagraph', { plugins: [copyCodePlugin()] })
+    expect(result).not.toContain('data-copy-code')
+    expect(result).not.toContain('<style>')
+    expect(result).toContain('<h1>Heading</h1>')
+  })
+
+  it('emits styles for every document when a parser is reused', () => {
+    const parser = createParser({ plugins: [copyCodePlugin()] })
+    expect(parser.parse('```\none\n```')).toContain('<style>')
+    expect(parser.parse('```\ntwo\n```')).toContain('<style>')
+  })
+
+  it('can omit inline styles and export the same CSS separately', () => {
+    const result = parse('```\ncode\n```', {
+      plugins: [copyCodePlugin({ injectStyles: false })],
+    })
+    expect(result).not.toContain('<style>')
+    expect(getCopyCodeStyles()).toContain('.copy-code-button')
+  })
+
+  it('exports an SSR-safe explicit initializer', () => {
+    const cleanup = initializeCopyCode()
+    expect(cleanup).toBeTypeOf('function')
+    expect(() => cleanup()).not.toThrow()
   })
 })

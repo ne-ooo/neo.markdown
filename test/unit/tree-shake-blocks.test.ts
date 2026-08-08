@@ -94,9 +94,10 @@ describe('tree-shakeable blocks', () => {
 
   describe('allBlockRules convenience export', () => {
     it('contains all built-in rules', () => {
-      expect(allBlockRules).toHaveLength(10)
+      expect(allBlockRules).toHaveLength(11)
       const names = allBlockRules.map((r) => r.name)
       expect(names).toContain('code')
+      expect(names).toContain('definition')
       expect(names).toContain('heading')
       expect(names).toContain('setextHeading')
       expect(names).toContain('paragraph')

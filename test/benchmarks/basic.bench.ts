@@ -3,12 +3,14 @@
  * Compares @lpm.dev/neo.markdown with marked.js and markdown-it
  */
 
-import { bench, describe } from 'vitest'
-import { parse as neoParse } from '../../src/index.js'
+import { beforeAll, bench, describe, expect } from 'vitest'
+import { createParser } from '../../src/index.js'
 import { marked } from 'marked'
 import MarkdownIt from 'markdown-it'
 
-const md = new MarkdownIt()
+const neo = createParser({ gfm: false })
+const md = new MarkdownIt({ linkify: false })
+marked.setOptions({ gfm: false })
 
 // Test data
 const samples = {
@@ -44,6 +46,24 @@ Here's some code:
 function hello() {
   console.log("Hello, world!");
 }
+
+function canonicalize(html: string): string {
+  return html
+    .replace(/&#39;/g, "'")
+    .replace(/\s+<\/code>/g, '</code>')
+    .replace(/<li><p>([\s\S]*?)<\/p>(?=<(?:ul|ol)>)/g, '<li>$1 ')
+    .replace(/>\s+</g, '><')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+beforeAll(() => {
+  for (const markdown of Object.values(samples)) {
+    const expected = canonicalize(neo.parse(markdown))
+    expect(canonicalize(String(marked.parse(markdown)))).toBe(expected)
+    expect(canonicalize(md.render(markdown))).toBe(expected)
+  }
+})
 \`\`\`
 
 That was code.
@@ -79,7 +99,7 @@ console.log(x);
 describe('Basic Parsing Performance', () => {
   describe('Simple Text', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.simple)
+      neo.parse(samples.simple)
     })
 
     bench('marked', () => {
@@ -93,7 +113,7 @@ describe('Basic Parsing Performance', () => {
 
   describe('Paragraph with Inline Elements', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.paragraph)
+      neo.parse(samples.paragraph)
     })
 
     bench('marked', () => {
@@ -107,7 +127,7 @@ describe('Basic Parsing Performance', () => {
 
   describe('Headings', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.heading)
+      neo.parse(samples.heading)
     })
 
     bench('marked', () => {
@@ -121,7 +141,7 @@ describe('Basic Parsing Performance', () => {
 
   describe('Lists', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.list)
+      neo.parse(samples.list)
     })
 
     bench('marked', () => {
@@ -135,7 +155,7 @@ describe('Basic Parsing Performance', () => {
 
   describe('Code Blocks', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.codeBlock)
+      neo.parse(samples.codeBlock)
     })
 
     bench('marked', () => {
@@ -149,7 +169,7 @@ describe('Basic Parsing Performance', () => {
 
   describe('Mixed Content', () => {
     bench('neo.markdown', () => {
-      neoParse(samples.mixed)
+      neo.parse(samples.mixed)
     })
 
     bench('marked', () => {

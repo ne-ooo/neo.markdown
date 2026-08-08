@@ -3,12 +3,14 @@
  * Tests performance with realistic large markdown files
  */
 
-import { bench, describe } from 'vitest'
-import { parse as neoParse } from '../../src/index.js'
+import { beforeAll, bench, describe, expect } from 'vitest'
+import { createParser } from '../../src/index.js'
 import { marked } from 'marked'
 import MarkdownIt from 'markdown-it'
+import taskLists from 'markdown-it-task-lists'
 
-const md = new MarkdownIt()
+const neo = createParser({ gfm: true })
+const md = new MarkdownIt({ linkify: true }).use(taskLists)
 marked.setOptions({ gfm: true })
 
 // Generate large documents
@@ -60,10 +62,29 @@ const smallDoc = generateLargeDocument('small')
 const mediumDoc = generateLargeDocument('medium')
 const largeDoc = generateLargeDocument('large')
 
+function canonicalize(html: string): string {
+  return html
+    .replace(/<(\/?)s>/g, '<$1del>')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+<\/code>/g, '</code>')
+    .replace(/<li><p>([\s\S]*?)<\/p>(?=<(?:ul|ol)>)/g, '<li>$1 ')
+    .replace(/>\s+</g, '><')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+beforeAll(() => {
+  for (const markdown of [smallDoc, mediumDoc, largeDoc]) {
+    const expected = canonicalize(neo.parse(markdown))
+    expect(canonicalize(String(marked.parse(markdown)))).toBe(expected)
+    expect(canonicalize(md.render(markdown))).toBe(expected)
+  }
+})
+
 describe('Large Document Performance', () => {
-  describe('Small Document (~10 sections, ~1KB)', () => {
+  describe('Small Document (~10 sections, ~4KB)', () => {
     bench('neo.markdown', () => {
-      neoParse(smallDoc)
+      neo.parse(smallDoc)
     })
 
     bench('marked', () => {
@@ -75,9 +96,9 @@ describe('Large Document Performance', () => {
     })
   })
 
-  describe('Medium Document (~50 sections, ~5KB)', () => {
+  describe('Medium Document (~50 sections, ~20KB)', () => {
     bench('neo.markdown', () => {
-      neoParse(mediumDoc)
+      neo.parse(mediumDoc)
     })
 
     bench('marked', () => {
@@ -89,9 +110,9 @@ describe('Large Document Performance', () => {
     })
   })
 
-  describe('Large Document (~200 sections, ~20KB)', () => {
+  describe('Large Document (~200 sections, ~82KB)', () => {
     bench('neo.markdown', () => {
-      neoParse(largeDoc)
+      neo.parse(largeDoc)
     })
 
     bench('marked', () => {
