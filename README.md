@@ -24,12 +24,14 @@ const html = parse('# Hello\n\nWorld')
 - **XSS protection** — HTML escaped by default
 - **Plugin system** — highlight, embeds, TOC, copy-code, or write your own
 - **Tree-shakeable** — sub-path imports for each layer
-- **Structural HTML sanitization** through `sanitize-html`
+- **Optional structural HTML sanitization** through the `/sanitized` entry
 - **TypeScript** — full type declarations
 
 ## API
 
 ### `parse(markdown, options?)`
+
+Optionless calls reuse one lazy parser for lower setup cost. A call that passes options uses a new parser. Use `createParser(options)` when you parse many documents with the same options.
 
 ```typescript
 import { parse } from '@lpm.dev/neo.markdown'
@@ -64,25 +66,28 @@ parser.parse('**bold** text')
 |--------|------|---------|-------------|
 | `allowHtml` | `boolean` | `false` | Allow raw HTML in output |
 | `sanitize` | `boolean` | `false` | Sanitize HTML (strip dangerous tags/attributes). Requires `allowHtml: true` |
+| `sanitizer` | `HtmlSanitizer` | — | Custom sanitizer provider for the main or `/core` entry |
 | `allowedTags` | `string[]` | — | Extend default allowed tags when `sanitize: true` |
 | `allowedAttributes` | `Record<string, string[]>` | — | Extend default per-tag attributes when `sanitize: true` |
-| `allowStyle` | `boolean` | `false` | Allow inline `style` attributes when `sanitize: true` |
+| `allowStyle` | `boolean` | `false` | Allow a restricted set of inline style properties when `sanitize: true` |
 | `gfm` | `boolean` | `false` | Enable GFM features (tables, task lists, strikethrough, autolinks) |
 | `breaks` | `boolean` | `false` | Convert bare `\n` to `<br>` |
 | `maxNestingDepth` | `number` | `100` | Limit nested blockquotes/lists; hard-capped at 100 |
+| `maxInputLength` | `number` | — | Reject longer input. `ugc: true` has a hard maximum of 1,000,000 UTF-16 code units |
 | `lazyImages` | `boolean` | `true` | Add `loading="lazy"` to all images |
 | `safeLinks` | `boolean \| object` | `false` | Add `rel="nofollow noopener noreferrer"` + `target="_blank"` to external links. Object: `{ externalRel?, externalTarget?, baseUrl? }` |
-| `ugc` | `boolean` | `false` | Enforces `sanitize` + `safeLinks` + `allowHtml:false`; these invariants cannot be overridden |
+| `ugc` | `boolean` | `false` | Enforces safe links, disables raw HTML, and limits input to 1,000,000 code units |
 | `blocks` | `BlockRule[]` | — | Select block rules. Import `createParser` from `/core` for a bundle containing only those rules |
 | `renderer` | `Partial<Renderer>` | — | Override default renderer methods |
 | `plugins` | `MarkdownPlugin[]` | `[]` | Plugins to extend the parser |
 
 ### HTML Sanitization
 
-Render untrusted HTML safely with the built-in server-side sanitizer:
+Import the `/sanitized` entry to use the built-in structural sanitizer:
 
 ```typescript
-// Allow HTML but sanitize dangerous content
+import { createParser } from '@lpm.dev/neo.markdown/sanitized'
+
 const parser = createParser({
   allowHtml: true,
   sanitize: true,
@@ -94,13 +99,16 @@ parser.parse('<a href="javascript:evil">click</a>')  // href stripped
 parser.parse('<details><summary>OK</summary>Safe</details>')  // preserved
 ```
 
+`allowStyle: true` permits `color`, `background-color`, `font-style`, `font-weight`, `text-align`, `text-decoration`, and `white-space`.
+The sanitizer removes layout properties, CSS expressions, and URL values.
+
 ### User-Generated Content
 
-One-line safe rendering for READMEs, comments, and user content:
+Use UGC mode for READMEs, comments, and other untrusted Markdown:
 
 ```typescript
 const parser = createParser({
-  ugc: true,  // enforced sanitization, safe links, and no raw HTML
+  ugc: true,  // safe links, no raw HTML, and a fixed input limit
 })
 ```
 
@@ -186,7 +194,10 @@ The `lang` and `meta` are split automatically — `lang: "typescript"`, `meta: "
 YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, GitHub Gist, and Loom embeds with privacy-enhanced defaults, responsive containers, and GDPR consent mode.
 
 ```typescript
-import { embedPlugin } from '@lpm.dev/neo.markdown/plugins/embeds'
+import {
+  embedPlugin,
+  initializeEmbeds,
+} from '@lpm.dev/neo.markdown/plugins/embeds'
 
 const html = parse(markdown, {
   plugins: [
@@ -205,6 +216,17 @@ const html = parse(markdown, {
   ]
 })
 ```
+
+After the rendered HTML mounts, initialize the consent buttons and external embed clients:
+
+```typescript
+const cleanup = initializeEmbeds()
+
+// When the rendered root unmounts, run this.
+cleanup()
+```
+
+The initializer handles consent clicks, Gist frames, and Twitter widgets. It returns a no-op cleanup function during server rendering.
 
 **Directive syntax:**
 
@@ -468,7 +490,7 @@ import { parse } from '@lpm.dev/neo.markdown/gfm'
 
 ## Conformance
 
-This package implements a Markdown subset; it does not claim full CommonMark or GFM compliance. The mandatory CommonMark 0.31.2 fixture test currently matches at least 284 of 652 official examples after normalizing void-tag style and quote entities. Selected official GFM 0.29 extension fixtures are also mandatory. Structural containers and full delimiter-stack parsing remain future work.
+This package implements a Markdown subset; it does not claim full CommonMark or GFM compliance. The mandatory CommonMark 0.31.2 test locks the exact 313 passing examples out of 652 official examples. It normalizes void-tag style and quote entities. Selected official GFM 0.29 extension fixtures are also mandatory. Structural containers and full delimiter-stack parsing remain future work.
 
 ## Migration from marked
 
@@ -556,7 +578,7 @@ const html = parser.parse(markdown)
 | `rehype-slug` | `tocPlugin({ anchorLinks: false })` |
 | `rehype-autolink-headings` | `tocPlugin({ anchorLinks: true })` |
 | Custom embed components | `embedPlugin({ youtube: true, twitter: true })` |
-| `rehype-raw` + `rehype-sanitize` | `allowHtml: true, sanitize: true` (built-in server-side sanitizer) |
+| `rehype-raw` + `rehype-sanitize` | `/sanitized` with `allowHtml: true, sanitize: true` |
 
 ## License
 

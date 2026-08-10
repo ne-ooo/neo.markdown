@@ -1,12 +1,13 @@
 /**
  * Server-side HTML sanitization for neo.markdown.
  *
- * HTML is parsed structurally by sanitize-html. Security decisions must not be
- * made with regular expressions because browser entity decoding and URL
- * normalization can turn apparently safe source text into executable markup.
+ * This module contains the sanitizer policy without a sanitizer dependency.
+ * The /sanitized entry supplies the built-in structural sanitizer.
  */
 
-import structuralSanitizeHtml from 'sanitize-html'
+import type { SanitizerConfig } from './types.js'
+
+export type { SanitizerConfig } from './types.js'
 
 /**
  * Default allowed tags (GitHub README-compatible).
@@ -30,7 +31,7 @@ export const DEFAULT_ALLOWED_TAGS = new Set([
 /**
  * Tags that are never allowed, even when requested through allowedTags.
  */
-const ALWAYS_BLOCKED_TAGS = new Set([
+export const ALWAYS_BLOCKED_TAGS = new Set([
   'script', 'iframe', 'object', 'embed', 'form',
   'textarea', 'select', 'button', 'style', 'link', 'meta',
   'base', 'applet', 'svg', 'math',
@@ -56,22 +57,13 @@ export const DEFAULT_ALLOWED_ATTRIBUTES: Record<string, Set<string>> = {
   'input': new Set(['type', 'checked', 'disabled']),
 }
 
-const ALWAYS_BLOCKED_ATTRS = new Set([
+export const ALWAYS_BLOCKED_ATTRS = new Set([
   'srcdoc', 'formaction', 'xlink:href',
 ])
 
-const EVENT_HANDLER_RE = /^on[\w-]*$/i
+export const EVENT_HANDLER_RE = /^on[\w-]*$/i
 const VALID_TAG_RE = /^[a-z][a-z0-9-]*$/
 const VALID_ATTR_RE = /^[a-z_:][\w:.-]*$/
-
-/**
- * Sanitizer configuration.
- */
-export interface SanitizerConfig {
-  allowedTags: Set<string>
-  allowedAttributes: Record<string, Set<string>>
-  allowStyle: boolean
-}
 
 /**
  * Build sanitizer config from parser options.
@@ -129,7 +121,7 @@ export function buildSanitizerConfig(options: {
 /**
  * Convert the public Set-based attribute policy to sanitize-html's format.
  */
-function buildAllowedAttributes(config: SanitizerConfig): Record<string, string[]> {
+export function buildAllowedAttributes(config: SanitizerConfig): Record<string, string[]> {
   const attributes: Record<string, string[]> = {}
 
   for (const [tag, values] of Object.entries(config.allowedAttributes)) {
@@ -146,29 +138,4 @@ function buildAllowedAttributes(config: SanitizerConfig): Record<string, string[
   attributes['*'] = globalAttributes
 
   return attributes
-}
-
-/**
- * Sanitize an HTML fragment with structural parsing and a strict allowlist.
- */
-export function sanitizeHtml(html: string, config: SanitizerConfig): string {
-  return structuralSanitizeHtml(html, {
-    allowedTags: [...config.allowedTags].filter((tag) => !ALWAYS_BLOCKED_TAGS.has(tag)),
-    allowedAttributes: buildAllowedAttributes(config),
-    allowedSchemes: ['http', 'https', 'ftp', 'mailto', 'tel'],
-    allowProtocolRelative: false,
-    disallowedTagsMode: 'discard',
-    nonTextTags: ['script', 'style', 'textarea', 'option'],
-    allowVulnerableTags: false,
-    nestingLimit: 100,
-    enforceHtmlBoundary: false,
-    parseStyleAttributes: false,
-    exclusiveFilter: (frame) => (
-      frame.tag === 'input'
-      && (
-        frame.attribs['type']?.toLowerCase() !== 'checkbox'
-        || !Object.hasOwn(frame.attribs, 'disabled')
-      )
-    ),
-  })
 }

@@ -1,7 +1,7 @@
 ---
 name: getting-started
 description: How to use @lpm.dev/neo.markdown — parse(), createParser(), plugin system (highlight, embeds, TOC, copy-code), PluginBuilder API, custom block/inline rules, renderer overrides, token transforms, CodeToken.meta, directive syntax, sub-path exports, sanitization, ugc, safeLinks, blocks
-version: "1.2.1"
+version: "2.0.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -21,7 +21,7 @@ import { parse } from '@lpm.dev/neo.markdown'
 const html = parse('# Hello World\n\nThis is **bold** and *italic*.')
 ```
 
-`parse()` creates a new parser on every call. For repeated parsing, use `createParser()`:
+An optionless `parse()` call reuses one lazy parser. If you pass options, `parse()` creates a new parser. For repeated parsing with the same options, use `createParser()`:
 
 ```typescript
 import { createParser } from '@lpm.dev/neo.markdown'
@@ -39,11 +39,13 @@ interface ParserOptions {
   gfm?: boolean               // Enable GFM tables, strikethrough, autolinks (default: false)
   breaks?: boolean             // Convert bare \n to <br> (default: false)
   sanitize?: boolean           // Sanitize HTML when allowHtml is true (default: false)
+  sanitizer?: HtmlSanitizer    // Custom sanitizer provider
   allowedTags?: string[]       // Extend default allowed tags (requires sanitize: true)
   allowedAttributes?: Record<string, string[]>  // Per-tag allowed attributes
-  allowStyle?: boolean         // Allow style attributes in sanitized HTML (default: false)
+  allowStyle?: boolean         // Allow restricted style properties in sanitized HTML (default: false)
   safeLinks?: boolean | SafeLinkOptions  // External link rel/target, baseUrl resolution
   ugc?: boolean                // Shorthand for safe user-generated content rendering
+  maxInputLength?: number      // Maximum input length in UTF-16 code units
   lazyImages?: boolean         // Add loading="lazy" to images (default: true)
   blocks?: BlockRule[]         // Selective block rules for tree-shaking
   plugins?: MarkdownPlugin[]   // Plugins to extend the parser
@@ -52,9 +54,11 @@ interface ParserOptions {
 
 ## Sanitization
 
-When `allowHtml: true`, you can enable the built-in server-side sanitizer to strip dangerous HTML while keeping safe tags:
+Import the `/sanitized` entry to use the built-in structural sanitizer:
 
 ```typescript
+import { parse } from '@lpm.dev/neo.markdown/sanitized'
+
 const html = parse(userInput, {
   allowHtml: true,
   sanitize: true,
@@ -72,7 +76,17 @@ const html = parse(userInput, {
 })
 ```
 
-To allow inline `style` attributes on sanitized elements, set `allowStyle: true`.
+Set `allowStyle: true` to permit these properties:
+
+- `color`
+- `background-color`
+- `font-style`
+- `font-weight`
+- `text-align`
+- `text-decoration`
+- `white-space`
+
+The sanitizer removes layout properties, CSS expressions, and URL values.
 
 ## Safe Links
 
@@ -89,11 +103,13 @@ const html = parse(readme, {
 
 ## User-Generated Content (UGC)
 
-`ugc: true` is a one-line shorthand that enables safe defaults for untrusted content. It turns on `sanitize`, `safeLinks`, and disables `allowHtml`:
+`ugc: true` enables safe defaults for untrusted content. It enables `safeLinks`, disables raw HTML, and limits the input size:
 
 ```typescript
 const html = parse(commentBody, { ugc: true })
 ```
+
+UGC mode limits input to 1,000,000 UTF-16 code units. Use `maxInputLength` to set a smaller limit.
 
 ## Lazy Images
 
@@ -172,7 +188,10 @@ Code block meta strings are parsed: `` ```ts {1,3-5} `` → `lang: "ts"`, `meta:
 YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, GitHub Gist, and Loom embeds via directive syntax:
 
 ```typescript
-import { embedPlugin } from '@lpm.dev/neo.markdown/plugins/embeds'
+import {
+  embedPlugin,
+  initializeEmbeds,
+} from '@lpm.dev/neo.markdown/plugins/embeds'
 
 embedPlugin({
   youtube: { privacyEnhanced: true },
@@ -180,12 +199,17 @@ embedPlugin({
   twitter: true,
   codesandbox: true,
   codepen: true,
-  githubGist: true,
+  gist: true,
   loom: true,
   autoEmbed: true, // bare URLs in paragraphs become embeds
   consent: true,   // GDPR consent mode — shows placeholder until user opts in
 })
+
+// After the rendered HTML mounts, run this.
+const cleanup = initializeEmbeds()
 ```
+
+The initializer handles consent clicks, Gist frames, and Twitter widgets. When the rendered root unmounts, run `cleanup()`.
 
 Directive syntax in markdown:
 

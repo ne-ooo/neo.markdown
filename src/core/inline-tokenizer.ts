@@ -30,9 +30,9 @@ const PATTERNS = {
   // Phase 6: Optimized - use greedy match
   autolink: /^((?:https?:\/\/|ftp:\/\/|www\.)[^\s<]+)/i,
 
-  // Link ![alt](url "title") or [text](url "title")
-  // Greedy match to handle URLs with parens (e.g., javascript:alert(1))
-  link: /^!?\[([^\]]*)\]\(([^\s]+)(?:\s+"([^"]*)")?\)/,
+  // CommonMark angle autolinks: <scheme:destination> and <name@example.com>
+  angleUri: /^<([A-Za-z][A-Za-z\d+.-]{1,31}:[^<>\x00-\x20]*)>/,
+  angleEmail: /^<([A-Za-z\d.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z\d](?:[A-Za-z\d-]{0,61}[A-Za-z\d])?(?:\.[A-Za-z\d](?:[A-Za-z\d-]{0,61}[A-Za-z\d])?)*)>/,
 
   // Raw inline HTML (only emitted when allowHtml is true)
   html: /^(?:<!--[\s\S]*?(?:-->|$)|<\?[\s\S]*?(?:\?>|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<![A-Z][^>\n]*>|<\/?[A-Za-z][^>\n]*>)/,
@@ -52,6 +52,7 @@ const INLINE_RULE_PRIORITIES: Readonly<Record<string, number>> = {
   em: 700,
   del: 650,
   link: 600,
+  angleAutolink: 575,
   html: 550,
   br: 500,
   autolink: 400,
@@ -60,6 +61,24 @@ const INLINE_RULE_PRIORITIES: Readonly<Record<string, number>> = {
 const DEFAULT_CUSTOM_PRIORITY = 750
 
 type InlineResult = { token: InlineToken; raw: string }
+
+interface ParsedLinkDestination {
+  end: number
+  href: string
+  title?: string
+}
+
+interface LinkScan {
+  closingBrackets: number[]
+  openingAngles: number[]
+  closingAngles: number[]
+  whitespaces: number[]
+  doubleQuotes: number[]
+  singleQuotes: number[]
+  matchingParentheses: Map<number, number>
+  parenthesisBalance: Int32Array
+  destinations: Map<number, ParsedLinkDestination | null>
+}
 
 interface ResolvedInlineRule {
   rule: InlineRule
@@ -158,26 +177,41 @@ export class InlineTokenizer {
     references: ReadonlyMap<string, LinkReference> = new Map()
   ): InlineToken[] {
     const tokens: InlineToken[] = []
+    const linkScan = this.createLinkScan(src)
     let cursor = 0
     let previousChar = ''
 
     while (cursor < src.length) {
-      const text = src.slice(cursor)
-      const char = text.charCodeAt(0)
-      const token = this.tokenizeAt(text, char, references, previousChar)
+      const char = src.charCodeAt(cursor)
+      const token = this.tokenizeAt(src, cursor, char, references, previousChar, linkScan)
 
       if (token) {
-        this.assertProgress('inline tokenizer', text, token.raw)
+        this.assertProgress('inline tokenizer', src, cursor, token.raw)
         tokens.push(token.token)
         previousChar = token.raw.at(-1) ?? previousChar
         cursor += token.raw.length
       } else {
+        if (
+          char === 91
+          && this.customCharMap.size === 0
+          && this.customGeneralRules.length === 0
+          && this.findPosition(linkScan.closingBrackets, cursor + 1) === -1
+        ) {
+          let end = cursor + 1
+          while (src.charCodeAt(end) === 91) end++
+          const raw = src.slice(cursor, end)
+          tokens.push({ type: 'text', raw, text: raw })
+          previousChar = '['
+          cursor = end
+          continue
+        }
+
         tokens.push({
           type: 'text',
-          raw: text[0],
-          text: text[0],
+          raw: src[cursor],
+          text: src[cursor],
         })
-        previousChar = text[0]
+        previousChar = src[cursor]
         cursor++
       }
     }
@@ -200,20 +234,24 @@ export class InlineTokenizer {
   }
 
   private tokenizeAt(
-    src: string,
+    source: string,
+    cursor: number,
     char: number,
     references: ReadonlyMap<string, LinkReference>,
-    previousChar: string
+    previousChar: string,
+    linkScan: LinkScan
   ): InlineResult | null {
     const customRules = this.getCustomRules(char)
     let customIndex = 0
+    let remaining: string | undefined
+    const src = (): string => (remaining ??= source.slice(cursor))
 
     const tryCustomBefore = (priority: number): InlineResult | null => {
       while (customIndex < customRules.length && customRules[customIndex].priority > priority) {
         const candidate = customRules[customIndex++]
-        const result = candidate.rule.tokenize(src)
+        const result = candidate.rule.tokenize(src())
         if (result) {
-          this.assertProgress(candidate.rule.name, src, result.raw)
+          this.assertProgress(candidate.rule.name, source, cursor, result.raw)
           return result
         }
       }
@@ -227,53 +265,67 @@ export class InlineTokenizer {
     let result: InlineResult | null = null
 
     if (char === 92) {
-      result = tryBuiltin(INLINE_RULE_PRIORITIES['escape'], () => this.tokenizeEscape(src))
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['escape'], () => this.tokenizeEscape(src()))
     } else if (char === 96) {
-      result = tryBuiltin(INLINE_RULE_PRIORITIES['code'], () => this.tokenizeCode(src))
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['code'], () => this.tokenizeCode(src()))
     } else if (char === 42 || char === 95) {
       result = tryBuiltin(
         INLINE_RULE_PRIORITIES['strong'],
-        () => this.tokenizeStrong(src, references, previousChar)
+        () => this.tokenizeStrong(src(), references, previousChar)
       )
       if (!result) {
         result = tryBuiltin(
           INLINE_RULE_PRIORITIES['em'],
-          () => this.tokenizeEm(src, references, previousChar)
+          () => this.tokenizeEm(src(), references, previousChar)
         )
       }
     } else if (char === 126 && this.inlineOptions.gfm !== false) {
       result = tryBuiltin(
         INLINE_RULE_PRIORITIES['del'],
-        () => this.tokenizeDel(src, references)
+        () => this.tokenizeDel(src(), references)
       )
     } else if (char === 33 || char === 91) {
       result = tryBuiltin(
         INLINE_RULE_PRIORITIES['link'],
-        () => this.tokenizeLink(src, references)
+        () => this.tokenizeLink(source, cursor, references, linkScan)
       )
-    } else if (char === 60 && this.inlineOptions.allowHtml) {
-      result = tryBuiltin(INLINE_RULE_PRIORITIES['html'], () => this.tokenizeHtml(src))
+    } else if (char === 60) {
+      result = tryBuiltin(
+        INLINE_RULE_PRIORITIES['angleAutolink'],
+        () => this.tokenizeAngleAutolink(src())
+      )
+      if (!result && this.inlineOptions.allowHtml) {
+        result = tryBuiltin(INLINE_RULE_PRIORITIES['html'], () => this.tokenizeHtml(src()))
+      }
     } else if (
-      (char === 32 && src.charCodeAt(1) === 32)
+      (char === 32 && source.charCodeAt(cursor + 1) === 32)
       || (char === 10 && this.inlineOptions.breaks)
     ) {
-      result = tryBuiltin(INLINE_RULE_PRIORITIES['br'], () => this.tokenizeBr(src))
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['br'], () => this.tokenizeBr(src()))
     }
     if (result) return result
 
-    if (this.inlineOptions.gfm !== false) {
-      result = tryBuiltin(INLINE_RULE_PRIORITIES['autolink'], () => this.tokenizeAutolink(src))
+    if (
+      this.inlineOptions.gfm !== false
+      && (char === 72 || char === 104 || char === 70 || char === 102 || char === 87 || char === 119)
+    ) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['autolink'], () => this.tokenizeAutolink(src()))
       if (result) return result
     }
 
-    result = tryBuiltin(INLINE_RULE_PRIORITIES['text'], () => this.tokenizeText(src))
-    if (result) return result
+    if (!'*_`[<\n\\!~'.includes(source[cursor])) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['text'], () => this.tokenizeText(src()))
+      if (result) return result
+    } else {
+      result = tryCustomBefore(INLINE_RULE_PRIORITIES['text'])
+      if (result) return result
+    }
 
     while (customIndex < customRules.length) {
       const candidate = customRules[customIndex++]
-      result = candidate.rule.tokenize(src)
+      result = candidate.rule.tokenize(src())
       if (result) {
-        this.assertProgress(candidate.rule.name, src, result.raw)
+        this.assertProgress(candidate.rule.name, source, cursor, result.raw)
         return result
       }
     }
@@ -290,13 +342,88 @@ export class InlineTokenizer {
     ))
   }
 
-  private assertProgress(ruleName: string, src: string, raw: string): void {
+  private assertProgress(ruleName: string, src: string, cursor: number, raw: string): void {
     if (typeof raw !== 'string' || raw.length === 0) {
       throw new TypeError(`Inline rule "${ruleName}" must consume a non-empty prefix`)
     }
-    if (!src.startsWith(raw)) {
+    if (!src.startsWith(raw, cursor)) {
       throw new TypeError(`Inline rule "${ruleName}" returned raw text that is not a source prefix`)
     }
+  }
+
+  private createLinkScan(src: string): LinkScan {
+    const closingBrackets: number[] = []
+    const openingAngles: number[] = []
+    const closingAngles: number[] = []
+    const whitespaces: number[] = []
+    const doubleQuotes: number[] = []
+    const singleQuotes: number[] = []
+    const matchingParentheses = new Map<number, number>()
+    const parenthesisStack: number[] = []
+    let parenthesisBalance = new Int32Array(0)
+    let trackDirectSyntax = false
+    let escaped = false
+
+    for (let index = 0; index < src.length; index++) {
+      const char = src.charCodeAt(index)
+      if (trackDirectSyntax) {
+        parenthesisBalance[index + 1] = parenthesisBalance[index]
+      }
+
+      if (trackDirectSyntax && InlineTokenizer.isWhitespace(char)) {
+        whitespaces.push(index)
+      }
+
+      if (escaped) {
+        escaped = false
+      } else if (char === 92) {
+        escaped = true
+      } else {
+        if (char === 93) {
+          closingBrackets.push(index)
+          if (!trackDirectSyntax && src.charCodeAt(index + 1) === 40) {
+            trackDirectSyntax = true
+            parenthesisBalance = new Int32Array(src.length + 1)
+          }
+        } else if (trackDirectSyntax && char === 60) openingAngles.push(index)
+        else if (trackDirectSyntax && char === 62) closingAngles.push(index)
+        else if (trackDirectSyntax && char === 34) doubleQuotes.push(index)
+        else if (trackDirectSyntax && char === 39) singleQuotes.push(index)
+        else if (trackDirectSyntax && char === 40) {
+          parenthesisStack.push(index)
+          parenthesisBalance[index + 1]++
+        } else if (trackDirectSyntax && char === 41) {
+          const opening = parenthesisStack.pop()
+          if (opening !== undefined) matchingParentheses.set(opening, index)
+          parenthesisBalance[index + 1]--
+        }
+      }
+    }
+
+    return {
+      closingBrackets,
+      openingAngles,
+      closingAngles,
+      whitespaces,
+      doubleQuotes,
+      singleQuotes,
+      matchingParentheses,
+      parenthesisBalance,
+      destinations: new Map(),
+    }
+  }
+
+  private findPosition(positions: number[], minimum: number): number {
+    let low = 0
+    let high = positions.length
+
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2)
+      if (positions[middle] < minimum) low = middle + 1
+      else high = middle
+    }
+
+    return positions[low] ?? -1
   }
 
   /**
@@ -327,7 +454,11 @@ export class InlineTokenizer {
     if (!match) return null
 
     const raw = match[0]
-    const text = match[2].trim()
+    const delimiterLength = match[1].length
+    let text = raw.slice(delimiterLength, -delimiterLength).replace(/\r?\n/g, ' ')
+    if (text.startsWith(' ') && text.endsWith(' ') && /[^ ]/.test(text)) {
+      text = text.slice(1, -1)
+    }
 
     return {
       token: {
@@ -634,21 +765,77 @@ export class InlineTokenizer {
     }
   }
 
+  /** Tokenize CommonMark URI and email autolinks enclosed in angle brackets. */
+  private tokenizeAngleAutolink(src: string): InlineResult | null {
+    const uri = PATTERNS.angleUri.exec(src)
+    const email = uri ? null : PATTERNS.angleEmail.exec(src)
+    const match = uri ?? email
+    if (!match) return null
+
+    const raw = match[0]
+    const text = match[1]
+    let href = email ? `mailto:${text}` : text
+    if (!email) {
+      try {
+        href = encodeURI(href)
+      } catch {
+        // A lone surrogate cannot be URI-encoded. The renderer still escapes it.
+      }
+    }
+
+    return {
+      token: {
+        type: 'link',
+        raw,
+        href,
+        text,
+        tokens: [{ type: 'text', raw: text, text }],
+      },
+      raw,
+    }
+  }
+
   /**
    * Tokenize link or image
    */
   private tokenizeLink(
     src: string,
-    references: ReadonlyMap<string, LinkReference>
+    cursor: number,
+    references: ReadonlyMap<string, LinkReference>,
+    linkScan: LinkScan
   ): { token: InlineToken; raw: string } | null {
-    const match = PATTERNS.link.exec(src)
-    if (!match) return this.tokenizeReferenceLink(src, references)
+    const isImage = src.charCodeAt(cursor) === 33
+    const openBracket = cursor + (isImage ? 1 : 0)
+    if (src.charCodeAt(openBracket) !== 91) return null
 
-    const raw = match[0]
-    const isImage = raw.startsWith('!')
-    const text = match[1]
-    const href = match[2]
-    const title = match[3] || undefined
+    const closingBracket = this.findPosition(
+      linkScan.closingBrackets,
+      openBracket + 1
+    )
+    if (closingBracket === -1) return null
+
+    const text = src.slice(openBracket + 1, closingBracket)
+    if (src.charCodeAt(closingBracket + 1) !== 40) {
+      return this.tokenizeReferenceLink(
+        src,
+        cursor,
+        closingBracket,
+        text,
+        isImage,
+        references,
+        linkScan
+      )
+    }
+
+    let destination = linkScan.destinations.get(closingBracket)
+    if (destination === undefined) {
+      destination = this.parseLinkDestination(src, closingBracket + 2, linkScan)
+      linkScan.destinations.set(closingBracket, destination)
+    }
+    if (!destination) return null
+
+    const raw = src.slice(cursor, destination.end)
+    const { href, title } = destination
 
     if (isImage) {
       return {
@@ -681,19 +868,35 @@ export class InlineTokenizer {
 
   private tokenizeReferenceLink(
     src: string,
-    references: ReadonlyMap<string, LinkReference>
+    cursor: number,
+    closingBracket: number,
+    text: string,
+    isImage: boolean,
+    references: ReadonlyMap<string, LinkReference>,
+    linkScan: LinkScan
   ): { token: InlineToken; raw: string } | null {
-    const match = /^(!?)\[([^\]\n]+)\](?:\[([^\]\n]*)\])?/.exec(src)
-    if (!match) return null
+    if (!text || text.length > 999 || text.includes('\n')) return null
 
-    const text = match[2]
-    const explicitLabel = match[3]
-    const label = explicitLabel === undefined || explicitLabel === '' ? text : explicitLabel
+    let end = closingBracket + 1
+    let label = text
+    if (src.charCodeAt(end) === 91) {
+      const explicitClosingBracket = this.findPosition(
+        linkScan.closingBrackets,
+        end + 1
+      )
+      if (explicitClosingBracket === -1) return null
+
+      const explicitLabel = src.slice(end + 1, explicitClosingBracket)
+      if (explicitLabel.length > 999 || explicitLabel.includes('\n')) return null
+      if (explicitLabel) label = explicitLabel
+      end = explicitClosingBracket + 1
+    }
+
     const reference = references.get(InlineTokenizer.normalizeReferenceLabel(label))
     if (!reference) return null
 
-    const raw = match[0]
-    if (match[1] === '!') {
+    const raw = src.slice(cursor, end)
+    if (isImage) {
       return {
         token: { type: 'image', raw, text, href: reference.href, title: reference.title },
         raw,
@@ -711,6 +914,85 @@ export class InlineTokenizer {
       },
       raw,
     }
+  }
+
+  private parseLinkDestination(
+    src: string,
+    start: number,
+    linkScan: LinkScan
+  ): ParsedLinkDestination | null {
+    let cursor = start
+    let href = ''
+
+    if (src.charCodeAt(cursor) === 60) {
+      const hrefStart = cursor + 1
+      const hrefEnd = this.findPosition(linkScan.closingAngles, hrefStart)
+      if (hrefEnd === -1) return null
+
+      const nestedOpening = this.findPosition(linkScan.openingAngles, hrefStart)
+      if (nestedOpening !== -1 && nestedOpening < hrefEnd) return null
+
+      const lineBreak = this.findPosition(linkScan.whitespaces, hrefStart)
+      if (lineBreak !== -1 && lineBreak < hrefEnd) return null
+
+      href = src.slice(hrefStart, hrefEnd)
+      cursor = hrefEnd + 1
+    } else {
+      const outerOpening = start - 1
+      const outerClosing = linkScan.matchingParentheses.get(outerOpening)
+      const whitespace = this.findPosition(linkScan.whitespaces, start)
+
+      if (
+        outerClosing !== undefined
+        && (whitespace === -1 || outerClosing < whitespace)
+      ) {
+        href = InlineTokenizer.unescapePunctuation(src.slice(start, outerClosing))
+        return { end: outerClosing + 1, href }
+      }
+
+      if (whitespace === -1) return null
+      const balance = (
+        linkScan.parenthesisBalance[whitespace]
+        - linkScan.parenthesisBalance[start]
+      )
+      if (balance !== 0) return null
+
+      href = src.slice(start, whitespace)
+      cursor = whitespace
+    }
+
+    href = InlineTokenizer.unescapePunctuation(href)
+    if (src.charCodeAt(cursor) === 41) return { end: cursor + 1, href }
+    if (!InlineTokenizer.isWhitespace(src.charCodeAt(cursor))) return null
+
+    while (InlineTokenizer.isWhitespace(src.charCodeAt(cursor))) cursor++
+    if (src.charCodeAt(cursor) === 41) return { end: cursor + 1, href }
+
+    const titleOpener = src[cursor]
+    if (titleOpener !== '"' && titleOpener !== "'" && titleOpener !== '(') return null
+
+    const titleStart = ++cursor
+    const titleEnd = titleOpener === '"'
+      ? this.findPosition(linkScan.doubleQuotes, titleStart)
+      : titleOpener === "'"
+        ? this.findPosition(linkScan.singleQuotes, titleStart)
+        : linkScan.matchingParentheses.get(titleStart - 1) ?? -1
+    if (titleEnd === -1) return null
+
+    const title = InlineTokenizer.unescapePunctuation(src.slice(titleStart, titleEnd))
+    cursor = titleEnd + 1
+    while (InlineTokenizer.isWhitespace(src.charCodeAt(cursor))) cursor++
+    if (src.charCodeAt(cursor) !== 41) return null
+
+    return { end: cursor + 1, href, title }
+  }
+
+  private static isWhitespace(char: number): boolean {
+    return char === 32 || char === 9 || char === 10 || char === 13
+  }
+
+  private static unescapePunctuation(value: string): string {
+    return value.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, '$1')
   }
 
   private tokenizeHtml(src: string): { token: InlineToken; raw: string } | null {

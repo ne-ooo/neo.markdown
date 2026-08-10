@@ -1,7 +1,7 @@
 ---
 name: react-nextjs-integration
 description: Using @lpm.dev/neo.markdown in React and Next.js — SSR, hydration, module-scope parser, serverless patterns, and React embed components
-version: "1.2.1"
+version: "2.0.0"
 globs:
   - "**/*.tsx"
   - "**/*.jsx"
@@ -14,7 +14,7 @@ globs:
 
 ## Module-Scope Parser
 
-Create the parser at module scope. It holds no request-specific state — `Tokenizer`, `InlineTokenizer`, and `HtmlRenderer` store only the options object and class methods. No caches, no WeakMaps, no accumulated state. A single instance is safe to share across concurrent requests.
+Create the parser at module scope. It holds no request-specific state. `Tokenizer`, `InlineTokenizer`, and `HtmlRenderer` store only options and class methods. A single instance is safe to share across concurrent requests.
 
 ```typescript
 // lib/markdown.ts
@@ -110,7 +110,8 @@ Module-scope is safe for serverless environments (Lambda, Edge Runtime, Vercel F
 - The parser instance is tiny — just the options object + class methods
 - Cold starts are not affected
 - Regex patterns are module-level constants (`PATTERNS` in both tokenizer files), already shared across all instances
-- No internal cache grows over time
+- The optionless convenience API keeps one fixed parser cache per entry
+- No input-dependent cache grows over time
 - Fully stateless per `.parse()` call — `parser.parse(a)` then `parser.parse(b)` are independent with no state leakage between requests
 
 ```typescript
@@ -183,17 +184,19 @@ These components use IntersectionObserver for lazy loading — the embed iframe 
 For user-generated content, use the `ugc` shorthand for safe defaults:
 
 ```tsx
-// Recommended — ugc: true enables sanitization and safe links
+// UGC mode enables safe links, disables raw HTML, and limits the input size
 export function UserComment({ markdown }: { markdown: string }) {
   const html = useMemo(() => parse(markdown, { ugc: true }), [markdown])
   return <div dangerouslySetInnerHTML={{ __html: html }} />
 }
 ```
 
-If you need to allow some HTML (e.g., in a CMS), use `sanitize: true` with `allowHtml: true`:
+If a CMS requires HTML, use `sanitize: true` with `allowHtml: true`:
 
 ```tsx
-const html = parse(cmsContent, {
+import { parse as parseSanitized } from '@lpm.dev/neo.markdown/sanitized'
+
+const html = parseSanitized(cmsContent, {
   allowHtml: true,
   sanitize: true,
   allowedTags: ['details', 'summary'],

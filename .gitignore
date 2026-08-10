@@ -9,3 +9,13 @@ coverage
 
 # LPM hoisted state (auto-generated)
 .lpm/hoisted/
+
+# LPM machine-local state
+.lpm/.install.lock*
+.lpm/audit-cache.json
+.lpm/build-state.json
+.lpm/has-local-sources
+.lpm/install-hash
+.lpm/overrides-state.json
+.lpm/patch-state.json
+.lpm/trust-snapshot.json

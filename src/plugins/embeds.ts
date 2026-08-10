@@ -39,7 +39,7 @@
  */
 
 import type { MarkdownPlugin, DirectiveToken } from '../core/types.js'
-import { matchEmbedUrl } from '../utils/url-patterns.js'
+import { matchEmbedUrl, type UrlMatch } from '../utils/url-patterns.js'
 import { escape } from '../utils/escape.js'
 
 /**
@@ -99,6 +99,29 @@ export interface EmbedOptions {
   /** Custom consent message (default: "Click to load external content") */
   consentMessage?: string
 }
+
+export interface EmbedInitializerOptions {
+  /** Event delegation and embed discovery root (default: document). */
+  root?: Document | HTMLElement
+}
+
+interface TwitterWidgetsApi {
+  widgets?: {
+    load(root?: HTMLElement | Document): void
+  }
+}
+
+interface ConsentPayload {
+  provider: UrlMatch['provider']
+  id: string
+  attributes: Record<string, string>
+  responsive: boolean
+  youtubeOptions?: YouTubeOptions
+  vimeoOptions?: VimeoOptions
+  twitterOptions?: TwitterOptions
+}
+
+const TWITTER_WIDGETS_SRC = 'https://platform.twitter.com/widgets.js'
 
 /**
  * Directive pattern: ::name[label]{key="value" ...}
@@ -263,17 +286,15 @@ function renderCodePen(id: string, attrs: Record<string, string>, responsive: bo
   )
 }
 
-/**
- * Render a GitHub Gist embed via script tag
- */
+/** Render an inert GitHub Gist marker for the client initializer. */
 function renderGist(id: string, attrs: Record<string, string>, user?: string): string {
   const gistUser = attrs['user'] ?? user ?? ''
   const file = attrs['file'] ? `?file=${escape(attrs['file'])}` : ''
+  const height = attrs['height'] ?? '400'
   const src = `https://gist.github.com/${escape(gistUser)}/${escape(id)}.js${file}`
 
   return (
-    `<div class="embed embed-gist">` +
-    `<script src="${src}"></script>` +
+    `<div class="embed embed-gist" data-embed-gist data-gist-src="${src}" data-gist-height="${escape(height)}">` +
     `<noscript><a href="https://gist.github.com/${escape(gistUser)}/${escape(id)}">View Gist on GitHub</a></noscript>` +
     `</div>\n`
   )
@@ -307,12 +328,11 @@ function renderLoom(id: string, attrs: Record<string, string>, responsive: boole
 }
 
 /**
- * Wrap embed HTML in a GDPR consent placeholder.
- * Shows a button instead of the embed — clicking it replaces the placeholder with the actual content.
+ * Wrap a structured embed payload in an inert GDPR consent placeholder.
  */
-function wrapWithConsent(embedHtml: string, providerName: string, message: string): string {
+function wrapWithConsent(payload: ConsentPayload, message: string): string {
   // Encode UTF-8 bytes rather than passing a Unicode string directly to btoa().
-  const bytes = new TextEncoder().encode(embedHtml)
+  const bytes = new TextEncoder().encode(JSON.stringify(payload))
   let encoded: string
   if (typeof Buffer !== 'undefined') {
     encoded = Buffer.from(bytes).toString('base64')
@@ -326,14 +346,235 @@ function wrapWithConsent(embedHtml: string, providerName: string, message: strin
   }
 
   return (
-    `<div class="embed embed-consent embed-consent-${escape(providerName)}" ` +
+    `<div class="embed embed-consent embed-consent-${escape(payload.provider)}" ` +
+    `data-embed-consent data-embed-payload="${encoded}" ` +
     `style="position:relative;width:100%;padding-bottom:56.25%;overflow:hidden;border-radius:8px;background:#1a1a1a;display:flex;align-items:center;justify-content:center">` +
-    `<button type="button" ` +
+    `<button type="button" data-embed-consent-button ` +
     `style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:12px 24px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;cursor:pointer;font-size:14px;z-index:1" ` +
-    `aria-label="${escape(message)} (${escape(providerName)})" ` +
-    `onclick="var b=atob('${encoded}'),u=Uint8Array.from(b,function(c){return c.charCodeAt(0)}),p=this.parentElement;p.innerHTML=new TextDecoder().decode(u)">${escape(message)}</button>` +
+    `aria-label="${escape(message)} (${escape(payload.provider)})">${escape(message)}</button>` +
     `</div>\n`
   )
+}
+
+function getTwitterWidgets(): TwitterWidgetsApi | undefined {
+  return (globalThis as typeof globalThis & { twttr?: TwitterWidgetsApi }).twttr
+}
+
+function isTrustedGistScript(src: string): boolean {
+  try {
+    const url = new URL(src)
+    return (
+      url.protocol === 'https:'
+      && url.hostname === 'gist.github.com'
+      && url.port === ''
+      && !url.username
+      && !url.password
+      && !url.hash
+      && /^\/[A-Za-z\d](?:[A-Za-z\d-]{0,38})\/[\da-f]+\.js$/i.test(url.pathname)
+      && [...url.searchParams.keys()].every((key) => key === 'file')
+    )
+  } catch {
+    return false
+  }
+}
+
+function activateGists(root: ParentNode, ownerDocument: Document): void {
+  const gists = root.querySelectorAll<HTMLElement>('[data-embed-gist][data-gist-src]')
+  for (const gist of gists) {
+    if (gist.getAttribute('data-embed-initialized') === 'true') continue
+
+    const src = gist.getAttribute('data-gist-src') ?? ''
+    if (!isTrustedGistScript(src)) continue
+
+    const requestedHeight = Number.parseInt(gist.getAttribute('data-gist-height') ?? '', 10)
+    const height = Number.isSafeInteger(requestedHeight) && requestedHeight >= 100 && requestedHeight <= 2_000
+      ? String(requestedHeight)
+      : '400'
+    const frame = ownerDocument.createElement('iframe')
+    frame.title = 'GitHub Gist'
+    frame.loading = 'lazy'
+    frame.setAttribute('width', '100%')
+    frame.setAttribute('height', height)
+    frame.setAttribute('sandbox', 'allow-scripts')
+    frame.setAttribute('referrerpolicy', 'no-referrer')
+    frame.setAttribute('data-neo-embed-gist', '')
+    frame.srcdoc = `<!doctype html><meta charset="utf-8"><script src="${escape(src)}"></script>`
+    gist.setAttribute('data-embed-initialized', 'true')
+    gist.appendChild(frame)
+  }
+}
+
+function activateTweets(root: ParentNode, ownerDocument: Document): void {
+  if (!root.querySelector('.twitter-tweet')) return
+
+  const twitter = getTwitterWidgets()
+  if (twitter?.widgets?.load) {
+    twitter.widgets.load(root as HTMLElement | Document)
+    return
+  }
+
+  const existingScript = ownerDocument.querySelector<HTMLScriptElement>(
+    `script[data-neo-embed-twitter],script[src="${TWITTER_WIDGETS_SRC}"]`
+  )
+  if (existingScript) {
+    if (existingScript.hasAttribute('data-neo-embed-twitter-listener')) return
+    existingScript.setAttribute('data-neo-embed-twitter-listener', '')
+    existingScript.addEventListener('load', () => {
+      getTwitterWidgets()?.widgets?.load(root as HTMLElement | Document)
+    }, { once: true })
+    return
+  }
+
+  const script = ownerDocument.createElement('script')
+  script.src = TWITTER_WIDGETS_SRC
+  script.async = true
+  script.setAttribute('data-neo-embed-twitter', '')
+  script.setAttribute('data-neo-embed-twitter-listener', '')
+  script.addEventListener('load', () => {
+    getTwitterWidgets()?.widgets?.load(root as HTMLElement | Document)
+  }, { once: true })
+  ownerDocument.head.appendChild(script)
+}
+
+function activateEmbedMarkup(root: ParentNode, ownerDocument: Document): void {
+  activateGists(root, ownerDocument)
+  activateTweets(root, ownerDocument)
+}
+
+function decodeBase64Utf8(encoded: string): string | null {
+  if (typeof globalThis.atob !== 'function') return null
+  try {
+    const binary = globalThis.atob(encoded)
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return null
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseAttributesPayload(value: unknown): Record<string, string> | null {
+  if (!isRecord(value) || Object.keys(value).length > 32) return null
+
+  const attributes: Record<string, string> = Object.create(null) as Record<string, string>
+  for (const [name, attributeValue] of Object.entries(value)) {
+    if (!/^\w{1,64}$/.test(name) || typeof attributeValue !== 'string' || attributeValue.length > 2_048) {
+      return null
+    }
+    attributes[name] = attributeValue
+  }
+  return attributes
+}
+
+function parseConsentPayload(encoded: string): ConsentPayload | null {
+  const json = decodeBase64Utf8(encoded)
+  if (json === null || json.length > 16_384) return null
+
+  try {
+    const value: unknown = JSON.parse(json)
+    if (!isRecord(value) || typeof value['id'] !== 'string' || value['id'].length > 2_048) {
+      return null
+    }
+
+    const provider = value['provider']
+    if (
+      provider !== 'youtube'
+      && provider !== 'vimeo'
+      && provider !== 'twitter'
+      && provider !== 'codesandbox'
+      && provider !== 'codepen'
+      && provider !== 'gist'
+      && provider !== 'loom'
+    ) {
+      return null
+    }
+
+    const attributes = parseAttributesPayload(value['attributes'])
+    if (!attributes || typeof value['responsive'] !== 'boolean') return null
+
+    const payload: ConsentPayload = {
+      provider,
+      id: value['id'],
+      attributes,
+      responsive: value['responsive'],
+    }
+
+    if (provider === 'youtube') {
+      if (!isRecord(value['youtubeOptions'])) return null
+      const privacyEnhanced = value['youtubeOptions']['privacyEnhanced']
+      const lazyLoad = value['youtubeOptions']['lazyLoad']
+      if (privacyEnhanced !== undefined && typeof privacyEnhanced !== 'boolean') return null
+      if (lazyLoad !== undefined && typeof lazyLoad !== 'boolean') return null
+      payload.youtubeOptions = { privacyEnhanced, lazyLoad }
+    } else if (provider === 'vimeo') {
+      if (!isRecord(value['vimeoOptions'])) return null
+      const dnt = value['vimeoOptions']['dnt']
+      const lazyLoad = value['vimeoOptions']['lazyLoad']
+      if (dnt !== undefined && typeof dnt !== 'boolean') return null
+      if (lazyLoad !== undefined && typeof lazyLoad !== 'boolean') return null
+      payload.vimeoOptions = { dnt, lazyLoad }
+    } else if (provider === 'twitter') {
+      if (!isRecord(value['twitterOptions'])) return null
+      const dnt = value['twitterOptions']['dnt']
+      const theme = value['twitterOptions']['theme']
+      if (dnt !== undefined && typeof dnt !== 'boolean') return null
+      if (theme !== undefined && theme !== 'light' && theme !== 'dark') return null
+      payload.twitterOptions = { dnt, theme }
+    }
+
+    return payload
+  } catch {
+    return null
+  }
+}
+
+function renderConsentPayload(payload: ConsentPayload): string {
+  const { provider, id, attributes, responsive } = payload
+  if (provider === 'youtube') return renderYouTube(id, attributes, payload.youtubeOptions ?? {}, responsive)
+  if (provider === 'vimeo') return renderVimeo(id, attributes, payload.vimeoOptions ?? {}, responsive)
+  if (provider === 'twitter') return renderTweet(id, payload.twitterOptions ?? {})
+  if (provider === 'codesandbox') return renderCodeSandbox(id, attributes, responsive)
+  if (provider === 'codepen') return renderCodePen(id, attributes, responsive, attributes['user'])
+  if (provider === 'gist') return renderGist(id, attributes, attributes['user'])
+  return renderLoom(id, attributes, responsive)
+}
+
+/**
+ * Activate consent buttons, Gist scripts, and Twitter widgets.
+ *
+ * @returns A cleanup function. On the server, the cleanup is a no-op.
+ */
+export function initializeEmbeds(options: EmbedInitializerOptions = {}): () => void {
+  if (typeof document === 'undefined') return () => undefined
+
+  const root = options.root ?? document
+  const ownerDocument = 'createElement' in root ? root : root.ownerDocument
+  activateEmbedMarkup(root, ownerDocument)
+
+  const onClick = (event: Event): void => {
+    const target = event.target as Element | null
+    if (!target || typeof target.closest !== 'function') return
+
+    const button = target.closest<HTMLButtonElement>('button[data-embed-consent-button]')
+    if (!button) return
+
+    const container = button.closest<HTMLElement>('[data-embed-consent][data-embed-payload]')
+    if (!container) return
+
+    const payload = parseConsentPayload(container.getAttribute('data-embed-payload') ?? '')
+    if (payload === null) return
+
+    container.innerHTML = renderConsentPayload(payload)
+    container.removeAttribute('data-embed-payload')
+    container.removeAttribute('data-embed-consent')
+    activateEmbedMarkup(container, ownerDocument)
+  }
+
+  root.addEventListener('click', onClick)
+  return () => root.removeEventListener('click', onClick)
 }
 
 /**
@@ -357,9 +598,9 @@ export function embedPlugin(options: EmbedOptions = {}): MarkdownPlugin {
     consentMessage = 'Click to load external content',
   } = options
 
-  /** Optionally wrap rendered embed in consent placeholder */
-  const maybeConsent = (html: string, provider: string): string =>
-    consent ? wrapWithConsent(html, provider, consentMessage) : html
+  /** Optionally wrap rendered embed in a consent placeholder. */
+  const maybeConsent = (html: string, payload: ConsentPayload): string =>
+    consent ? wrapWithConsent(payload, consentMessage) : html
 
   const youtubeOpts: YouTubeOptions = typeof youtube === 'object' ? youtube : {}
   const vimeoOpts: VimeoOptions = typeof vimeo === 'object' ? vimeo : {}
@@ -410,25 +651,39 @@ export function embedPlugin(options: EmbedOptions = {}): MarkdownPlugin {
       if (!id) return ''
 
       if (token.name === 'youtube' && youtube) {
-        return maybeConsent(renderYouTube(id, token.attributes, youtubeOpts, responsive), 'youtube')
+        return maybeConsent(renderYouTube(id, token.attributes, youtubeOpts, responsive), {
+          provider: 'youtube', id, attributes: token.attributes, responsive, youtubeOptions: youtubeOpts,
+        })
       }
       if (token.name === 'vimeo' && vimeo) {
-        return maybeConsent(renderVimeo(id, token.attributes, vimeoOpts, responsive), 'vimeo')
+        return maybeConsent(renderVimeo(id, token.attributes, vimeoOpts, responsive), {
+          provider: 'vimeo', id, attributes: token.attributes, responsive, vimeoOptions: vimeoOpts,
+        })
       }
       if (token.name === 'tweet' && twitter) {
-        return maybeConsent(renderTweet(id, twitterOpts), 'twitter')
+        return maybeConsent(renderTweet(id, twitterOpts), {
+          provider: 'twitter', id, attributes: token.attributes, responsive, twitterOptions: twitterOpts,
+        })
       }
       if (token.name === 'codesandbox' && codesandbox) {
-        return maybeConsent(renderCodeSandbox(id, token.attributes, responsive), 'codesandbox')
+        return maybeConsent(renderCodeSandbox(id, token.attributes, responsive), {
+          provider: 'codesandbox', id, attributes: token.attributes, responsive,
+        })
       }
       if (token.name === 'codepen' && codepen) {
-        return maybeConsent(renderCodePen(id, token.attributes, responsive, token.attributes['user']), 'codepen')
+        return maybeConsent(renderCodePen(id, token.attributes, responsive, token.attributes['user']), {
+          provider: 'codepen', id, attributes: token.attributes, responsive,
+        })
       }
       if (token.name === 'gist' && gist) {
-        return maybeConsent(renderGist(id, token.attributes, token.attributes['user']), 'gist')
+        return maybeConsent(renderGist(id, token.attributes, token.attributes['user']), {
+          provider: 'gist', id, attributes: token.attributes, responsive,
+        })
       }
       if (token.name === 'loom' && loom) {
-        return maybeConsent(renderLoom(id, token.attributes, responsive), 'loom')
+        return maybeConsent(renderLoom(id, token.attributes, responsive), {
+          provider: 'loom', id, attributes: token.attributes, responsive,
+        })
       }
 
       return ''

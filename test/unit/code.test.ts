@@ -23,9 +23,12 @@ describe('Code', () => {
       expect(result).toBe('<p><code>code with `backtick` inside</code></p>\n')
     })
 
-    it('should preserve spaces in inline code', () => {
+    it('should normalize spaces in inline code with CommonMark rules', () => {
       const result = parse('`  spaced  `')
-      expect(result).toBe('<p><code>spaced</code></p>\n')
+      expect(result).toBe('<p><code> spaced </code></p>\n')
+      expect(parse('` spaced `')).toBe('<p><code>spaced</code></p>\n')
+      expect(parse('`  `')).toBe('<p><code>  </code></p>\n')
+      expect(parse('`line 1\nline 2`')).toBe('<p><code>line 1 line 2</code></p>\n')
     })
   })
 

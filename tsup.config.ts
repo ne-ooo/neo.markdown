@@ -4,6 +4,8 @@ export default defineConfig({
   entry: {
     // Main entry
     'index': 'src/index.ts',
+    // Default parser with the built-in structural HTML sanitizer
+    'sanitized': 'src/sanitized.ts',
     // Core
     'core/index': 'src/core/index.ts',
     // Blocks

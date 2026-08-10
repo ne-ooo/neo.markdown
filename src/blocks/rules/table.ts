@@ -1,6 +1,6 @@
 import type { BlockRule, TableCell } from '../../core/types.js'
 
-const TABLE = /^ {0,3}(\S.*\|.*)\n {0,3}([ :|-]+\|[ :|-]*)\n((?:.*\|.*(?:\n|$))*)/
+const TABLE = /^ {0,3}((?=\S)(?=[^\n]*\|)[^\n]+)\n {0,3}((?=[ :|-]*\|)[ :|-]+)\n((?:(?=[^\n]*\|)[^\n]*(?:\n|$))*)/
 
 function splitRow(line: string): string[] {
   let value = line.trim()

@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.0] - 2026-08-10
+
+### Security
+
+- The `render()` method rejects raw HTML tokens when `allowHtml` is `false`.
+- UGC mode limits Markdown input to 1,000,000 UTF-16 code units.
+- The `maxInputLength` option sets a smaller limit for any parser.
+- Embed consent output no longer contains inline event handlers.
+- Consent payloads describe known providers and cannot inject arbitrary HTML.
+- `allowStyle: true` permits only non-layout properties with restricted values.
+
+### Performance
+
+- Link parsing now scans brackets and destinations in linear time.
+- Optionless `parse()` calls reuse one lazy parser in the main, sanitized, CommonMark, and GFM entries.
+- Table detection avoids backtracking on long pipe-heavy lines.
+- The main and `/core` entries no longer load `sanitize-html`.
+- The bundle gate now includes all production dependencies in its measurements.
+
+### Added
+
+- The `/sanitized` entry provides the built-in structural HTML sanitizer.
+- The `sanitizer` option accepts a custom sanitizer provider.
+- CommonMark URI and email angle autolinks now parse before raw HTML.
+- The `initializeEmbeds()` client initializer activates consent, Gist, and Twitter output.
+- GitHub Actions tests Node.js 18 and 26 with a frozen LPM lockfile and a vulnerability gate.
+- CommonMark tests lock the exact passing example numbers.
+- React embed tests cover lazy loading, script reuse, and cleanup.
+- Adversarial scaling tests run in child processes with hard execution limits.
+
+### Changed
+
+- Import from `/sanitized` to use `allowHtml: true` with `sanitize: true`.
+- The package version is now `2.0.0` because the current API changes require a major release.
+- Gist output stays inert until `initializeEmbeds()` creates an isolated frame.
+- Development builds use esbuild 0.28.2, including the version used by tsup.
+
+### Fixed
+
+- Code spans now apply the CommonMark rules for spaces and line endings.
+- Link destinations stop at their matching parenthesis instead of consuming later text.
+- Auto-embed matching now parses complete URLs and checks exact provider hostnames and paths.
+
 ## [1.2.1] - 2026-03-22
 
 ### Fixed

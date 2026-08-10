@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 import { parse } from '../../src/index.js'
+import { EXPECTED_PASSING_COMMONMARK_EXAMPLES } from '../fixtures/commonmark-passing.js'
 
 interface CommonMarkExample {
   markdown: string
@@ -29,16 +30,19 @@ describe('CommonMark 0.31.2 conformance floor', () => {
     expect(commonmark.tests.at(-1)?.number).toBe(652)
   })
 
-  it('does not regress the documented Markdown-subset baseline', () => {
-    const passed = commonmark.tests.filter((example) => {
+  it('keeps the exact documented Markdown-subset baseline', () => {
+    const passed = commonmark.tests.flatMap((example) => {
       const actual = parse(example.markdown, {
         allowHtml: true,
         gfm: false,
         lazyImages: false,
       })
       return normalizeHtml(actual) === normalizeHtml(example.html)
+        ? [example.number]
+        : []
     })
 
-    expect(passed.length).toBeGreaterThanOrEqual(284)
+    expect(EXPECTED_PASSING_COMMONMARK_EXAMPLES).toHaveLength(313)
+    expect(passed).toEqual(EXPECTED_PASSING_COMMONMARK_EXAMPLES)
   })
 })

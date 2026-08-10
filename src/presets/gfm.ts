@@ -19,8 +19,20 @@
  * ```
  */
 
-import type { ParserOptions } from '../core/types.js'
+import type { Parser, ParserOptions } from '../core/types.js'
 import { createParser } from '../create-parser.js'
+
+let defaultParser: Parser | undefined
+
+function createGfmParser(options?: Partial<ParserOptions>): Parser {
+  return createParser({
+    allowHtml: false,
+    sanitize: false,
+    gfm: true,
+    breaks: true,
+    ...options,
+  })
+}
 
 /**
  * Parse markdown using GFM preset
@@ -30,14 +42,12 @@ import { createParser } from '../create-parser.js'
  * @returns HTML string
  */
 export function parse(markdown: string, options?: Partial<ParserOptions>): string {
-  const parser = createParser({
-    allowHtml: false,
-    sanitize: false,
-    gfm: true,
-    breaks: true,
-    ...options,
-  })
-  return parser.parse(markdown)
+  if (options === undefined) {
+    defaultParser ??= createGfmParser()
+    return defaultParser.parse(markdown)
+  }
+
+  return createGfmParser(options).parse(markdown)
 }
 
 // Re-export types
