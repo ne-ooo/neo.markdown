@@ -55,7 +55,7 @@ This corrected run does not support the previous percentage claims or the claim 
 
 ## Selective bundle check
 
-The automated bundle check includes production dependencies and compares minified ESM output. The default parser measured 10,147 bytes gzipped. A selective `/core` parser measured 8,109 bytes gzipped, a 20% reduction. The `/sanitized` entry measured 73,646 bytes gzipped.
+The automated bundle check includes production dependencies and compares minified ESM output. The default parser measured 10,170 bytes gzipped. A selective `/core` parser measured 8,109 bytes gzipped, a 20% reduction. The `/sanitized` entry measured 106,009 bytes gzipped.
 
 ```bash
 lpm run build

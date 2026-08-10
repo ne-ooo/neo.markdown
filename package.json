@@ -112,7 +112,7 @@
     "prepublishOnly": "lpm run build && lpm test && lpm run test:package && lpm run check:tree-shaking && lpm check"
   },
   "dependencies": {
-    "sanitize-html": "^2.17.6"
+    "sanitize-html": "2.17.5"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

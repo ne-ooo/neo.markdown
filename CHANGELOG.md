@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - The package version is now `2.0.0` because the current API changes require a major release.
 - Gist output stays inert until `initializeEmbeds()` creates an isolated frame.
 - Development builds use esbuild 0.28.2, including the version used by tsup.
+- The sanitized entry pins `sanitize-html` 2.17.5 for Node.js 18 compatibility.
 
 ### Fixed
 

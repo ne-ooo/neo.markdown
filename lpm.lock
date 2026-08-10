@@ -6,7 +6,7 @@ resolved-with = "greedy-fusion"
 auto-install-peers = true
 
 [importers.".".dependencies]
-sanitize-html = "^2.17.6"
+sanitize-html = "2.17.5"
 
 [importers.".".dev-dependencies]
 "@types/node" = "^20.11.0"
@@ -2255,23 +2255,6 @@ keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEQCICiA31uTgHBNtLV9aaXHs5I2hmgK6n4WVZPWyzKgz8iKAiAhU+FG5S+wS8GhI5m8WIdC1ipreifFh7AIoPquR70FAA=="
 
 [[packages]]
-name = "dom-serializer"
-version = "3.1.1"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-4MEa38/QexBob6gFNwu+EGdWvhJ1OKuNwdYY3Y3NyeWDQfnGeDYQUDfIRzWu5B5gsv03so2Uxd28YC6zrsx3Lw=="
-node-engine = ">=20.19.0"
-dependencies = [
-    "domelementtype@3.0.0",
-    "domhandler@6.0.1",
-    "entities@8.0.0",
-]
-tarball = "https://registry.npmjs.org/dom-serializer/-/dom-serializer-3.1.1.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIEB14lshqAy14qmHrOTbqT465MM/2VDHc7hCFm5g4xWAAiA5lEMd0GGeQGhhA0ZY1l/KgMmzd7+scCNL0H9TgMwF8Q=="
-
-[[packages]]
 name = "domelementtype"
 version = "2.3.0"
 source = "registry+https://registry.npmjs.org"
@@ -2281,18 +2264,6 @@ tarball = "https://registry.npmjs.org/domelementtype/-/domelementtype-2.3.0.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEUCIQD2uaqgv6jh8+WxpNj5scGHlwrHNwC9w/uLtM6LjPlErgIgFYRIcONVZDcunOhww6tppCxLBQ7UtS3RhOA3CkmptVo="
-
-[[packages]]
-name = "domelementtype"
-version = "3.0.0"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-umCQid3jKbDmVjx8jGaW7uUykm4DEUeyV21hPxNMo2nV955DhUThwqyOIDtreepP31hl84X7G5U9ZfsWvIB3Pg=="
-node-engine = ">=20.19.0"
-tarball = "https://registry.npmjs.org/domelementtype/-/domelementtype-3.0.0.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQD+uKOsFfPfo8R9Ki5n3cXQAiqTB7GLaELS5/hzMJaOCQIhAKUGOQT3/QObEYlMJ26ZgnSArk5awpqAHKpj6mXUuYDe"
 
 [[packages]]
 name = "domhandler"
@@ -2306,19 +2277,6 @@ tarball = "https://registry.npmjs.org/domhandler/-/domhandler-5.0.3.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEQCIC7KylcE5EuEVUc4XxW4/oucmbpKilop06rD+Xj+R8FcAiAQjG/5af4jQ9WDdcsRWYipl1A599kulOmsBAR847XAZA=="
-
-[[packages]]
-name = "domhandler"
-version = "6.0.1"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg=="
-node-engine = ">=20.19.0"
-dependencies = ["domelementtype@3.0.0"]
-tarball = "https://registry.npmjs.org/domhandler/-/domhandler-6.0.1.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIA38r9cSY+MLms9qrIVm1o442dDvotMJkdVlZ4dz4RlWAiA0RE4dM8JZU43pZ+gyaF75G/WpgM6CuvuH32alHt58bA=="
 
 [[packages]]
 name = "domutils"
@@ -2335,23 +2293,6 @@ tarball = "https://registry.npmjs.org/domutils/-/domutils-3.2.2.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEYCIQC2yubRCrI6TfNaiWRR+/+ywvGlvyUgokHzE5Ynio9nWgIhANGkqMeBpwLaH7sNzZPB4agzSsNSZjTuus3S2nEHjX8M"
-
-[[packages]]
-name = "domutils"
-version = "4.0.2"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-qI4JLRKnSzqFqr7hAlS5xQDusBCjKSEG4t4+7aNrIQMHBcsC2TGEhuyABJdYkgSewL57PNLYEiibY2iPKhKpaA=="
-node-engine = ">=20.19.0"
-dependencies = [
-    "dom-serializer@3.1.1",
-    "domelementtype@3.0.0",
-    "domhandler@6.0.1",
-]
-tarball = "https://registry.npmjs.org/domutils/-/domutils-4.0.2.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIBG7tm4KOfEDoTJJJ+s9zw/qHqd9WGyd6oqfG7WmJtQsAiB3lmG/ojxVRNbGaCAtPHaI8Ay74tAVxcntiBLxxd1FgA=="
 
 [[packages]]
 name = "eastasianwidth"
@@ -2409,18 +2350,6 @@ tarball = "https://registry.npmjs.org/entities/-/entities-7.0.1.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
 sig = "MEUCIFvcF+3IC94wRNaK57bG19CPa5qWvl5LhKWclxasVBfyAiEAth+cLoHnHVsgtiVsPrt+fvXeLOBB0m1xqpe8jqQvL84="
-
-[[packages]]
-name = "entities"
-version = "8.0.0"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA=="
-node-engine = ">=20.19.0"
-tarball = "https://registry.npmjs.org/entities/-/entities-8.0.0.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIQC3uX2TRAeCk8IyaHlOaokfO5vEqi52Qor5NKHfAmVPpQIgHhNwCUJBXnhTye851CXMPD7hOsS7jdZI+1qDIiqw+aM="
 
 [[packages]]
 name = "es-module-lexer"
@@ -2670,24 +2599,6 @@ tarball = "https://registry.npmjs.org/htmlparser2/-/htmlparser2-10.1.0.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
 sig = "MEYCIQDE8GofSUc/TlbSaQ3XlgergocAD2RiqQKNuWPNH45DfgIhAOB3ntTE85OPNxYsuv5h5AxWj6ywemZCTuOGjroeiH0l"
-
-[[packages]]
-name = "htmlparser2"
-version = "12.0.0"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-Tz7u1i95/g2x2jz81+x0FBVhBhY5aRTvD3tXXdFaljuNdzDLJ8UGNRrTcj2cgQvAg3iW/h77Fz15nLW0L0CrZw=="
-node-engine = ">=20.19.0"
-dependencies = [
-    "domelementtype@3.0.0",
-    "domhandler@6.0.1",
-    "domutils@4.0.2",
-    "entities@8.0.0",
-]
-tarball = "https://registry.npmjs.org/htmlparser2/-/htmlparser2-12.0.0.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIEM+OojklJ4lCVOSwzGute0EEevjGImq5dOmwZMIfRMcAiEAnJyRv/aLJAouvHQdRuAQrfmp8Zgp9RZOEnuISl5dKG0="
 
 [[packages]]
 name = "is-fullwidth-code-point"
@@ -3400,24 +3311,23 @@ sig = "MEQCICrv2HVuSpYn9xJaTqEmXPccHtrD31FbBIDjXKUbFa01AiBmaWVa8JPqaoMFg3lNZp/65
 
 [[packages]]
 name = "sanitize-html"
-version = "2.17.6"
+version = "2.17.5"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-M4bo9tfv1yfhQZZKkc6dL07ALrGJtfvNOuhX3hU9AVPR/uPQ+nKOJBqTYc7LfMQblTW04mtSWDJWEyLvygJsLA=="
-node-engine = ">=22.12.0"
+integrity = "sha512-ZmU1joGRrvoyctKIiuwUxqR6moLoU2Wk+2bMccN6f7UwhAmwYDvWziqPxRDDN2Qip62NqnIrVrT9akbL6Wretg=="
 dependencies = [
     "deepmerge@4.3.1",
     "escape-string-regexp@4.0.0",
-    "htmlparser2@12.0.0",
+    "htmlparser2@10.1.0",
     "is-plain-object@5.0.0",
     "launder@1.7.1",
     "parse-srcset@1.0.2",
     "postcss@8.5.26",
 ]
-tarball = "https://registry.npmjs.org/sanitize-html/-/sanitize-html-2.17.6.tgz"
+tarball = "https://registry.npmjs.org/sanitize-html/-/sanitize-html-2.17.5.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIQC+cA/CXlJMUjvb/O2DIWiH6yE1k5QDhIAZUTR3BT5KcgIgJkNNELjJbHjjpZZToM1jVpXPcEDtXaMWRMRc+a4LoF8="
+sig = "MEQCIBNammw2lcbZztk2X/SDiFznQeW6lNQ7UXp4WMbhGr5uAiAgQe9iyTg+SBHY76GR4pHxawsRsL8X8GSiRVl3c59Ahg=="
 
 [[packages]]
 name = "scheduler"
@@ -4065,7 +3975,7 @@ source = "registry+https://registry.npmjs.org"
 
 [root-resolutions.sanitize-html]
 package = "sanitize-html"
-version = "2.17.6"
+version = "2.17.5"
 source = "registry+https://registry.npmjs.org"
 
 [root-resolutions.tsup]
