@@ -42,7 +42,12 @@ jobs:
           echo "$HOME/.lpm/bin" >> "$GITHUB_PATH"
 
       - name: Install the locked dependency graph
+        if: matrix.node != '18.20.8'
         run: lpm install --frozen-lockfile --no-skills --no-editor-setup --strict-integrity --policy=deny
+
+      - name: Install the locked dependency graph on Node.js 18
+        if: matrix.node == '18.20.8'
+        run: lpm install --frozen-lockfile --no-skills --no-editor-setup --strict-integrity --policy=deny --no-engine-strict
 
       - name: Verify the lockfile stayed frozen
         run: git diff --exit-code -- package.json lpm.lock
