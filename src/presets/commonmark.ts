@@ -12,8 +12,20 @@
  * ```
  */
 
-import type { ParserOptions } from '../core/types.js'
+import type { Parser, ParserOptions } from '../core/types.js'
 import { createParser } from '../create-parser.js'
+
+let defaultParser: Parser | undefined
+
+function createCommonMarkParser(options?: Partial<ParserOptions>): Parser {
+  return createParser({
+    allowHtml: false,
+    sanitize: false,
+    gfm: false,
+    breaks: false,
+    ...options,
+  })
+}
 
 /**
  * Parse markdown using the core Markdown-subset preset
@@ -23,14 +35,12 @@ import { createParser } from '../create-parser.js'
  * @returns HTML string
  */
 export function parse(markdown: string, options?: Partial<ParserOptions>): string {
-  const parser = createParser({
-    allowHtml: false,
-    sanitize: false,
-    gfm: false,
-    breaks: false,
-    ...options,
-  })
-  return parser.parse(markdown)
+  if (options === undefined) {
+    defaultParser ??= createCommonMarkParser()
+    return defaultParser.parse(markdown)
+  }
+
+  return createCommonMarkParser(options).parse(markdown)
 }
 
 // Re-export types

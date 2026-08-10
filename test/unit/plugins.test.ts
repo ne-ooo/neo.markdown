@@ -287,7 +287,10 @@ describe('Plugin System - addBlockRule', () => {
       })
     }
 
-    const result = parse(':::note\nImportant info\n:::', { plugins: [notePlugin] })
+    const result = parse(':::note\nImportant info\n:::', {
+      allowHtml: true,
+      plugins: [notePlugin],
+    })
     expect(result).toContain('<div class="note">Important info</div>')
   })
 
@@ -316,7 +319,10 @@ describe('Plugin System - addBlockRule', () => {
       })
     }
 
-    const result = parse('TRACE:hello\n\nNormal paragraph', { plugins: [plugin] })
+    const result = parse('TRACE:hello\n\nNormal paragraph', {
+      allowHtml: true,
+      plugins: [plugin],
+    })
     expect(result).toContain('<trace>hello</trace>')
     expect(result).toContain('<p>Normal paragraph</p>')
   })

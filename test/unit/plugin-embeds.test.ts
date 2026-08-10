@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { parse } from '../../src/index.js'
-import { embedPlugin } from '../../src/plugins/embeds.js'
+import { embedPlugin, initializeEmbeds } from '../../src/plugins/embeds.js'
 import { matchEmbedUrl } from '../../src/utils/url-patterns.js'
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,16 @@ describe('matchEmbedUrl', () => {
 
   it('should return null for non-URL text', () => {
     expect(matchEmbedUrl('just some text')).toBeNull()
+  })
+
+  it('should reject provider URLs embedded in attacker-controlled URLs', () => {
+    const youtube = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+
+    expect(matchEmbedUrl(`https://evil.example/?next=${youtube}`)).toBeNull()
+    expect(matchEmbedUrl(`https://evil.example/${youtube}`)).toBeNull()
+    expect(matchEmbedUrl('https://www.youtube.com.evil.example/watch?v=dQw4w9WgXcQ')).toBeNull()
+    expect(matchEmbedUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ/extra')).toBeNull()
+    expect(matchEmbedUrl('https://www.youtube.com:8443/watch?v=dQw4w9WgXcQ')).toBeNull()
   })
 
   it('should match URLs without protocol', () => {
@@ -315,7 +325,8 @@ describe('embedPlugin - New Providers Directives', () => {
     const result = parse('::gist[abc123def]{user="tolgaergin"}', { plugins: [plugin] })
     expect(result).toContain('embed-gist')
     expect(result).toContain('gist.github.com/tolgaergin/abc123def.js')
-    expect(result).toContain('<script')
+    expect(result).toContain('data-embed-gist')
+    expect(result).not.toContain('<script')
     expect(result).toContain('<noscript>')
   })
 
@@ -405,11 +416,12 @@ describe('embedPlugin - GDPR Consent Mode', () => {
     expect(result).toContain('aria-label=')
   })
 
-  it('should include encoded embed HTML for onclick reveal', () => {
+  it('should include inert encoded HTML for the client initializer', () => {
     const plugin = embedPlugin({ youtube: true, consent: true })
     const result = parse('::youtube[dQw4w9WgXcQ]', { plugins: [plugin] })
-    // The onclick uses atob() to decode base64-encoded embed HTML
-    expect(result).toContain('atob(')
+    expect(result).toContain('data-embed-consent-button')
+    expect(result).toContain('data-embed-payload=')
+    expect(result).not.toContain('onclick=')
   })
 
   it('should encode Unicode embed HTML without Node Buffer', () => {
@@ -418,7 +430,161 @@ describe('embedPlugin - GDPR Consent Mode', () => {
       const plugin = embedPlugin({ youtube: true, consent: true })
       const render = () => parse('::youtube[id]{title="你好 👋"}', { plugins: [plugin] })
       expect(render).not.toThrow()
-      expect(render()).toContain('new TextDecoder().decode')
+      expect(render()).toContain('data-embed-payload=')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('should export an SSR-safe client initializer', () => {
+    const cleanup = initializeEmbeds()
+    expect(cleanup).toBeTypeOf('function')
+    expect(() => cleanup()).not.toThrow()
+  })
+
+  it('should reveal consent content through the client initializer', () => {
+    const html = parse('::youtube[dQw4w9WgXcQ]', {
+      plugins: [embedPlugin({ youtube: true, consent: true })],
+    })
+    const encoded = /data-embed-payload="([^"]+)"/.exec(html)?.[1]
+    expect(encoded).toBeTruthy()
+
+    let clickHandler: ((event: Event) => void) | undefined
+    let revealed = ''
+    const container = {
+      getAttribute: (name: string) => name === 'data-embed-payload' ? encoded ?? '' : null,
+      removeAttribute: vi.fn(),
+      querySelectorAll: () => [],
+      querySelector: () => null,
+      set innerHTML(value: string) { revealed = value },
+      get innerHTML() { return revealed },
+    }
+    const button = {
+      closest: (selector: string) => selector.startsWith('[data-embed-consent]')
+        ? container
+        : null,
+    }
+    const target = {
+      closest: (selector: string) => selector.startsWith('button') ? button : null,
+    }
+    const ownerDocument = {
+      createElement: vi.fn(),
+      querySelector: () => null,
+      head: { appendChild: vi.fn() },
+    }
+    const root = {
+      ownerDocument,
+      querySelectorAll: () => [],
+      querySelector: () => null,
+      addEventListener: (_name: string, handler: (event: Event) => void) => {
+        clickHandler = handler
+      },
+      removeEventListener: vi.fn(),
+    }
+
+    vi.stubGlobal('document', ownerDocument)
+    try {
+      const cleanup = initializeEmbeds({ root: root as unknown as HTMLElement })
+      clickHandler?.({ target } as unknown as Event)
+      expect(revealed).toContain('<iframe')
+      expect(revealed).toContain('youtube-nocookie.com')
+      cleanup()
+      expect(root.removeEventListener).toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('should activate Gist and Twitter markup only once', () => {
+    const createdElements: Array<Record<string, unknown>> = []
+    const gistAttributes = new Map<string, string>([
+      ['data-gist-src', 'https://gist.github.com/user/abc123.js'],
+      ['data-gist-height', '600'],
+    ])
+    const gist = {
+      getAttribute: (name: string) => gistAttributes.get(name) ?? null,
+      setAttribute: vi.fn((name: string, value: string) => gistAttributes.set(name, value)),
+      appendChild: vi.fn(),
+    }
+    let twitterScript: Record<string, unknown> | null = null
+    const ownerDocument = {
+      createElement: (tag: string) => {
+        const attributes = new Map<string, string>()
+        const element = {
+          tag,
+          setAttribute: vi.fn((name: string, value: string) => attributes.set(name, value)),
+          hasAttribute: (name: string) => attributes.has(name),
+          addEventListener: vi.fn(),
+        }
+        createdElements.push(element)
+        return element
+      },
+      querySelector: (selector: string) => selector.startsWith('script') ? twitterScript : null,
+      head: {
+        appendChild: vi.fn((script: Record<string, unknown>) => {
+          twitterScript = script
+        }),
+      },
+    }
+    const root = {
+      ownerDocument,
+      querySelectorAll: () => [gist],
+      querySelector: (selector: string) => selector === '.twitter-tweet' ? {} : null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }
+
+    vi.stubGlobal('document', ownerDocument)
+    try {
+      initializeEmbeds({ root: root as unknown as HTMLElement })
+      initializeEmbeds({ root: root as unknown as HTMLElement })
+      expect(gist.appendChild).toHaveBeenCalledTimes(1)
+      expect(ownerDocument.head.appendChild).toHaveBeenCalledTimes(1)
+      expect(createdElements).toHaveLength(2)
+      expect(createdElements[0]?.['tag']).toBe('iframe')
+      expect(createdElements[0]?.['srcdoc']).toContain(
+        '<script src="https://gist.github.com/user/abc123.js"></script>'
+      )
+      expect(createdElements[0]?.['setAttribute']).toHaveBeenCalledWith('sandbox', 'allow-scripts')
+      expect(createdElements[0]?.['setAttribute']).toHaveBeenCalledWith('height', '600')
+      expect(createdElements[1]?.['src']).toBe('https://platform.twitter.com/widgets.js')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('should reject forged consent HTML', () => {
+    let clickHandler: ((event: Event) => void) | undefined
+    const container = {
+      getAttribute: () => btoa('<img src=x onerror=alert(1)>'),
+      removeAttribute: vi.fn(),
+      querySelectorAll: () => [],
+      querySelector: () => null,
+      innerHTML: '',
+    }
+    const button = { closest: () => container }
+    const target = { closest: () => button }
+    const ownerDocument = {
+      createElement: vi.fn(),
+      querySelector: () => null,
+      head: { appendChild: vi.fn() },
+    }
+    const root = {
+      ownerDocument,
+      querySelectorAll: () => [],
+      querySelector: () => null,
+      addEventListener: (_name: string, handler: (event: Event) => void) => {
+        clickHandler = handler
+      },
+      removeEventListener: vi.fn(),
+    }
+
+    vi.stubGlobal('document', ownerDocument)
+    try {
+      initializeEmbeds({ root: root as unknown as HTMLElement })
+      clickHandler?.({ target } as unknown as Event)
+      expect(container.innerHTML).toBe('')
+      expect(container.removeAttribute).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
     }

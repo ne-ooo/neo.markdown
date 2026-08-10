@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { createParser } from '../../src/index.js'
-import { sanitizeHtml, buildSanitizerConfig, DEFAULT_ALLOWED_TAGS, DEFAULT_ALLOWED_ATTRIBUTES } from '../../src/core/sanitizer.js'
+import { createParser as createUnsanitizedParser } from '../../src/index.js'
+import { createParser, sanitizeHtml } from '../../src/sanitized.js'
+import { buildSanitizerConfig, DEFAULT_ALLOWED_TAGS, DEFAULT_ALLOWED_ATTRIBUTES } from '../../src/core/sanitizer.js'
 
 /**
  * Helper: parse markdown with allowHtml + sanitize enabled
@@ -252,7 +253,35 @@ describe('HTML sanitization', () => {
       })
 
       it('allows style when allowStyle: true', () => {
-        expect(sanitize('<div style="color: red">text</div>', { allowStyle: true })).toContain('style="color: red"')
+        expect(sanitize('<div style="color: red">text</div>', { allowStyle: true })).toContain('style="color:red"')
+      })
+
+      it('restricts allowStyle to non-layout properties and safe values', () => {
+        const html = sanitize(
+          '<div style="color:red;position:fixed;inset:0;width:100vw;background-image:url(https://evil.example/x);z-index:999999">text</div>',
+          { allowStyle: true }
+        )
+
+        expect(html).toContain('color:red')
+        expect(html).not.toContain('position')
+        expect(html).not.toContain('inset')
+        expect(html).not.toContain('width')
+        expect(html).not.toContain('url(')
+        expect(html).not.toContain('z-index')
+      })
+
+      it('removes CSS expressions and external URLs from allowed properties', () => {
+        const expression = sanitize(
+          '<div style="color:expression(alert(1))">text</div>',
+          { allowStyle: true }
+        )
+        const externalUrl = sanitize(
+          '<div style="background-color:url(https://evil.example/x)">text</div>',
+          { allowStyle: true }
+        )
+
+        expect(expression).not.toContain('expression')
+        expect(externalUrl).not.toContain('url(')
       })
 
       it('preserves aria-* attributes', () => {
@@ -358,6 +387,22 @@ describe('HTML sanitization', () => {
   })
 
   describe('integration with markdown parser', () => {
+    it('requires an explicit sanitizer provider from the main entry', () => {
+      expect(() => createUnsanitizedParser({ allowHtml: true, sanitize: true })).toThrow(
+        'HTML sanitization requires a sanitizer provider'
+      )
+    })
+
+    it('accepts a custom sanitizer provider in the main entry', () => {
+      const parser = createUnsanitizedParser({
+        allowHtml: true,
+        sanitize: true,
+        sanitizer: () => '<p>custom sanitizer</p>',
+      })
+
+      expect(parser.parse('<script>alert(1)</script>')).toBe('<p>custom sanitizer</p>')
+    })
+
     it('strips script block in markdown', () => {
       const html = sanitizedParse('<script>alert("xss")</script>')
       expect(html).not.toContain('<script')

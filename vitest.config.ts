@@ -14,6 +14,14 @@ export default defineConfig({
         'scripts/**',
         '*.config.ts',
       ],
+      thresholds: {
+        'src/plugins/embeds/react.tsx': {
+          statements: 95,
+          branches: 80,
+          functions: 95,
+          lines: 95,
+        },
+      },
     },
   },
 })

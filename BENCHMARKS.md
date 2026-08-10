@@ -4,7 +4,7 @@ These results are a reproducible development snapshot, not a general performance
 
 ## Method
 
-- Package: `@lpm.dev/neo.markdown` 1.2.1
+- Package: `@lpm.dev/neo.markdown` 2.0.0
 - Date: August 8, 2026
 - Runtime: Node.js 26.5.0
 - Platform: macOS 26.5.2, arm64
@@ -55,7 +55,7 @@ This corrected run does not support the previous percentage claims or the claim 
 
 ## Selective bundle check
 
-The automated bundle check externalizes third-party runtime dependencies and compares minified ESM output. The default parser measured 8,829 bytes gzipped. A `/core` parser containing only heading and paragraph rules measured 6,805 bytes gzipped, a 23% reduction.
+The automated bundle check includes production dependencies and compares minified ESM output. The default parser measured 10,170 bytes gzipped. A selective `/core` parser measured 8,109 bytes gzipped, a 20% reduction. The `/sanitized` entry measured 106,009 bytes gzipped.
 
 ```bash
 lpm run build

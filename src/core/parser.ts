@@ -2,12 +2,27 @@
  * Main markdown parser
  */
 
-import type { Parser, ParserOptions, BlockRule, BlockToken, ParagraphToken, HeadingToken, LinkReference, TableToken } from './types.js'
+import type {
+  Parser,
+  ParserOptions,
+  BlockRule,
+  BlockToken,
+  InlineToken,
+  ParagraphToken,
+  HeadingToken,
+  LinkReference,
+  TableToken,
+  HtmlSanitizer,
+  SanitizerConfig,
+} from './types.js'
 import { Tokenizer } from './tokenizer.js'
 import { InlineTokenizer } from './inline-tokenizer.js'
 import { HtmlRenderer } from './renderer.js'
 import { PluginBuilderImpl } from './plugin-builder.js'
-import { sanitizeHtml, buildSanitizerConfig, type SanitizerConfig } from './sanitizer.js'
+import { buildSanitizerConfig } from './sanitizer.js'
+
+const MAX_UGC_INPUT_LENGTH = 1_000_000
+const RAW_HTML_ERROR = 'Raw HTML tokens require allowHtml: true'
 
 /**
  * Markdown parser implementation
@@ -20,10 +35,18 @@ export class MarkdownParser implements Parser {
   private tokenTransforms: Array<(tokens: BlockToken[]) => BlockToken[]>
   private htmlTransforms: Array<(html: string) => string>
   private sanitizerConfig: SanitizerConfig | null
+  private sanitizer: HtmlSanitizer | null
 
   constructor(options: ParserOptions = {}, blockRules: BlockRule[] = options.blocks ?? []) {
     // UGC mode is a security boundary, not a set of overridable defaults.
     const supplied = options ?? {}
+    if (
+      supplied.maxInputLength !== undefined
+      && (!Number.isSafeInteger(supplied.maxInputLength) || supplied.maxInputLength < 0)
+    ) {
+      throw new TypeError('maxInputLength must be a non-negative safe integer')
+    }
+
     const resolved = supplied.ugc
       ? {
           ...supplied,
@@ -31,6 +54,10 @@ export class MarkdownParser implements Parser {
           sanitize: true,
           safeLinks: true,
           ugc: true,
+          maxInputLength: Math.min(
+            supplied.maxInputLength ?? MAX_UGC_INPUT_LENGTH,
+            MAX_UGC_INPUT_LENGTH
+          ),
         }
       : supplied
 
@@ -74,7 +101,21 @@ export class MarkdownParser implements Parser {
     this.tokenTransforms = builder.tokenTransforms
     this.htmlTransforms = builder.htmlTransforms
 
-    // Build sanitizer config if sanitization is enabled
+    if (
+      this.options.allowHtml
+      && this.options.sanitize
+      && typeof this.options.sanitizer !== 'function'
+    ) {
+      throw new TypeError(
+        'HTML sanitization requires a sanitizer provider; import from "@lpm.dev/neo.markdown/sanitized"'
+      )
+    }
+
+    this.sanitizer = this.options.allowHtml && this.options.sanitize
+      ? this.options.sanitizer ?? null
+      : null
+
+    // Build sanitizer config if sanitization is enabled.
     this.sanitizerConfig = (this.options.allowHtml && this.options.sanitize)
       ? buildSanitizerConfig({
           allowedTags: this.options.allowedTags,
@@ -116,13 +157,17 @@ export class MarkdownParser implements Parser {
       transformedTokens = transform(transformedTokens)
     }
 
+    if (!this.options.allowHtml) {
+      this.assertNoRawHtmlBlocks(transformedTokens)
+    }
+
     let html = this.renderer.renderBlock(transformedTokens)
 
     // Sanitize user-provided HTML before plugin transforms.
     // Plugins inject trusted HTML (buttons, scripts, wrappers) that must
     // not be stripped by the sanitizer.
-    if (this.sanitizerConfig) {
-      html = sanitizeHtml(html, this.sanitizerConfig)
+    if (this.sanitizer && this.sanitizerConfig) {
+      html = this.sanitizer(html, this.sanitizerConfig)
     }
 
     // Apply HTML transforms from plugins (after sanitization)
@@ -140,6 +185,15 @@ export class MarkdownParser implements Parser {
    * @returns Array of block tokens
    */
   tokenize(markdown: string): BlockToken[] {
+    if (
+      this.options.maxInputLength !== undefined
+      && markdown.length > this.options.maxInputLength
+    ) {
+      throw new RangeError(
+        `Markdown input length ${markdown.length} exceeds maxInputLength ${this.options.maxInputLength}`
+      )
+    }
+
     const blockTokens = this.blockTokenizer.tokenize(markdown)
     const references = new Map<string, LinkReference>()
     this.collectReferenceDefinitions(blockTokens, references)
@@ -154,6 +208,7 @@ export class MarkdownParser implements Parser {
   ): void {
     for (const token of tokens) {
       if (token.type === 'definition') {
+        if (token.label.length > 999) continue
         const label = InlineTokenizer.normalizeReferenceLabel(token.label)
         if (!references.has(label)) {
           references.set(label, { href: token.href, title: token.title })
@@ -226,6 +281,39 @@ export class MarkdownParser implements Parser {
 
       return token
     })
+  }
+
+  private assertNoRawHtmlBlocks(tokens: BlockToken[]): void {
+    for (const token of tokens) {
+      if (token.type === 'html') throw new TypeError(RAW_HTML_ERROR)
+
+      if (token.type === 'paragraph' || token.type === 'heading') {
+        this.assertNoRawHtmlInline(token.tokens)
+      } else if (token.type === 'blockquote') {
+        this.assertNoRawHtmlBlocks(token.tokens)
+      } else if (token.type === 'list') {
+        for (const item of token.items) this.assertNoRawHtmlBlocks(item.tokens)
+      } else if (token.type === 'table') {
+        for (const cell of token.header) this.assertNoRawHtmlInline(cell.tokens)
+        for (const row of token.rows) {
+          for (const cell of row) this.assertNoRawHtmlInline(cell.tokens)
+        }
+      }
+    }
+  }
+
+  private assertNoRawHtmlInline(tokens: InlineToken[]): void {
+    for (const token of tokens) {
+      if (token.type === 'html') throw new TypeError(RAW_HTML_ERROR)
+      if (
+        token.type === 'strong'
+        || token.type === 'em'
+        || token.type === 'del'
+        || token.type === 'link'
+      ) {
+        this.assertNoRawHtmlInline(token.tokens)
+      }
+    }
   }
 
 }

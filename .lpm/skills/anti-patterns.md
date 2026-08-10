@@ -1,7 +1,7 @@
 ---
 name: anti-patterns
 description: Common mistakes and silent failures when using @lpm.dev/neo.markdown — prioritized wrong/correct pairs
-version: "1.2.1"
+version: "2.0.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -28,10 +28,10 @@ Override priority: `renderer` option < plugin `setRenderer()` calls (plugins win
 
 ### [FIXED in v1.2.0] sanitize / allowedTags / allowedAttributes — now works
 
-Previously, these options existed in the types but had no effect. As of v1.2.0, the built-in server-side sanitizer is fully functional.
+These options became functional in v1.2.0. In v2.0.0, the built-in sanitizer moved to the `/sanitized` entry.
 
 ```typescript
-import { parse } from '@lpm.dev/neo.markdown'
+import { parse } from '@lpm.dev/neo.markdown/sanitized'
 
 // Allow HTML but sanitize it (strips <script>, event handlers, etc.)
 const safeHtml = parse(userInput, { allowHtml: true, sanitize: true })
@@ -55,7 +55,7 @@ const safeHtml = parse(userInput, {
 })
 ```
 
-Note: `sanitize: true` requires `allowHtml: true` — without `allowHtml`, HTML is already entity-escaped so there is nothing to sanitize. External sanitizers like DOMPurify are no longer needed for standard use cases.
+`sanitize: true` requires `allowHtml: true`. The main and `/core` entries also require a custom `sanitizer` provider.
 
 ### [FIXED in v1.2.0] gfm option — now gates GFM features correctly
 
@@ -115,14 +115,14 @@ Correct (v1.2.1+ behavior):
 
 Fixed: the sanitizer now runs before plugin HTML transforms. The current copy-code plugin emits escaped inert markup and uses an explicit client initializer instead of inline JavaScript.
 
-### [HIGH] Calling parse() in a loop instead of reusing createParser()
+### [HIGH] Calling parse() with options in a loop
 
 Wrong:
 
 ```typescript
 import { parse } from '@lpm.dev/neo.markdown'
 
-// Each call creates: new MarkdownParser + new Tokenizer + new InlineTokenizer + new HtmlRenderer
+// Each call with options creates a new parser.
 const results = documents.map(doc => parse(doc, { gfm: true }))
 ```
 
@@ -131,13 +131,11 @@ Correct:
 ```typescript
 import { createParser } from '@lpm.dev/neo.markdown'
 
-const parser = createParser()
+const parser = createParser({ gfm: true })
 const results = documents.map(doc => parser.parse(doc))
 ```
 
-`parse()` is a convenience wrapper that calls `createParser(options)` and then `parser.parse(markdown)` — four class instantiations per call. This degrades silently with no error or warning.
-
-Source: `src/index.ts:41-43` — `const parser = createParser(options); return parser.parse(markdown)`
+Optionless `parse()` calls reuse one lazy parser. Calls with options stay isolated and create a parser for each call.
 
 ### [MEDIUM] tablerow / tablecell renderer coupling
 

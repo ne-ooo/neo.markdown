@@ -38,6 +38,22 @@ describe('Links and Images', () => {
       expect(result).toBe('<h1><a href="https://example.com">Link</a></h1>\n')
     })
 
+    it('should parse CommonMark angle autolinks before raw HTML', () => {
+      expect(parse('<https://example.com>')).toBe(
+        '<p><a href="https://example.com">https://example.com</a></p>\n'
+      )
+      expect(parse('<https://example.com>', { allowHtml: true })).toBe(
+        '<p><a href="https://example.com">https://example.com</a></p>\n'
+      )
+      expect(parse('<user@example.com>')).toBe(
+        '<p><a href="mailto:user@example.com">user@example.com</a></p>\n'
+      )
+      expect(parse('<https://example.com/\\[\\>')).toBe(
+        '<p><a href="https://example.com/%5C%5B%5C">https://example.com/\\[\\</a></p>\n'
+      )
+      expect(parse('<javascript:alert(1)>')).not.toContain('<a href=')
+    })
+
     it('should block javascript: URLs for security', () => {
       const result = parse('[XSS](javascript:alert(1))')
       expect(result).toBe('<p>XSS</p>\n')

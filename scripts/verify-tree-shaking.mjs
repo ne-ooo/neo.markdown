@@ -12,7 +12,7 @@ async function bundle(contents) {
       sourcefile: 'tree-shaking-entry.js',
     },
     bundle: true,
-    external: ['react', 'react-dom', 'sanitize-html'],
+    external: ['react', 'react-dom'],
     format: 'esm',
     minify: true,
     platform: 'browser',
@@ -35,11 +35,22 @@ const selective = await bundle(`
   console.log(parser.parse('# selective'))
 `)
 
+const sanitized = await bundle(`
+  import { parse } from '@lpm.dev/neo.markdown/sanitized'
+  console.log(parse('<p>safe</p>', { allowHtml: true, sanitize: true }))
+`)
+
 assert.ok(
   selective.gzip < full.gzip * 0.85,
   `selective bundle must be at least 15% smaller: full=${full.gzip}, selective=${selective.gzip}`
 )
 
+assert.ok(
+  sanitized.gzip > full.gzip,
+  `sanitized bundle must include its structural sanitizer: sanitized=${sanitized.gzip}, full=${full.gzip}`
+)
+
 console.log(`Default parser:   ${full.bytes} bytes (${full.gzip} gzip)`)
 console.log(`Heading + text:   ${selective.bytes} bytes (${selective.gzip} gzip)`)
+console.log(`With sanitizer:   ${sanitized.bytes} bytes (${sanitized.gzip} gzip)`)
 console.log(`Selective saving: ${Math.round((1 - selective.gzip / full.gzip) * 100)}% gzip`)

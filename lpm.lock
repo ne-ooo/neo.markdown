@@ -6,19 +6,21 @@ resolved-with = "greedy-fusion"
 auto-install-peers = true
 
 [importers.".".dependencies]
-sanitize-html = "^2.17.6"
+sanitize-html = "2.17.5"
 
 [importers.".".dev-dependencies]
 "@types/node" = "^20.11.0"
 "@types/react" = "^19.2.14"
+"@types/react-test-renderer" = "19.1.0"
 "@types/sanitize-html" = "^2.16.1"
 "@vitest/coverage-v8" = "^3.2.4"
 commonmark-spec = "0.31.2"
-esbuild = "^0.25.12"
+esbuild = "0.28.2"
 markdown-it = "^14.1.0"
 markdown-it-task-lists = "^2.1.1"
 marked = "^12.0.0"
 react = "^19.2.4"
+react-test-renderer = "19.2.8"
 tsup = "^8.0.1"
 typescript = "^5.3.3"
 vite = "^6.4.3"
@@ -26,6 +28,9 @@ vitest = "^3.2.4"
 
 [importers.".".peer-dependencies]
 react = ">=18.0.0"
+
+[importers.".".overrides]
+"tsup>esbuild" = "0.28.2"
 
 [[packages]]
 name = "@ampproject/remapping"
@@ -133,18 +138,22 @@ sig = "MEYCIQCZ4hNssyTfWCH6F45ekr0b229qcRJjkGG4bugJb94NWgIhAMVK9Bi4ybrr0qzcriDqi
 
 [[packages]]
 name = "@esbuild/aix-ppc64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-EKX3Qwmhz1eMdEJokhALr0YiD0lhQNwDqkPYyPhiSwKrh7/4KRjQc04sZ8db+5DVVnZ1LmbNDI1uAMPEUBnQPg=="
+integrity = "sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ=="
 os = ["aix"]
 cpu = ["ppc64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIBgFBnXRgXzJ9MphM7HhWNvFL3co0RmPWAWwZDufZVN9AiBIXHcI3jpGMG8jDsBCs//WOyFDPqTGLDvZh/vWcrAqpQ=="
+sig = "MEQCIH+EFy07c+6FhREGHs6xeCJqnpAqsH2xxm82MQI/qSsSAiAhiGP7UUTbpQ9pntdgQuTayz3fcbDz21RH3LhITI/0wg=="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQCgtaY7XfLUC0DrtjBEy3RL7xXoV1pKrNcVSSZLeuVwDQIgPAIYL6tEmUxJFNvqULFPUzzU8EsglKjGvlGO/2FiepE="
 
 [[packages]]
 name = "@esbuild/android-arm"
@@ -163,18 +172,22 @@ sig = "MEQCICjivMoHGseIPg/8LVtZVk92cOVcBwxIePHyT/vJDysxAiAedK/8ja3BLMhjbGVcUnOMs
 
 [[packages]]
 name = "@esbuild/android-arm"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-jbPXvB4Yj2yBV7HUfE2KHe4GJX51QplCN1pGbYjvsyCZbQmies29EoJbkEc+vYuU5o45AfQn37vZlyXy4YJ8RQ=="
+integrity = "sha512-kXXoiPVVGQcnIYGOeaovwOURpniDBpSq4A03qkQ+BMQqtGG6HYap3xne9C1O1yo4TR3qxlCX5IqqmX6fFo2Lqg=="
 os = ["android"]
 cpu = ["arm"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIGqGzSZIfKPlm5534bTZWUgD4e2sqdb30PsNKv0GspDvAiEApf/3RqIFP2mFBvt1mAThnbDDIZAN2AydcL+ZPsZPeQw="
+sig = "MEUCIQC/AcMidrPmHQ5i4NqH+CVdQvmh11g4m7SAnjMwfIA2yAIgBtC+OMQ+J1jc/f9cywh2j9fNOIPIBCzao0aI18mCL/g="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQD/xLC0D8WzAJRoBSTgFzl22Y78Ld5ghaDS/utDZsAWoAIgSSj0HrFqSDNeq1cw8QflWKNSPXa9q8M5VCtMCxESK/4="
 
 [[packages]]
 name = "@esbuild/android-arm64"
@@ -193,18 +206,22 @@ sig = "MEQCIBJgPGJE6fw7Ke8MkKbWsR1CorwrJuGmiYjBc1kWc/8aAiA2CYgmkmed0rDEq/Q/bKCeH
 
 [[packages]]
 name = "@esbuild/android-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-62dPZHpIXzvChfvfLJow3q5dDtiNMkwiRzPylSCfriLvZeq0a1bWChrGx/BbUbPwOrsWKMn8idSllklzBy+dgQ=="
+integrity = "sha512-5YfKeeI8qWfBZIX+u2xZC3Zlb3Os/gLS2sbEKM+I4ZOcsWmHS2WLysCcQZDAFRslDUU5Oiq44gf6PYN1vGwG5A=="
 os = ["android"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQDHNjD/a6My6AisRbbHncMiug3qOrT4zhK7PvSmpNOS1gIhAIzaHSIhTExvp0iwR/q6pTN0HIFkIWrCOCCFi5lmP32C"
+sig = "MEUCIQDAnMNrWjmPkgxJLiivTHX5LNMsnGxBwxE/VoFP8kpeQwIgRURvZTSunV4iHUbcHIkJ/V7ZjCPZLh9kyf5r/tGop58="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIHXSKCsZJHwJBmsj8SGElIJczwOCJMZaglB6Ot/Z4tHJAiEAw8xgMwH0TOo+Tdm1XGdbQC/wQAw7Lx7dGWQVWJz0VyI="
 
 [[packages]]
 name = "@esbuild/android-x64"
@@ -223,18 +240,22 @@ sig = "MEQCIEp60fUCpKh29qPXZqPNJn8zJ5kWVNEuG8YozWfcN1vyAiAdMdboI488wJ8sDT85OzQWG
 
 [[packages]]
 name = "@esbuild/android-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-x5VpMODneVDb70PYV2VQOmIUUiBtY3D3mPBG8NxVk5CogneYhkR7MmM3yR/uMdITLrC1ml/NV1rj4bMJuy9MCg=="
+integrity = "sha512-O387ite7SzUyCcy3JQX4P4bLtEA7bLLkx+esve5JHnyYfNTxcVpXZo9jhdB0lTKN44gztELTdU7nS8Nr16Fs1Q=="
 os = ["android"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIDkta1YLSEjGBgEzlZslOMALHBz0PQ/vawgPiVCl9uORAiAm1tZQGtKgj/gebwvm4Fvc3KACtI9DCbjiQg9Yr6pyAQ=="
+sig = "MEUCIA3wRQKxU1PxU7gfqzmqvJJtvfVcqxW2sgxbwCpozOSbAiEAqZ4t3W1qpbEM5ZrT4YCOXmavyF6zUiXIcbQdXWMgUzM="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQCeY/TmEUE/oWLR6Hm6tinqcfdq9y1uorpcCZlHJPcSbwIgM7MN1IOtJG6ri6Aq8jwEEoQCCBkC7rERBqE8FNYPWDc="
 
 [[packages]]
 name = "@esbuild/darwin-arm64"
@@ -253,18 +274,22 @@ sig = "MEUCIBKqLqSaQuZmtgeFstrEiMk2Y3Uzh5koLSDDccMKNNZaAiEAuUNiKH0n1zM3Bw2BHEweu
 
 [[packages]]
 name = "@esbuild/darwin-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-5lckdqeuBPlKUwvoCXIgI2D9/ABmPq3Rdp7IfL70393YgaASt7tbju3Ac+ePVi3KDH6N2RqePfHnXkaDtY9fkw=="
+integrity = "sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw=="
 os = ["darwin"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCID5txhff/lOnRgyQBbDh7GeyIWZ/PhlSKpaVGgeeEI1cAiADkVeir0sbl9QAhmiRAE/ErOOkjYgAe78gXEWYqvYHfw=="
+sig = "MEQCIGSX+CMquP0FxAe4G1+nAWzcQDAO7xd/s0TWYT24emYUAiAkIWTpZqx5jIhcwU6YaBBOBrW4QDcAqiL9jGLFw6OJVQ=="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQDjRaNAPOHDAtYqojDhIRx01djil7EzRrKRyRRU21hSUQIgB8fGE7MlUGL0NcoaNDxwZ012TEpzQeLaB3RCphUlz1I="
 
 [[packages]]
 name = "@esbuild/darwin-x64"
@@ -283,18 +308,22 @@ sig = "MEQCIH4YNHAqvKnkvLM2SMCeDTxcgM1A8QU0hZY9Bz4jf4QdAiA+PwBbz7AwznhBdmmLMQklx
 
 [[packages]]
 name = "@esbuild/darwin-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-rYnXrKcXuT7Z+WL5K980jVFdvVKhCHhUwid+dDYQpH+qu+TefcomiMAJpIiC2EM3Rjtq0sO3StMV/+3w3MyyqQ=="
+integrity = "sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw=="
 os = ["darwin"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCICikAgw7H5BfO6qmgelvE5O43Fc3hWudZv5wK8qf5yYmAiALmSfIYUpqKnNpLN7OEuD3GJbqOxxeZt3hLSI7DWUpxw=="
+sig = "MEUCICBQJsFjYVkEtX9p6UcYpM8hmF2VjXMYmV/TN1r26a/FAiEAuCdlyZs4e23rjHLmc6PnqnLrZsFy0ld43dwwRcUO+Tk="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIDFwDY0S7S9VX2eoxda/Eg0tgGBxUx87Qns1Ds6ZKAaQAiALduhY0gielUBP5GKDMz3wGKSnzNPC9AmSRvDSQwlTFg=="
 
 [[packages]]
 name = "@esbuild/freebsd-arm64"
@@ -313,18 +342,22 @@ sig = "MEUCIQCRKFs5V7ci0QMxMHCM3iXsgXQM8Lcn8lcCJnAKfYA6TAIgCAvui+iYw8RADbSa/7//W
 
 [[packages]]
 name = "@esbuild/freebsd-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-B48PqeCsEgOtzME2GbNM2roU29AMTuOIN91dsMO30t+Ydis3z/3Ngoj5hhnsOSSwNzS+6JppqWsuhTp6E82l2w=="
+integrity = "sha512-n+I0BTSRIoy+d6RPKnEVwql5UwBJolytvY4mAOIEJorKlqgPII8ix6slVVrfZ5Tnj7glIZvloylbB/EJPMWEXw=="
 os = ["freebsd"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIA9Rd4h/vq55NntGAgzWhSqeki8Cq1BXrMI8v5RI90UOAiEAonMuN2XVxtl6PBABOEzqQbBmj8eXBh/seQYzQX4eBRg="
+sig = "MEUCIQCkEePorcqa/w/8CZXluhy4gOxBL98SGNjhp4gk9DQmCQIgeBoXDHspSdXnDzpkPsg9x1cuCRlp3RIgDVxiQaZzuDE="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIHmQYBTHgOO2mGTKeRiroJ9GMvL++ggaWs9marpL/Za/AiEAiLp2CEXx2eWz6Eis7++loPdiD8rMVLcYLrvyUjiwhmQ="
 
 [[packages]]
 name = "@esbuild/freebsd-x64"
@@ -343,18 +376,22 @@ sig = "MEUCICF2TFYAm3xeX8SLgpQj0LMfBOXGS6v52i/OJpxsBGrKAiEAzyuqgTt2WxHxJE2z+GzbQ
 
 [[packages]]
 name = "@esbuild/freebsd-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-jOBDK5XEjA4m5IJK3bpAQF9/Lelu/Z9ZcdhTRLf4cajlB+8VEhFFRjWgfy3M1O4rO2GQ/b2dLwCUGpiF/eATNQ=="
+integrity = "sha512-78XJTJkvPs0kz2w61301PJjXl4g7q3JqiYMZ/M/yVI73EHBrCRTgkhu9oqG7vPqq+a/yadEW8aD+agKlk5xrmg=="
 os = ["freebsd"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIQCexGXzA5cpmriMDdelxNZ7rY0SaQuCcdFXtvBs/rkWYwIgIjzcv+zJeg+/KFOiy9U+0eJgQvu0N2otFTn/GsQcL/M="
+sig = "MEUCIAa8/TxdnInKgvfJU5kO6If3KR5MFFyIPTMMCdpDLiaLAiEAyvUxqKheT9S0nuuoxrkJrDmMKMQqkpn+I37nUjIiz2g="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIGmu1ld8a3TVLQtYyQbpQy8LyVtYVXP4WlkRa0gsGKHZAiEA6NkWOKjMfWzOurzZDIrnXZ9aFOw773bJMFC1TbufPwQ="
 
 [[packages]]
 name = "@esbuild/linux-arm"
@@ -374,19 +411,23 @@ sig = "MEUCIQCGUtMZL+j20gVuXLu+P3kG8MGhQF1RkcZ1bL2WmSYerwIgV0rC8qzftwm6TOacELvxf
 
 [[packages]]
 name = "@esbuild/linux-arm"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-RkT/YXYBTSULo3+af8Ib0ykH8u2MBh57o7q/DAs3lTJlyVQkgQvlrPTnjIzzRPQyavxtPtfg0EopvDyIt0j1rA=="
-registry-published-at = "2026-04-02T16:41:58.232Z"
+integrity = "sha512-XlDnu2q5yoqems+xay6wSAcg9DDD7K9RLKZEBOMZm3ckNpJBvOX20tSfby8KfrrhINDyv9V2YVZKY/SpoGJI8w=="
+registry-published-at = "2026-08-08T19:59:05.063Z"
 os = ["linux"]
 cpu = ["arm"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIDoIsYgzey+FNFsQKFiynjqaIPO93DlKWNjN5Ag5f1//AiB/5lMqwuBvpmy61fwuz/722Rjce84rp5fFS4dcRARL9g=="
+sig = "MEUCIQDP/mk/GO/Qs72i6dnYRLIK29FPmfOe48EnRu8C62QsvAIgTeYmYwNWQj0I+ukK+9V/CEr8e5A9R49caIyQwvGhS6E="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQCvEf20qq973XpZGwjJH1pDyxH5QJIGdntQIuGU8XcYDwIhAOPnyfT4PkopzGrsrmQmOUu5SiiWpnRZ3kzI1fKQ8EsW"
 
 [[packages]]
 name = "@esbuild/linux-arm64"
@@ -406,19 +447,23 @@ sig = "MEUCIBvG1WvNrqpN9U4K6B8dye+nMCxI5rPAv4IA2fSiOeCcAiEA/4lJwFb5DWRi8UTKbn2vA
 
 [[packages]]
 name = "@esbuild/linux-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-RZPHBoxXuNnPQO9rvjh5jdkRmVizktkT7TCDkDmQ0W2SwHInKCAV95GRuvdSvA7w4VMwfCjUiPwDi0ZO6Nfe9A=="
-registry-published-at = "2026-04-02T16:42:03.486Z"
+integrity = "sha512-pW4AC0P3it8c7do9MVM4p51FzHzdM/TZrerurgRcHJ2WTa1VQ1CIq18xncfpBJw4ojkiZZrKW2yIBWBP92j6Ug=="
+registry-published-at = "2026-08-08T19:58:09.809Z"
 os = ["linux"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIH/wksEqn41QY4kOz1svmJ5GITPuzcFjc5RyFQh3LD+1AiBk3Mr7FY8pl4CyoLFlrMEFRgmPS1ewoWOHjnklJw2dCg=="
+sig = "MEUCIQCHCNUKIrdyrZ3Oc80K5oqhYNbr9pWnY+iLL7wEAWTPRAIgRGvTZfsS9aOsQmEGaitWAoqtOwnSl+ZDoDAI8oQMiL4="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQCcR1ttQNGi11U5I2jLZ02MUfavyb7pan2y2QVSgvuzqgIhANi/or/aKsw3UupdtBfVlVFEo8BbpLzc0XSGH48Wli/X"
 
 [[packages]]
 name = "@esbuild/linux-ia32"
@@ -438,19 +483,23 @@ sig = "MEYCIQC4FAuFGFNDNeNJicKbXmHUgr3yE0e1jiofNyIW84eihAIhAP/DC/krhz+npNeopbx2K
 
 [[packages]]
 name = "@esbuild/linux-ia32"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-GA48aKNkyQDbd3KtkplYWT102C5sn/EZTY4XROkxONgruHPU72l+gW+FfF8tf2cFjeHaRbWpOYa/uRBz/Xq1Pg=="
-registry-published-at = "2026-04-02T16:42:08.520Z"
+integrity = "sha512-CYbnj78HsIeA+DhgUKgFCfvNsTHFhMMrinUrMZpDXJXKN8T3XViTZ/+wtHeVxEWY8ewSzTFN+nRmSwO2tZaLUQ=="
+registry-published-at = "2026-08-08T19:59:16.606Z"
 os = ["linux"]
 cpu = ["ia32"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQD8G9k6Y4/TMpkeA/n3CJxCepfWpCT50fCb9otHaIj2LwIhANiwYi0fNEddPSGVlnYDPKVQfdb931wHYkAotUic6pNn"
+sig = "MEQCIDs/rFNUDQ4FtsYP2IR1eOyLlr1NLf4U+DholIPDPzP3AiB07JfAuUcSU1vyTB/S1jWNMa4lgKLbb2Qc7PQoA9XIlg=="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIHl1w9pNZoOeMhjgHGYt1cGKPLmvjx+FIRIipZ+jagoGAiB7BlpLrsXRLvdOnlnk1/41NxyVCnrHi/+GTUZZJ1Azmw=="
 
 [[packages]]
 name = "@esbuild/linux-loong64"
@@ -470,19 +519,23 @@ sig = "MEYCIQCAh97iYNHubF8NPRQIIpWk2sxbQbW0AsWKb60C8Fn2fwIhANrAwZK14qELLtCr9VBFU
 
 [[packages]]
 name = "@esbuild/linux-loong64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-a4POruNM2oWsD4WKvBSEKGIiWQF8fZOAsycHOt6JBpZ+JN2n2JH9WAv56SOyu9X5IqAjqSIPTaJkqN8F7XOQ5Q=="
-registry-published-at = "2026-04-02T16:42:13.817Z"
+integrity = "sha512-buwkd8nsph4R+ajRvw0qM5Hja/TXQow3ptzWO2EbG/cqcIkHloRrdlBtQlshyYGTNFvfkfJ5tpPLVkY4DtsPfQ=="
+registry-published-at = "2026-08-08T19:58:20.989Z"
 os = ["linux"]
 cpu = ["loong64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIBAq61uSDiNThLv8PHT88ud1sSP3ONm/jfxGAM3aSTwPAiA5WciD7QnVqq1ZRvz5gUGUuRxO3DYBc+V16ZhnGj+hSw=="
+sig = "MEYCIQCso+8RDNI+tHeSts7u837+a0qLM15GsbH5N15GrMcs4wIhANeMX56V4F7TF6/EsuqiVX8TqRqaqMvs1pSiegCQMWd+"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIHJeFHk7KZEpudNRgaJqHk7vBwVD+6SLpKfpwQxLZa4fAiBal7osIOWFF0AmauwK2NjK12+CgzlwbSxYCeMQoNZcdg=="
 
 [[packages]]
 name = "@esbuild/linux-mips64el"
@@ -502,19 +555,23 @@ sig = "MEUCIQCdzhruIkTxGjaujqWuq/vPf56eb2V+KeMlWyUu0SjZawIgB0L/AmdWTpK2F0nhkQ8qr
 
 [[packages]]
 name = "@esbuild/linux-mips64el"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-KabT5I6StirGfIz0FMgl1I+R1H73Gp0ofL9A3nG3i/cYFJzKHhouBV5VWK1CSgKvVaG4q1RNpCTR2LuTVB3fIw=="
-registry-published-at = "2026-04-02T16:42:20.054Z"
+integrity = "sha512-ZVykbDyk7519VwiNb9Lcj9m8XM6v5V9uKPvrEMkkEedVewf+0itkhahp4HDpgERXhwLRpWFypsGbG/J8s0QjJA=="
+registry-published-at = "2026-08-08T19:59:27.374Z"
 os = ["linux"]
 cpu = ["mips64el"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIDInycU9QyR3cpjFmYlDiRHTlfqZrkbwbfybgMqOMDzzAiBZNh2hJ+84EWO9F3bZgByhYrCQY9CBaoc92tCCjLb90A=="
+sig = "MEUCIDQ32rx4SnFw3IwGn3bpl6aGlBHUs9iViN6ykLYrUrhSAiEAhIWS+frtoQPvAiaG+3xIm4Q3+toHEH3YMpu4lHVoMBA="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQCvEIQOUreIV3yoBrZVX1b5VHl2rss/tqRMBiAzra9vtAIgXXSzY37BPQRpnDEJwfrivRy1TWRO9ywJTjsPGRZBnes="
 
 [[packages]]
 name = "@esbuild/linux-ppc64"
@@ -534,19 +591,23 @@ sig = "MEUCIGZVzRpUdKRQpw/FrQVUtv5+8hU3qWdNiuA0UALpQIzsAiEAlI4LVjS+4GovJ+FEBXPyr
 
 [[packages]]
 name = "@esbuild/linux-ppc64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-gRsL4x6wsGHGRqhtI+ifpN/vpOFTQtnbsupUF5R5YTAg+y/lKelYR1hXbnBdzDjGbMYjVJLJTd2OFmMewAgwlQ=="
-registry-published-at = "2026-04-02T16:42:25.239Z"
+integrity = "sha512-CAXl+Dtd9UUuJd8pKKdwh6MLm3MUMiqMPmhZ3tTSXPqfyQ3vDl6R5hZdZ/kYojK4ofXtdfSv1tFq8XzWx3heNQ=="
+registry-published-at = "2026-08-08T19:58:31.588Z"
 os = ["linux"]
 cpu = ["ppc64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQCNPh3CEp23Csh2yTQZHdMGFCbjxjVTay9NjV7thxrT4wIhAJYxakx8wiw24C7w5ULCG6BTsNYr4VuwCFX6JCSFiXvG"
+sig = "MEUCIBQpIOVjeFnjXcwR2/HiPmU8TbjEzze/Cfhi8Yojq57wAiEA5yHU8W96o99oVDcMY0PBUfE9/ykIkX/owpLeT0kDlgA="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQD/4J2zbK48DbU/E+kKVEvq/+rdFypmY/JbNmv8MXu7GAIgTROzK49EolVf4WLueqRAu8qG5ENamXuORXWfsTxRRMw="
 
 [[packages]]
 name = "@esbuild/linux-riscv64"
@@ -566,19 +627,23 @@ sig = "MEQCIH6E6PlgjjkwZonwzgOPdVCEkWplXyTws9GLkTKNVbM6AiANoNhULD2gZmq1eomFBAc6V
 
 [[packages]]
 name = "@esbuild/linux-riscv64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-hL25LbxO1QOngGzu2U5xeXtxXcW+/GvMN3ejANqXkxZ/opySAZMrc+9LY/WyjAan41unrR3YrmtTsUpwT66InQ=="
-registry-published-at = "2026-04-02T16:42:30.726Z"
+integrity = "sha512-GeXCej4IQtU1B+QlDV8W/RRvbzI3O/Stss+/bCXv4lZls5WGRtu2a+3JkA3i4qIUlMXpcHebWpF8AkJhATowuA=="
+registry-published-at = "2026-08-08T19:58:36.707Z"
 os = ["linux"]
 cpu = ["riscv64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQDHuIJokXHLp3yfc1kjToSdlXBztvO+nR9AmVZGAcmC3wIhAPrThHsf2Z682vl/uEkGQS8c2kyCvKoGQpr/aOfEWj6N"
+sig = "MEYCIQDXcTuXQwp3r91qKeoIiBvNc5TxjRD2s0S4DdQH0pBJDQIhAKPeOwxYaAcMFPYGKUf1PB5ohlrdhDcZiTUMQzk/8Z1Y"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQDSpsVACtomPPCt4EmRMuPEjLCMfYYQc+bijI7TwYggbgIhAOjQ5lW+n3NHn6rFtDTQZ6GiWWVHvccmTbEZi8pyv8CY"
 
 [[packages]]
 name = "@esbuild/linux-s390x"
@@ -598,19 +663,23 @@ sig = "MEYCIQCEENS2VJSaWdJuV/rYCGlYvMQIAck9zGHn6UjOjj/1zwIhAJMhki8knasG3JRlkyXuq
 
 [[packages]]
 name = "@esbuild/linux-s390x"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-2k8go8Ycu1Kb46vEelhu1vqEP+UeRVj2zY1pSuPdgvbd5ykAw82Lrro28vXUrRmzEsUV0NzCf54yARIK8r0fdw=="
-registry-published-at = "2026-04-02T16:42:37.184Z"
+integrity = "sha512-3H1weTYZPxt/WOhByszQZybS9w5lKzUn1FDMsgEChbHWQwHYQQRfBxgCcZvPhjHfKyJjIievvMmEUawJrdY9Dg=="
+registry-published-at = "2026-08-08T19:58:42.447Z"
 os = ["linux"]
 cpu = ["s390x"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQDhCfvgwMxI92v7THyok6OVYdDmzjCoRm3T9WKHEh2VwgIhAOtHPm6O+o/HHIxj3wj6V1m0eBS86MKy1/xUQ7Fk4iDz"
+sig = "MEUCIQDFNvipLbbYOVMckJ/itGJ0Rkwiw6FpyffzbQ902ZqhrQIgDde2BNSkt9VTQAcEWAYmZSiSwPaWtmIY1LhR4ZCb3Bo="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIEPy+bpq7SLtzGGxoQJ9Nk+Z6zj7SvNRrXmtCR6TgjtMAiAVn4/wQ6yA2biIc05hdWdiJNn/XIOJ42n/lVfdbmCW8A=="
 
 [[packages]]
 name = "@esbuild/linux-x64"
@@ -630,19 +699,23 @@ sig = "MEUCIQDqbMeBw+AT0Lhri0gmueZa0LJBx7PkuiNDVIixXLr/gAIgDBTqcyhwwqZ0j0R/JLll8
 
 [[packages]]
 name = "@esbuild/linux-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-hzznmADPt+OmsYzw1EE33ccA+HPdIqiCRq7cQeL1Jlq2gb1+OyWBkMCrYGBJ+sxVzve2ZJEVeePbLM2iEIZSxA=="
-registry-published-at = "2026-04-02T16:42:42.543Z"
+integrity = "sha512-4xTZr1FUmSoQW4XIWmit3tzQrUTZM+N3P0XV8xROKYF50XfI7xeO90+1bZvNwxIufQ9hDQVRJH5YhgPVF8A/HQ=="
+registry-published-at = "2026-08-08T19:58:48.257Z"
 os = ["linux"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQCzAltLxh/ivVY5ZK22oQK5i9DqQfuzjjB3alrVIHJPrgIhAJ++opuwx5yhVTfyZU2kqkraIuR1FxWLLRySMTdoIoFV"
+sig = "MEQCIBpiCbfJqHq0EVLd37+lOt0WSZdFMcpRlki2KbAaJBIcAiBQ5JjxOFu6I7EYzb2BZZt/pOB96qt8+yHU9GXHeo2xbQ=="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIEf+Y2oYLmTsKe1fQfg72RzhNKl2d09aqHAp0MpXk5aeAiBgmVKYjlqsU4rM0dImyy7Z8xXwpnLDV6i+ng4PRqWW1g=="
 
 [[packages]]
 name = "@esbuild/netbsd-arm64"
@@ -661,18 +734,22 @@ sig = "MEYCIQDBc2tTbIVU4gvuI5ngzbIoK9ejvo/yhjdH4Zr78KOsBgIhAKrCR8Eum9NsuRqEVvNaI
 
 [[packages]]
 name = "@esbuild/netbsd-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-b6pqtrQdigZBwZxAn1UpazEisvwaIDvdbMbmrly7cDTMFnw/+3lVxxCTGOrkPVnsYIosJJXAsILG9XcQS+Yu6w=="
+integrity = "sha512-sSATRjPeDBg3pdgHoQfoYBob11Kk1FGa9lui5RIHZCoCkJa9QKlvl3/vKz2usCmYYjs7ymJR/2Nnsqe+Hjt5nw=="
 os = ["netbsd"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIAkOLA37f+yQoLScbnELemobuVuc5LA0UfwwcR7sPlakAiAwYt5DEAUh3VSr8D00nz885Il/4lRtXw1Yl/4rT+y6hQ=="
+sig = "MEYCIQDuXWBQZ6OhFyFnOfNqleJ9R/nscu7b6L7YfEI0yM2MPAIhAPIPZFjPAtE27/K6Hm+PRkP3gezH+t7yG4yQPg4Emt/p"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQDKuuefHN+1t8R4/4x3B4FsYB2X8x6bQ9sF50zaK/VsswIgVZKGAx8YoOeH6nvLOpM7BxfoFoAimp95yYRiOXKDHWo="
 
 [[packages]]
 name = "@esbuild/netbsd-x64"
@@ -691,18 +768,22 @@ sig = "MEUCIQDlCvlqebUkUKtEHx2CYQm6fcsLtE98XQmxv8jQxxvgTAIgO2kTSIQ67lEr+WvXcRx0J
 
 [[packages]]
 name = "@esbuild/netbsd-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-OfatkLojr6U+WN5EDYuoQhtM+1xco+/6FSzJJnuWiUw5eVcicbyK3dq5EeV/QHT1uy6GoDhGbFpprUiHUYggrw=="
+integrity = "sha512-lqnzCV+mM0gIADaKihiCg6ifgfU2L3h5E33rNQBN1Y4MaVGnzryzmvvf7UHxprpQdE8hpqLolJ9Rl+SkIRDpyw=="
 os = ["netbsd"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQCGHvGzSD0FCYbbQ7kybZtB6yl0ZpRMxNlsIipjC5F8sQIhAODn5RWiVBEnq2clLGurg/ZsGqmutfX87nDeLQddIGAC"
+sig = "MEUCIQCCLrJRhHII8AQny+WvgS+XaXl5dq77y+CIJF2mJdxsDwIgPMF3NCk8TRXsOUj+xMfGdWQ4IaXYpdSH6o0qerh5lsY="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIGfkbWE7gdCjusE7HLzraC+qikeQFZnC6+qyZLFViBN/AiEAhLiNaTPfW+t2jbTLVuShxPKhNadwi58cb7r0ENFfZug="
 
 [[packages]]
 name = "@esbuild/openbsd-arm64"
@@ -721,18 +802,22 @@ sig = "MEUCIQDW3x9xs8fw1mXXs5Q3dJpx75ImexLvH8alhmvoA4XPTwIgQdYievSSXkmpMX8Ac7sIK
 
 [[packages]]
 name = "@esbuild/openbsd-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-AFuojMQTxAz75Fo8idVcqoQWEHIXFRbOc1TrVcFSgCZtQfSdc1RXgB3tjOn/krRHENUB4j00bfGjyl2mJrU37A=="
+integrity = "sha512-AL2qJILH7lNjrDmCQDvdxMfAUIv8KMNZOvrwAQ8i8//ntL9FflhOyMJ8OZSMBb8/AWXe3/5v5S20y3zCoZWKoQ=="
 os = ["openbsd"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQDsyD0Nx5THKlJjaJcE4v3BGcRLHQvsCRLDm4+vrC9NewIhAPLxbQR9hZcpfYbQj+vgKUZcsftN1ZGFsZb6L13Ja9k5"
+sig = "MEUCIGhRySbaGv9uVR51O8v2zlsuO1SBT/pnDS/VpaDVhv/xAiEAyhlWe/RTHoH/0sHdGqVSAWK8DxkuwNDcKKEtKdxK0FU="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIC46gU9lv1HpYF1KB0hcJ3vRgGrfbmMrOmyRwIl1ZmD8AiATJZkvKR8lkC1esYrm1FVb+dhJqdxt1uEE5aIF8eI2CA=="
 
 [[packages]]
 name = "@esbuild/openbsd-x64"
@@ -751,18 +836,22 @@ sig = "MEYCIQDJy9mCHiWTWGmDS/d5cQ/6y781EXw25r15xXJoybAr3AIhAKeHVMqwxPnVNakoHyX1n
 
 [[packages]]
 name = "@esbuild/openbsd-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-+A1NJmfM8WNDv5CLVQYJ5PshuRm/4cI6WMZRg1by1GwPIQPCTs1GLEUHwiiQGT5zDdyLiRM/l1G0Pv54gvtKIg=="
+integrity = "sha512-QtiuPytchRyC4rwUKhexJdQKvDuZ6hWloi3igqPQNUJCS1/v9EiO3UTOXR6A3FoMo4fnAKbWJdqaIwhOzh8qEw=="
 os = ["openbsd"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIQC7uBoDmkkMWyZEyYIF7h9iopyUeDTOR2Qyqu0QxmIRzQIgZm4cdFlgit0/mKiDr7tThEqaTIlQXWsWQe8eJSiUEo8="
+sig = "MEYCIQD/BXVQOVfMe3HGgcjwwpcAj/POgFzEGJR0cFEFhcWU2AIhAMDhTsUhXy50BGCqytb9XweIQG+hfXZC/99iq+KvBisI"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQCb3AZLYFWzyw3rU34hgL/VP5uKgDKPyJcyLXuy1qdujgIhAPDijBNFCODKLoFzegYfytKABnoLxDW9h+Z/aDgr6sBZ"
 
 [[packages]]
 name = "@esbuild/openharmony-arm64"
@@ -781,18 +870,22 @@ sig = "MEYCIQDAkA/7kGZwWTfbIN4sPbMEB96BFL+phx19H0n1cpCcOwIhAJRjW04+rgi6nUByLgfwL
 
 [[packages]]
 name = "@esbuild/openharmony-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-+KrvYb/C8zA9CU/g0sR6w2RBw7IGc5J2BPnc3dYc5VJxHCSF1yNMxTV5LQ7GuKteQXZtspjFbiuW5/dOj7H4Yw=="
+integrity = "sha512-WkhYDmpTjLvGlScA1rwjRUmhl4k8oXR3cIbtqWmELgU/dFeHHlEllxDvdWcNJV9rbzCexB5vz8gtNewWLgCT7Q=="
 os = ["openharmony"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIH33dHgHIeWVKN3CLgY/dCEY9g99MypM1eWFHct0EG4NAiEAq2bETATQNeYDThTYrt9DIQ5SwdzClNNq28jhr94k4Os="
+sig = "MEUCIHmdHeVPILjAJ819MaRqaBonyIFJBvRWTvBMJXJ6n6KqAiEA2CgZj1eLZ8wJa7qcyMBTinpLOW+UTX9lEdLlcLDEMeY="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIDoBpvDZMubtG+WLIK530lLEWhI5PU5OdmY3XfLjm8qNAiBdKg0D1R7R5w/SVebiOl0iuTv3hpk+aZoJsGvsFxk7WQ=="
 
 [[packages]]
 name = "@esbuild/sunos-x64"
@@ -811,18 +904,22 @@ sig = "MEYCIQCAmDGJDplN70eFWpv4Nwao1GnpGQi7k9reuHRism//cgIhAM3YWBjW6LGkMHzFnkUM8
 
 [[packages]]
 name = "@esbuild/sunos-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-ikktIhFBzQNt/QDyOL580ti9+5mL/YZeUPKU2ivGtGjdTYoqz6jObj6nOMfhASpS4GU4Q/Clh1QtxWAvcYKamA=="
+integrity = "sha512-GPMSkTOtMnv2U2F8gxe4Io6qmVs+YKyp832Etqqxr0hFngmXQ3rzwytelm3GIn7T4VviRUlf3sOgBOiTdvaf7g=="
 os = ["sunos"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIQCpoOGgFXeiHvSWBfBfYl21SnOCYosDZJ/UgRgH9WLbagIgWz6bHWHoj7tvBjs+0uHFOkOi1Be8DZWevt/4ja9aEoc="
+sig = "MEUCIEic8YiCOvn5g0ALQx6YrjIoL8sb0sUDphd9yu9zt3FBAiEA4BdIZ3PhOehAbWpTuvn93kCzU7HoHzSix0DnRiaNnzY="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQCfwniAojRgg7vBoFhF2NYceDsaYhB6as3QcEmWQPbJtwIhAP7fbANsDz2rOz3MnbESQ96loIweYDrESKs+EJi5Y0rq"
 
 [[packages]]
 name = "@esbuild/win32-arm64"
@@ -841,18 +938,22 @@ sig = "MEYCIQC6aORZJDIMQWs6zeURAdzGQU/tXLOJ9QXkrRtrGc1btQIhALxsMi3brZmGq5hU7tn5s
 
 [[packages]]
 name = "@esbuild/win32-arm64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-7yRhbHvPqSpRUV7Q20VuDwbjW5kIMwTHpptuUzV+AA46kiPze5Z7qgt6CLCK3pWFrHeNfDd1VKgyP4O+ng17CA=="
+integrity = "sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ=="
 os = ["win32"]
 cpu = ["arm64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQCkqDd63zv/h/DVprM8QGMMyDTa3pWJY8w7fRwZ/Uy2hQIhAIcOv0sC4eI51qKvvGFZbE7XgJBsOzyJPWle1Vh24DiL"
+sig = "MEUCIEghIl5XKdPqVsY6EcaYnmToM6qxg5sqM7gKrj+MmwjJAiEAyzcTKIMhFS2jOn8/M6AGN2OU5nStl1rPHqRIXJibiG8="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQCtxET9g3g2QwRiQVFJrDY5w0okAZUmjW3no5eRkA34fgIgA/6VRQ8q+XT9OX3oiO9mZB/3Wk7BmoTK9a7PeXI/wT8="
 
 [[packages]]
 name = "@esbuild/win32-ia32"
@@ -871,18 +972,22 @@ sig = "MEQCIGhgyYkk2gBup14bXWncW+JrTAzFh8M5XTZzl7pdgarPAiBRRzNsgOrmoFxp37y+gLCb6
 
 [[packages]]
 name = "@esbuild/win32-ia32"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-SmwKXe6VHIyZYbBLJrhOoCJRB/Z1tckzmgTLfFYOfpMAx63BJEaL9ExI8x7v0oAO3Zh6D/Oi1gVxEYr5oUCFhw=="
+integrity = "sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA=="
 os = ["win32"]
 cpu = ["ia32"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIFBEjvsE2njeAU60e1JHGhPsaCk038scnlGxffmuK/RbAiEAxKCQRx062UQTpJmAamzKjTfYRSD55uX++Qonv+U9Wzo="
+sig = "MEQCIBU0Tf8t8xhwGLmH0lJQodxUYidx05di/XSIDR0yRJikAiBLpm3fDePFJQYAQn2DmArOSe7Bx3nYuu8BQ7uD+mVtNg=="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQDeDCOftaFn6HpEyzH/5Tby/7D0EKgiw3rk+XKTPdwIjwIhANISvqNm2WprRlv/JpdelCZn/TanLtbccIj+2JYagOAV"
 
 [[packages]]
 name = "@esbuild/win32-x64"
@@ -901,18 +1006,22 @@ sig = "MEQCIEPZHGD9AQ42eZnnjWyb9fVnCasOPg7ldp7w9UPQySTBAiAU5KAZyJJDUmXrRGXB/PTkk
 
 [[packages]]
 name = "@esbuild/win32-x64"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-56hiAJPhwQ1R4i+21FVF7V8kSD5zZTdHcVuRFMW0hn753vVfQN8xlx4uOPT4xoGH0Z/oVATuR82AiqSTDIpaHg=="
+integrity = "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="
 os = ["win32"]
 cpu = ["x64"]
 node-engine = ">=18"
 optional = true
-tarball = "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIBvbsjufrPvCXE02i3z0tTly0wzn9Cn3BSSUkGUG38oQAiEApfxE/Mp9WcEaEuItoRt+SBEjs3zcCZwklBy7LKsBfrU="
+sig = "MEUCIQCvMbnEGYMw4gc+GriY8NlPna2De2O/zCMEUe4RMSF2VAIgS+u3R+REjPY2C/uzQWmD/e2u5XAKDKES9lWl1mKaYws="
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQDE+HSV4i1D3atgS6f9gJboMzaHztqK/UvEOvEQUGO3CgIhAOoVue5hPWAdLhuxNfD3thdfkl1ajsY2CrJxx2yfoo4w"
 
 [[packages]]
 name = "@isaacs/cliui"
@@ -1585,6 +1694,18 @@ keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
 sig = "MEUCIQDofJg2wXkQsGS14VbFVWmM6wtYK4mjgyw14jKRI9oW9AIgHEU5FA1hbVIL8AcOLevbx/7fWtsVOqmJ95kBksT8YDw="
 
 [[packages]]
+name = "@types/react-test-renderer"
+version = "19.1.0"
+source = "registry+https://registry.npmjs.org"
+integrity = "sha512-XD0WZrHqjNrxA/MaR9O22w/RNidWR9YZmBdRGI7wcnWGrv/3dA8wKCJ8m63Sn+tLJhcjmuhOi629N66W6kgWzQ=="
+dependencies = ["@types/react@19.2.18"]
+tarball = "https://registry.npmjs.org/@types/react-test-renderer/-/react-test-renderer-19.1.0.tgz"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIG/XLnKywMrtRvVQ3yhBW9jWcFEfNwU2G8uVaI2QHK+QAiA2P2HPN/AEohDF/sVokogA/2bpMLmu+nGnmo1hnG0Hkg=="
+
+[[packages]]
 name = "@types/sanitize-html"
 version = "2.16.1"
 source = "registry+https://registry.npmjs.org"
@@ -1908,7 +2029,7 @@ source = "registry+https://registry.npmjs.org"
 integrity = "sha512-3WrrOuZiyaaZPWiEt4G3+IffISVC9HYlWueJEBWED4ZH4aIAC2PnkdnuRrR94M+w6yGWn4AglWtJtBI8YqvgoA=="
 node-engine = "^12.20.0 || ^14.13.1 || >=16.0.0"
 dependencies = ["load-tsconfig@0.2.5"]
-peers = ["esbuild@0.27.7"]
+peers = ["esbuild@0.28.2"]
 tarball = "https://registry.npmjs.org/bundle-require/-/bundle-require-5.1.0.tgz"
 
 [[packages.registry-signatures]]
@@ -2134,23 +2255,6 @@ keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEQCICiA31uTgHBNtLV9aaXHs5I2hmgK6n4WVZPWyzKgz8iKAiAhU+FG5S+wS8GhI5m8WIdC1ipreifFh7AIoPquR70FAA=="
 
 [[packages]]
-name = "dom-serializer"
-version = "3.1.1"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-4MEa38/QexBob6gFNwu+EGdWvhJ1OKuNwdYY3Y3NyeWDQfnGeDYQUDfIRzWu5B5gsv03so2Uxd28YC6zrsx3Lw=="
-node-engine = ">=20.19.0"
-dependencies = [
-    "domelementtype@3.0.0",
-    "domhandler@6.0.1",
-    "entities@8.0.0",
-]
-tarball = "https://registry.npmjs.org/dom-serializer/-/dom-serializer-3.1.1.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIEB14lshqAy14qmHrOTbqT465MM/2VDHc7hCFm5g4xWAAiA5lEMd0GGeQGhhA0ZY1l/KgMmzd7+scCNL0H9TgMwF8Q=="
-
-[[packages]]
 name = "domelementtype"
 version = "2.3.0"
 source = "registry+https://registry.npmjs.org"
@@ -2160,18 +2264,6 @@ tarball = "https://registry.npmjs.org/domelementtype/-/domelementtype-2.3.0.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEUCIQD2uaqgv6jh8+WxpNj5scGHlwrHNwC9w/uLtM6LjPlErgIgFYRIcONVZDcunOhww6tppCxLBQ7UtS3RhOA3CkmptVo="
-
-[[packages]]
-name = "domelementtype"
-version = "3.0.0"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-umCQid3jKbDmVjx8jGaW7uUykm4DEUeyV21hPxNMo2nV955DhUThwqyOIDtreepP31hl84X7G5U9ZfsWvIB3Pg=="
-node-engine = ">=20.19.0"
-tarball = "https://registry.npmjs.org/domelementtype/-/domelementtype-3.0.0.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEYCIQD+uKOsFfPfo8R9Ki5n3cXQAiqTB7GLaELS5/hzMJaOCQIhAKUGOQT3/QObEYlMJ26ZgnSArk5awpqAHKpj6mXUuYDe"
 
 [[packages]]
 name = "domhandler"
@@ -2185,19 +2277,6 @@ tarball = "https://registry.npmjs.org/domhandler/-/domhandler-5.0.3.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEQCIC7KylcE5EuEVUc4XxW4/oucmbpKilop06rD+Xj+R8FcAiAQjG/5af4jQ9WDdcsRWYipl1A599kulOmsBAR847XAZA=="
-
-[[packages]]
-name = "domhandler"
-version = "6.0.1"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg=="
-node-engine = ">=20.19.0"
-dependencies = ["domelementtype@3.0.0"]
-tarball = "https://registry.npmjs.org/domhandler/-/domhandler-6.0.1.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIA38r9cSY+MLms9qrIVm1o442dDvotMJkdVlZ4dz4RlWAiA0RE4dM8JZU43pZ+gyaF75G/WpgM6CuvuH32alHt58bA=="
 
 [[packages]]
 name = "domutils"
@@ -2214,23 +2293,6 @@ tarball = "https://registry.npmjs.org/domutils/-/domutils-3.2.2.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
 sig = "MEYCIQC2yubRCrI6TfNaiWRR+/+ywvGlvyUgokHzE5Ynio9nWgIhANGkqMeBpwLaH7sNzZPB4agzSsNSZjTuus3S2nEHjX8M"
-
-[[packages]]
-name = "domutils"
-version = "4.0.2"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-qI4JLRKnSzqFqr7hAlS5xQDusBCjKSEG4t4+7aNrIQMHBcsC2TGEhuyABJdYkgSewL57PNLYEiibY2iPKhKpaA=="
-node-engine = ">=20.19.0"
-dependencies = [
-    "dom-serializer@3.1.1",
-    "domelementtype@3.0.0",
-    "domhandler@6.0.1",
-]
-tarball = "https://registry.npmjs.org/domutils/-/domutils-4.0.2.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEQCIBG7tm4KOfEDoTJJJ+s9zw/qHqd9WGyd6oqfG7WmJtQsAiB3lmG/ojxVRNbGaCAtPHaI8Ay74tAVxcntiBLxxd1FgA=="
 
 [[packages]]
 name = "eastasianwidth"
@@ -2290,18 +2352,6 @@ keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
 sig = "MEUCIFvcF+3IC94wRNaK57bG19CPa5qWvl5LhKWclxasVBfyAiEAth+cLoHnHVsgtiVsPrt+fvXeLOBB0m1xqpe8jqQvL84="
 
 [[packages]]
-name = "entities"
-version = "8.0.0"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA=="
-node-engine = ">=20.19.0"
-tarball = "https://registry.npmjs.org/entities/-/entities-8.0.0.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIQC3uX2TRAeCk8IyaHlOaokfO5vEqi52Qor5NKHfAmVPpQIgHhNwCUJBXnhTye851CXMPD7hOsS7jdZI+1qDIiqw+aM="
-
-[[packages]]
 name = "es-module-lexer"
 version = "1.7.0"
 source = "registry+https://registry.npmjs.org"
@@ -2317,7 +2367,6 @@ name = "esbuild"
 version = "0.25.12"
 source = "registry+https://registry.npmjs.org"
 integrity = "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg=="
-registry-published-at = "2025-11-01T23:36:22.605Z"
 node-engine = ">=18"
 dependencies = [
     "@esbuild/aix-ppc64@0.25.12",
@@ -2355,44 +2404,47 @@ sig = "MEYCIQDV75+AD2172721BPHZDZQackZR0qxlEVFYP7FY1Dtn5AIhAOamA5IiY+Arudl2r0KsM
 
 [[packages]]
 name = "esbuild"
-version = "0.27.7"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w=="
-registry-published-at = "2026-04-02T16:43:44.831Z"
+integrity = "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA=="
 node-engine = ">=18"
 dependencies = [
-    "@esbuild/aix-ppc64@0.27.7",
-    "@esbuild/android-arm@0.27.7",
-    "@esbuild/android-arm64@0.27.7",
-    "@esbuild/android-x64@0.27.7",
-    "@esbuild/darwin-arm64@0.27.7",
-    "@esbuild/darwin-x64@0.27.7",
-    "@esbuild/freebsd-arm64@0.27.7",
-    "@esbuild/freebsd-x64@0.27.7",
-    "@esbuild/linux-arm@0.27.7",
-    "@esbuild/linux-arm64@0.27.7",
-    "@esbuild/linux-ia32@0.27.7",
-    "@esbuild/linux-loong64@0.27.7",
-    "@esbuild/linux-mips64el@0.27.7",
-    "@esbuild/linux-ppc64@0.27.7",
-    "@esbuild/linux-riscv64@0.27.7",
-    "@esbuild/linux-s390x@0.27.7",
-    "@esbuild/linux-x64@0.27.7",
-    "@esbuild/netbsd-arm64@0.27.7",
-    "@esbuild/netbsd-x64@0.27.7",
-    "@esbuild/openbsd-arm64@0.27.7",
-    "@esbuild/openbsd-x64@0.27.7",
-    "@esbuild/openharmony-arm64@0.27.7",
-    "@esbuild/sunos-x64@0.27.7",
-    "@esbuild/win32-arm64@0.27.7",
-    "@esbuild/win32-ia32@0.27.7",
-    "@esbuild/win32-x64@0.27.7",
+    "@esbuild/aix-ppc64@0.28.2",
+    "@esbuild/android-arm@0.28.2",
+    "@esbuild/android-arm64@0.28.2",
+    "@esbuild/android-x64@0.28.2",
+    "@esbuild/darwin-arm64@0.28.2",
+    "@esbuild/darwin-x64@0.28.2",
+    "@esbuild/freebsd-arm64@0.28.2",
+    "@esbuild/freebsd-x64@0.28.2",
+    "@esbuild/linux-arm@0.28.2",
+    "@esbuild/linux-arm64@0.28.2",
+    "@esbuild/linux-ia32@0.28.2",
+    "@esbuild/linux-loong64@0.28.2",
+    "@esbuild/linux-mips64el@0.28.2",
+    "@esbuild/linux-ppc64@0.28.2",
+    "@esbuild/linux-riscv64@0.28.2",
+    "@esbuild/linux-s390x@0.28.2",
+    "@esbuild/linux-x64@0.28.2",
+    "@esbuild/netbsd-arm64@0.28.2",
+    "@esbuild/netbsd-x64@0.28.2",
+    "@esbuild/openbsd-arm64@0.28.2",
+    "@esbuild/openbsd-x64@0.28.2",
+    "@esbuild/openharmony-arm64@0.28.2",
+    "@esbuild/sunos-x64@0.28.2",
+    "@esbuild/win32-arm64@0.28.2",
+    "@esbuild/win32-ia32@0.28.2",
+    "@esbuild/win32-x64@0.28.2",
 ]
-tarball = "https://registry.npmjs.org/esbuild/-/esbuild-0.27.7.tgz"
+tarball = "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIBgWGVehxuJLxudgpeOFjD35yhI/BZzOjIAVtjIVpru4AiEAobLJg/tTLSXQaZdey1AJXbsDbQRLgr9UFWp247rTGe0="
+sig = "MEYCIQCUNxdzUXI/rpHaMMcf/skpuDBkNL7aLEXFFc0dex0NCAIhAMDKoRFFyK2uR0qEIAoCe4pdRrJ3ld2ZCoHNyNuX6ju7"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQC8VkNobVdJrr03U9huHI7n2VhWQ2shvrTvNYB1Mx8gigIgFkrOTUauuovxR8qg94n81hYvSw6PI2qEQkNiqHkmjcg="
 
 [[packages]]
 name = "escape-string-regexp"
@@ -2547,24 +2599,6 @@ tarball = "https://registry.npmjs.org/htmlparser2/-/htmlparser2-10.1.0.tgz"
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
 sig = "MEYCIQDE8GofSUc/TlbSaQ3XlgergocAD2RiqQKNuWPNH45DfgIhAOB3ntTE85OPNxYsuv5h5AxWj6ywemZCTuOGjroeiH0l"
-
-[[packages]]
-name = "htmlparser2"
-version = "12.0.0"
-source = "registry+https://registry.npmjs.org"
-integrity = "sha512-Tz7u1i95/g2x2jz81+x0FBVhBhY5aRTvD3tXXdFaljuNdzDLJ8UGNRrTcj2cgQvAg3iW/h77Fz15nLW0L0CrZw=="
-node-engine = ">=20.19.0"
-dependencies = [
-    "domelementtype@3.0.0",
-    "domhandler@6.0.1",
-    "domutils@4.0.2",
-    "entities@8.0.0",
-]
-tarball = "https://registry.npmjs.org/htmlparser2/-/htmlparser2-12.0.0.tgz"
-
-[[packages.registry-signatures]]
-keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIEM+OojklJ4lCVOSwzGute0EEevjGImq5dOmwZMIfRMcAiEAnJyRv/aLJAouvHQdRuAQrfmp8Zgp9RZOEnuISl5dKG0="
 
 [[packages]]
 name = "is-fullwidth-code-point"
@@ -3169,12 +3203,41 @@ name = "react"
 version = "19.2.8"
 source = "registry+https://registry.npmjs.org"
 integrity = "sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw=="
+registry-published-at = "2026-07-21T15:41:28.716Z"
 node-engine = ">=0.10.0"
 tarball = "https://registry.npmjs.org/react/-/react-19.2.8.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
 sig = "MEYCIQCCmnis0gzyZIp8pPdpFV387Lljmx4ah4Pjs3dgMujpiwIhAPzEs2mi+AlgkTXXTDLnSQ9wtZK8R7ywMKY/mkKjCwVi"
+
+[[packages]]
+name = "react-is"
+version = "19.2.8"
+source = "registry+https://registry.npmjs.org"
+integrity = "sha512-s5un28nYxKJw5gvUHyW5PCC28CvBqLu9r3cWgzHT4Vo/5fqqkFcdRYsGcKf50WMPpjjFZS5d76fn3YCo2njKwQ=="
+tarball = "https://registry.npmjs.org/react-is/-/react-is-19.2.8.tgz"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEYCIQDXFK1x+S8v/1wm5pgH0CnIU8LAZR597GnBdueGMcihFwIhANYMthARiMaVAvn6DY4EItr88PjQCc3RYn3gMPqLGZGC"
+
+[[packages]]
+name = "react-test-renderer"
+version = "19.2.8"
+source = "registry+https://registry.npmjs.org"
+integrity = "sha512-GHKPaDRaNYU24PHTLG8Bx8VMY9t+qNfxQbt/Yjp7aMWBkKU6766SR0n6TnYu7P5I1MfEuAMUadqiyDHyI4Yy9Q=="
+registry-published-at = "2026-07-21T15:42:09.248Z"
+dependencies = [
+    "react-is@19.2.8",
+    "scheduler@0.27.0",
+]
+peers = ["react@19.2.8"]
+tarball = "https://registry.npmjs.org/react-test-renderer/-/react-test-renderer-19.2.8.tgz"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEQCIGspLBG2zuC6XOzWGZiYLNgjHAAE+jI0ESkQWlAtc+7qAiBrfntORda/xFmddyUGM7e4t4b/LOcpYTC3ljl+TKxARw=="
 
 [[packages]]
 name = "readdirp"
@@ -3248,24 +3311,34 @@ sig = "MEQCICrv2HVuSpYn9xJaTqEmXPccHtrD31FbBIDjXKUbFa01AiBmaWVa8JPqaoMFg3lNZp/65
 
 [[packages]]
 name = "sanitize-html"
-version = "2.17.6"
+version = "2.17.5"
 source = "registry+https://registry.npmjs.org"
-integrity = "sha512-M4bo9tfv1yfhQZZKkc6dL07ALrGJtfvNOuhX3hU9AVPR/uPQ+nKOJBqTYc7LfMQblTW04mtSWDJWEyLvygJsLA=="
-node-engine = ">=22.12.0"
+integrity = "sha512-ZmU1joGRrvoyctKIiuwUxqR6moLoU2Wk+2bMccN6f7UwhAmwYDvWziqPxRDDN2Qip62NqnIrVrT9akbL6Wretg=="
 dependencies = [
     "deepmerge@4.3.1",
     "escape-string-regexp@4.0.0",
-    "htmlparser2@12.0.0",
+    "htmlparser2@10.1.0",
     "is-plain-object@5.0.0",
     "launder@1.7.1",
     "parse-srcset@1.0.2",
     "postcss@8.5.26",
 ]
-tarball = "https://registry.npmjs.org/sanitize-html/-/sanitize-html-2.17.6.tgz"
+tarball = "https://registry.npmjs.org/sanitize-html/-/sanitize-html-2.17.5.tgz"
 
 [[packages.registry-signatures]]
 keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-sig = "MEUCIQC+cA/CXlJMUjvb/O2DIWiH6yE1k5QDhIAZUTR3BT5KcgIgJkNNELjJbHjjpZZToM1jVpXPcEDtXaMWRMRc+a4LoF8="
+sig = "MEQCIBNammw2lcbZztk2X/SDiFznQeW6lNQ7UXp4WMbhGr5uAiAgQe9iyTg+SBHY76GR4pHxawsRsL8X8GSiRVl3c59Ahg=="
+
+[[packages]]
+name = "scheduler"
+version = "0.27.0"
+source = "registry+https://registry.npmjs.org"
+integrity = "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="
+tarball = "https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz"
+
+[[packages.registry-signatures]]
+keyid = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+sig = "MEUCIQCack5vHWKaO0QKERoq6u2nwR4oANQ9dLApCdNzJ7eJNgIgW7gYxV4eIWVrzAII08xKwzgRFPaa4iJFwfZAQWlUSsE="
 
 [[packages]]
 name = "semver"
@@ -3629,7 +3702,7 @@ dependencies = [
     "chokidar@4.0.3",
     "consola@3.4.2",
     "debug@4.4.3",
-    "esbuild@0.27.7",
+    "esbuild@0.28.2",
     "fix-dts-default-cjs-exports@1.0.1",
     "joycon@3.1.1",
     "picocolors@1.1.1",
@@ -3850,6 +3923,11 @@ package = "@types/react"
 version = "19.2.18"
 source = "registry+https://registry.npmjs.org"
 
+[root-resolutions."@types/react-test-renderer"]
+package = "@types/react-test-renderer"
+version = "19.1.0"
+source = "registry+https://registry.npmjs.org"
+
 [root-resolutions."@types/sanitize-html"]
 package = "@types/sanitize-html"
 version = "2.16.1"
@@ -3867,7 +3945,7 @@ source = "registry+https://registry.npmjs.org"
 
 [root-resolutions.esbuild]
 package = "esbuild"
-version = "0.25.12"
+version = "0.28.2"
 source = "registry+https://registry.npmjs.org"
 
 [root-resolutions.markdown-it]
@@ -3890,9 +3968,14 @@ package = "react"
 version = "19.2.8"
 source = "registry+https://registry.npmjs.org"
 
+[root-resolutions.react-test-renderer]
+package = "react-test-renderer"
+version = "19.2.8"
+source = "registry+https://registry.npmjs.org"
+
 [root-resolutions.sanitize-html]
 package = "sanitize-html"
-version = "2.17.6"
+version = "2.17.5"
 source = "registry+https://registry.npmjs.org"
 
 [root-resolutions.tsup]

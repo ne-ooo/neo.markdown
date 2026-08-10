@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createParser } from '../../src/index.js'
 import { createParser as createSelectiveParser } from '../../src/core/parser.js'
 import { heading, paragraph } from '../../src/blocks/index.js'
-import type { MarkdownPlugin } from '../../src/core/types.js'
+import type { BlockToken, MarkdownPlugin } from '../../src/core/types.js'
 
 describe('parser quality regressions', () => {
   it('builds a selective parser from only explicitly imported block rules', () => {
@@ -117,5 +117,106 @@ describe('parser quality regressions', () => {
     ]) {
       expect(parser.parse(markdown)).toBeTypeOf('string')
     }
+  })
+
+  it('rejects raw HTML tokens passed to render when HTML is disabled', () => {
+    const parser = createParser({ allowHtml: false })
+    const htmlBlock = {
+      type: 'html' as const,
+      raw: '<img src=x onerror=alert(1)>',
+      text: '<img src=x onerror=alert(1)>',
+    }
+    const htmlInline = {
+      type: 'html' as const,
+      raw: '<b>unsafe</b>',
+      text: '<b>unsafe</b>',
+    }
+
+    expect(() => parser.render([htmlBlock])).toThrow('Raw HTML tokens require allowHtml: true')
+
+    expect(() => parser.render([{
+      type: 'paragraph',
+      raw: '**unsafe**',
+      text: '**unsafe**',
+      tokens: [{
+        type: 'strong',
+        raw: '**unsafe**',
+        text: 'unsafe',
+        tokens: [htmlInline],
+      }],
+    }])).toThrow('Raw HTML tokens require allowHtml: true')
+
+    const nestedCases: BlockToken[][] = [
+      [{ type: 'blockquote', raw: '> unsafe', tokens: [htmlBlock] }],
+      [{
+        type: 'list',
+        raw: '- unsafe',
+        ordered: false,
+        items: [{ text: 'unsafe', tokens: [htmlBlock] }],
+      }],
+      [{
+        type: 'table',
+        raw: '| unsafe |',
+        align: [null],
+        header: [{ text: 'unsafe', tokens: [htmlInline] }],
+        rows: [],
+      }],
+    ]
+    for (const tokens of nestedCases) {
+      expect(() => parser.render(tokens)).toThrow('Raw HTML tokens require allowHtml: true')
+    }
+  })
+
+  it('checks raw HTML tokens added by token transforms', () => {
+    const plugin: MarkdownPlugin = (builder) => {
+      builder.addTokenTransform(() => [{
+        type: 'html',
+        raw: '<script>alert(1)</script>',
+        text: '<script>alert(1)</script>',
+      }])
+    }
+    const parser = createParser({ plugins: [plugin] })
+
+    expect(() => parser.parse('safe')).toThrow('Raw HTML tokens require allowHtml: true')
+  })
+
+  it('enforces configured and UGC input limits', () => {
+    expect(() => createParser({ maxInputLength: -1 })).toThrow(
+      'maxInputLength must be a non-negative safe integer'
+    )
+    expect(() => createParser({ maxInputLength: 3 }).parse('four')).toThrow(
+      'exceeds maxInputLength 3'
+    )
+    expect(() => createParser({ ugc: true, maxInputLength: 3 }).parse('four')).toThrow(
+      'exceeds maxInputLength 3'
+    )
+    expect(() => createParser({ ugc: true, maxInputLength: 2_000_000 })
+      .parse('x'.repeat(1_000_001))).toThrow('exceeds maxInputLength 1000000')
+  })
+
+  it('parses unmatched link openers in linear time', { timeout: 1_000 }, () => {
+    const parser = createParser()
+    const markdown = '['.repeat(80_000)
+
+    expect(parser.parse(markdown)).toContain('['.repeat(1_000))
+    expect(parser.parse('[x]('.repeat(20_000))).toBeTypeOf('string')
+    expect(parser.parse('[**bold**')).toBe('<p>[<strong>bold</strong></p>\n')
+  })
+
+  it('stops direct links at the matching destination parenthesis', () => {
+    const parser = createParser()
+
+    expect(parser.parse('[x](url)tail)')).toBe('<p><a href="url">x</a>tail)</p>\n')
+    expect(parser.parse('[x](url_(nested))')).toBe(
+      '<p><a href="url_(nested)">x</a></p>\n'
+    )
+  })
+
+  it('does not resolve reference labels longer than the CommonMark limit', () => {
+    const parser = createParser()
+    const label = 'a'.repeat(1_000)
+    const html = parser.parse(`[${label}]\n\n[${label}]: https://example.com`)
+
+    expect(html).not.toContain('<a href=')
   })
 })

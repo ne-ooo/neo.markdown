@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18.20.8", "26"]
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install the pinned LPM CLI
+        env:
+          LPM_INSTALL_VERSION: v0.73.0
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL \
+            https://raw.githubusercontent.com/lpm-dev/rust-client/0fcaf264a7de59894b609be280900ac10a8fe534/install.sh \
+            | sh
+          echo "$HOME/.lpm/bin" >> "$GITHUB_PATH"
+
+      - name: Install the locked dependency graph
+        if: matrix.node != '18.20.8'
+        run: lpm install --frozen-lockfile --no-skills --no-editor-setup --strict-integrity --policy=deny
+
+      - name: Install the locked dependency graph on Node.js 18
+        if: matrix.node == '18.20.8'
+        run: lpm install --frozen-lockfile --no-skills --no-editor-setup --strict-integrity --policy=deny --no-engine-strict
+
+      - name: Verify the lockfile stayed frozen
+        run: git diff --exit-code -- package.json lpm.lock
+
+      - name: Reject known vulnerabilities
+        run: lpm audit --fail-on=vuln
+
+      - name: Run the release gate
+        run: lpm run prepublishOnly
+
+      - name: Run tests with coverage
+        run: lpm run test:coverage

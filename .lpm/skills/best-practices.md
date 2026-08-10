@@ -1,7 +1,7 @@
 ---
 name: best-practices
 description: Performance, security, tree-shaking, ugc, safeLinks, selective blocks, and token pipeline patterns for @lpm.dev/neo.markdown
-version: "1.2.1"
+version: "2.0.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -15,7 +15,7 @@ globs:
 
 ### Reuse parser instances
 
-`parse()` creates a new `MarkdownParser`, `Tokenizer`, `InlineTokenizer`, and `HtmlRenderer` on every call (`src/index.ts:41-43`). For any code path that parses more than once, use `createParser()`:
+Optionless `parse()` calls reuse one lazy parser. Calls that pass options create a new parser. For repeated calls with the same options, use `createParser()`:
 
 ```typescript
 // Good — parser created once, reused many times
@@ -24,13 +24,13 @@ import { createParser } from '@lpm.dev/neo.markdown'
 const parser = createParser()
 const articles = markdownFiles.map(md => parser.parse(md))
 
-// Bad — 4 new class instances per iteration
+// Also cached because these calls do not pass options
 import { parse } from '@lpm.dev/neo.markdown'
 
 const articles = markdownFiles.map(md => parse(md))
 ```
 
-This applies equally to preset imports — `@lpm.dev/neo.markdown/gfm` and `@lpm.dev/neo.markdown/commonmark` both create a new parser per call with no option for reuse.
+The sanitized, GFM, and CommonMark `parse()` entries also cache their optionless parser. Each entry has a separate cache.
 
 ### Use sub-path imports for smaller bundles
 
@@ -67,16 +67,19 @@ The main entry imports all default block rules. Passing `blocks` there changes r
 
 1. **`allowHtml: false` (default):** HTML blocks are entity-escaped (`<` → `&lt;`). Safe for untrusted input.
 
-2. **`allowHtml: true, sanitize: true`:** HTML is allowed but passed through the built-in server-side sanitizer. Strips `<script>`, event handlers, and dangerous attributes while keeping safe tags. Use `allowedTags` and `allowedAttributes` to customize the allowlist.
+2. **`allowHtml: true, sanitize: true`:** The `/sanitized` entry keeps safe tags and removes dangerous HTML.
 
 3. **`allowHtml: true` (without sanitize):** Raw HTML passes through verbatim. Only use with trusted content.
 
 ```typescript
+import { parse } from '@lpm.dev/neo.markdown'
+import { parse as parseSanitized } from '@lpm.dev/neo.markdown/sanitized'
+
 // Safe — all HTML escaped
 parse(userInput)
 
 // Safe — HTML allowed but sanitized
-parse(userInput, { allowHtml: true, sanitize: true })
+parseSanitized(userInput, { allowHtml: true, sanitize: true })
 
 // Unsafe — only use with trusted content
 parse(trustedContent, { allowHtml: true })
@@ -84,11 +87,13 @@ parse(trustedContent, { allowHtml: true })
 
 ### Use `ugc: true` for untrusted content
 
-For user-generated content (comments, forum posts, CMS), use the `ugc` shorthand. It enables sanitization, safe links, and disables raw HTML in one option:
+For user-generated content, use the `ugc` shorthand. It enables safe links, disables raw HTML, and limits the input size:
 
 ```typescript
 const html = parse(userComment, { ugc: true })
 ```
+
+UGC mode limits input to 1,000,000 UTF-16 code units. A larger `maxInputLength` value cannot increase this limit.
 
 ### Use `safeLinks: true` for README rendering
 
@@ -107,7 +112,13 @@ const html = parse(readme, {
 
 The sanitizer runs before plugin HTML transforms. Only install trusted plugins because their transforms run outside the user-HTML sanitizer. `copyCodePlugin` emits escaped, inert markup and requires an explicit client initializer; it does not emit inline scripts.
 
+If `allowStyle` is true, the sanitizer permits only color, font, text, and white-space properties. It removes layout properties, expressions, and URL values.
+
+The embed plugin emits inert consent and Gist markup. After the rendered HTML mounts, call `initializeEmbeds()` to activate consent, Gist, and Twitter output.
+
 ```typescript
+import { createParser } from '@lpm.dev/neo.markdown/sanitized'
+
 // Sanitizer cleans user HTML, then copy-code adds escaped inert markup
 const parser = createParser({
   allowHtml: true,

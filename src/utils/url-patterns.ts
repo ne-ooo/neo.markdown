@@ -1,119 +1,115 @@
-/**
- * URL patterns for auto-embed detection
- *
- * Matches bare URLs in paragraphs that should be converted to embed directives.
- */
+/** Structural URL matching for bare-URL embeds. */
 
 export interface UrlMatch {
   provider: 'youtube' | 'vimeo' | 'twitter' | 'codesandbox' | 'codepen' | 'gist' | 'loom'
   id: string
-  /** Extra metadata from URL parsing (e.g., CodePen user, Gist user) */
+  /** Extra metadata from URL parsing, such as a CodePen or Gist user. */
   meta?: Record<string, string>
 }
 
-/**
- * YouTube URL patterns
- * Matches: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID
- */
-const YOUTUBE_PATTERNS = [
-  /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([\w-]{11})/,
-  /(?:https?:\/\/)?youtu\.be\/([\w-]{11})/,
-  /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([\w-]{11})/,
-]
+const YOUTUBE_ID_RE = /^[\w-]{11}$/
+const SIMPLE_ID_RE = /^[\w-]+$/
+const HEX_ID_RE = /^[\da-f]+$/i
 
-/**
- * Vimeo URL patterns
- * Matches: vimeo.com/ID, player.vimeo.com/video/ID
- */
-const VIMEO_PATTERNS = [
-  /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/,
-  /(?:https?:\/\/)?player\.vimeo\.com\/video\/(\d+)/,
-]
+function parseHttpUrl(value: string): URL | null {
+  if (!value || value !== value.trim() || /\s/.test(value)) return null
 
-/**
- * Twitter/X URL patterns
- * Matches: twitter.com/user/status/ID, x.com/user/status/ID
- */
-const TWITTER_PATTERNS = [
-  /(?:https?:\/\/)?(?:www\.)?twitter\.com\/\w+\/status\/(\d+)/,
-  /(?:https?:\/\/)?(?:www\.)?x\.com\/\w+\/status\/(\d+)/,
-]
+  const source = value.startsWith('www.') ? `https://${value}` : value
+  if (!/^https?:\/\//i.test(source)) return null
 
-/**
- * Try to match a URL against known embed providers
- *
- * @param url - URL string to test
- * @returns Match result with provider and ID, or null
- */
-export function matchEmbedUrl(url: string): UrlMatch | null {
-  for (const pattern of YOUTUBE_PATTERNS) {
-    const match = pattern.exec(url)
-    if (match?.[1]) return { provider: 'youtube', id: match[1] }
+  try {
+    const url = new URL(source)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    if (url.username || url.password) return null
+    if (url.port) return null
+    return url
+  } catch {
+    return null
+  }
+}
+
+function hasHost(url: URL, ...hosts: string[]): boolean {
+  return hosts.includes(url.hostname.toLowerCase())
+}
+
+function pathSegments(url: URL): string[] {
+  return url.pathname.split('/').filter(Boolean)
+}
+
+/** Match one complete URL against the supported embed providers. */
+export function matchEmbedUrl(value: string): UrlMatch | null {
+  const url = parseHttpUrl(value)
+  if (!url) return null
+
+  const segments = pathSegments(url)
+
+  if (hasHost(url, 'youtube.com', 'www.youtube.com', 'm.youtube.com')) {
+    if (url.pathname === '/watch') {
+      const id = url.searchParams.get('v') ?? ''
+      if (YOUTUBE_ID_RE.test(id)) return { provider: 'youtube', id }
+    }
+    if (segments.length === 2 && segments[0] === 'embed' && YOUTUBE_ID_RE.test(segments[1])) {
+      return { provider: 'youtube', id: segments[1] }
+    }
+    return null
   }
 
-  for (const pattern of VIMEO_PATTERNS) {
-    const match = pattern.exec(url)
-    if (match?.[1]) return { provider: 'vimeo', id: match[1] }
+  if (hasHost(url, 'youtu.be', 'www.youtu.be')) {
+    const id = segments.length === 1 ? segments[0] : ''
+    return YOUTUBE_ID_RE.test(id) ? { provider: 'youtube', id } : null
   }
 
-  for (const pattern of TWITTER_PATTERNS) {
-    const match = pattern.exec(url)
-    if (match?.[1]) return { provider: 'twitter', id: match[1] }
+  if (hasHost(url, 'vimeo.com', 'www.vimeo.com')) {
+    const id = segments.length === 1 ? segments[0] : ''
+    return /^\d+$/.test(id) ? { provider: 'vimeo', id } : null
   }
 
-  for (const pattern of CODESANDBOX_PATTERNS) {
-    const match = pattern.exec(url)
-    if (match?.[1]) return { provider: 'codesandbox', id: match[1] }
+  if (hasHost(url, 'player.vimeo.com')) {
+    const id = segments.length === 2 && segments[0] === 'video' ? segments[1] : ''
+    return /^\d+$/.test(id) ? { provider: 'vimeo', id } : null
   }
 
-  for (const pattern of CODEPEN_PATTERNS) {
-    const match = pattern.exec(url)
-    if (match?.[1] && match?.[2]) return { provider: 'codepen', id: match[2], meta: { user: match[1] } }
+  if (hasHost(url, 'twitter.com', 'www.twitter.com', 'x.com', 'www.x.com')) {
+    const id = segments.length === 3 && segments[1] === 'status' ? segments[2] : ''
+    if (/^[\w-]+$/.test(segments[0] ?? '') && /^\d+$/.test(id)) {
+      return { provider: 'twitter', id }
+    }
+    return null
   }
 
-  for (const pattern of GIST_PATTERNS) {
-    const match = pattern.exec(url)
-    if (match?.[1] && match?.[2]) return { provider: 'gist', id: match[2], meta: { user: match[1] } }
+  if (hasHost(url, 'codesandbox.io', 'www.codesandbox.io')) {
+    const shortId = segments.length === 2 && segments[0] === 's' ? segments[1] : ''
+    const projectId = (
+      segments.length === 3 && segments[0] === 'p' && segments[1] === 'sandbox'
+    ) ? segments[2] : ''
+    const id = shortId || projectId
+    return SIMPLE_ID_RE.test(id) ? { provider: 'codesandbox', id } : null
   }
 
-  for (const pattern of LOOM_PATTERNS) {
-    const match = pattern.exec(url)
-    if (match?.[1]) return { provider: 'loom', id: match[1] }
+  if (hasHost(url, 'codepen.io', 'www.codepen.io')) {
+    const user = segments.length === 3 && segments[1] === 'pen' ? segments[0] : ''
+    const id = user ? segments[2] : ''
+    if (SIMPLE_ID_RE.test(user) && SIMPLE_ID_RE.test(id)) {
+      return { provider: 'codepen', id, meta: { user } }
+    }
+    return null
+  }
+
+  if (hasHost(url, 'gist.github.com')) {
+    const user = segments.length === 2 ? segments[0] : ''
+    const id = segments.length === 2 ? segments[1] : ''
+    if (SIMPLE_ID_RE.test(user) && HEX_ID_RE.test(id)) {
+      return { provider: 'gist', id, meta: { user } }
+    }
+    return null
+  }
+
+  if (hasHost(url, 'loom.com', 'www.loom.com')) {
+    const id = (
+      segments.length === 2 && (segments[0] === 'share' || segments[0] === 'embed')
+    ) ? segments[1] : ''
+    return HEX_ID_RE.test(id) ? { provider: 'loom', id } : null
   }
 
   return null
 }
-
-/**
- * CodeSandbox URL patterns
- * Matches: codesandbox.io/s/ID, codesandbox.io/p/sandbox/ID
- */
-const CODESANDBOX_PATTERNS = [
-  /(?:https?:\/\/)?(?:www\.)?codesandbox\.io\/s\/([\w-]+)/,
-  /(?:https?:\/\/)?(?:www\.)?codesandbox\.io\/p\/sandbox\/([\w-]+)/,
-]
-
-/**
- * CodePen URL patterns
- * Matches: codepen.io/USER/pen/ID
- */
-const CODEPEN_PATTERNS = [
-  /(?:https?:\/\/)?(?:www\.)?codepen\.io\/([\w-]+)\/pen\/([\w-]+)/,
-]
-
-/**
- * GitHub Gist URL patterns
- * Matches: gist.github.com/USER/ID
- */
-const GIST_PATTERNS = [
-  /(?:https?:\/\/)?gist\.github\.com\/([\w-]+)\/([\da-f]+)/,
-]
-
-/**
- * Loom URL patterns
- * Matches: loom.com/share/ID, loom.com/embed/ID
- */
-const LOOM_PATTERNS = [
-  /(?:https?:\/\/)?(?:www\.)?loom\.com\/share\/([\da-f]+)/,
-  /(?:https?:\/\/)?(?:www\.)?loom\.com\/embed\/([\da-f]+)/,
-]

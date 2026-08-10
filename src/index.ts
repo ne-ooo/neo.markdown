@@ -10,8 +10,10 @@
  * ```
  */
 
-import type { ParserOptions } from './core/types.js'
+import type { Parser, ParserOptions } from './core/types.js'
 import { createParser } from './create-parser.js'
+
+let defaultParser: Parser | undefined
 
 // Re-export core types and utilities
 export type * from './core/types.js'
@@ -40,6 +42,11 @@ export { DEFAULT_ALLOWED_TAGS, DEFAULT_ALLOWED_ATTRIBUTES } from './core/sanitiz
  * ```
  */
 export function parse(markdown: string, options?: ParserOptions): string {
+  if (options === undefined) {
+    defaultParser ??= createParser()
+    return defaultParser.parse(markdown)
+  }
+
   const parser = createParser(options)
   return parser.parse(markdown)
 }

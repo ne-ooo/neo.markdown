@@ -263,6 +263,16 @@ export type InlineToken =
   | BrToken
   | HtmlInlineToken
 
+/** Configuration passed to an HTML sanitizer provider. */
+export interface SanitizerConfig {
+  allowedTags: Set<string>
+  allowedAttributes: Record<string, Set<string>>
+  allowStyle: boolean
+}
+
+/** HTML sanitizer provider used when raw HTML sanitization is enabled. */
+export type HtmlSanitizer = (html: string, config: SanitizerConfig) => string
+
 /**
  * Parser options
  */
@@ -276,6 +286,12 @@ export interface ParserOptions {
    * Sanitize HTML tags and attributes (default: false)
    */
   sanitize?: boolean
+
+  /**
+   * Sanitizer provider used when allowHtml and sanitize are true.
+   * Import the /sanitized entry to use the built-in structural provider.
+   */
+  sanitizer?: HtmlSanitizer
 
   /**
    * Additional HTML tags to allow when sanitize is true (extends defaults)
@@ -331,6 +347,12 @@ export interface ParserOptions {
    * Designed for rendering untrusted user-generated content safely.
    */
   ugc?: boolean
+
+  /**
+   * Maximum input length in UTF-16 code units.
+   * UGC mode uses a hard maximum of 1,000,000.
+   */
+  maxInputLength?: number
 
   /**
    * Custom set of block rules.

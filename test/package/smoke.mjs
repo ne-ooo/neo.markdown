@@ -6,12 +6,22 @@ const require = createRequire(import.meta.url)
 const esm = await import('../../dist/index.js')
 const esmCore = await import('../../dist/core/index.js')
 const esmBlocks = await import('../../dist/blocks/index.js')
+const esmSanitized = await import('../../dist/sanitized.js')
 const cjs = require('../../dist/index.cjs')
 const cjsCore = require('../../dist/core/index.cjs')
 const cjsBlocks = require('../../dist/blocks/index.cjs')
+const cjsSanitized = require('../../dist/sanitized.cjs')
 
 assert.equal(esm.parse('# ESM'), '<h1>ESM</h1>\n')
 assert.equal(cjs.parse('# CJS'), '<h1>CJS</h1>\n')
+assert.equal(
+  esmSanitized.parse('<script>bad()</script><p>ESM</p>', { allowHtml: true, sanitize: true }),
+  '<p>ESM</p>'
+)
+assert.equal(
+  cjsSanitized.parse('<script>bad()</script><p>CJS</p>', { allowHtml: true, sanitize: true }),
+  '<p>CJS</p>'
+)
 
 const esmSelective = esmCore.createParser({
   blocks: [esmBlocks.heading, esmBlocks.paragraph],
@@ -28,6 +38,8 @@ assert.ok(!cjsSelective.parse('```js\ncode\n```').includes('<pre>'))
 await Promise.all([
   access(new URL('../../dist/index.d.ts', import.meta.url)),
   access(new URL('../../dist/index.d.cts', import.meta.url)),
+  access(new URL('../../dist/sanitized.d.ts', import.meta.url)),
+  access(new URL('../../dist/sanitized.d.cts', import.meta.url)),
 ])
 
 console.log('ESM, CJS, and declaration package smoke tests passed')
