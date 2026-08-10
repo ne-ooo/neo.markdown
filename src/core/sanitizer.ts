@@ -9,6 +9,19 @@ import type { SanitizerConfig } from './types.js'
 
 export type { SanitizerConfig } from './types.js'
 
+const stableSanitizerConfigs = new WeakSet<SanitizerConfig>()
+
+/** @internal Mark a parser-owned sanitizer policy as immutable for option caching. */
+export function markSanitizerConfigStable(config: SanitizerConfig): SanitizerConfig {
+  stableSanitizerConfigs.add(config)
+  return config
+}
+
+/** @internal Return whether a policy is private to a parser instance. */
+export function isSanitizerConfigStable(config: SanitizerConfig): boolean {
+  return stableSanitizerConfigs.has(config)
+}
+
 /**
  * Default allowed tags (GitHub README-compatible).
  */

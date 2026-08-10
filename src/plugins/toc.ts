@@ -14,7 +14,7 @@
  * ```
  */
 
-import type { MarkdownPlugin, HeadingToken } from '../core/types.js'
+import type { MarkdownPlugin, HeadingToken, InlineToken } from '../core/types.js'
 import { createSlugger } from '../utils/slug.js'
 import { escape } from '../utils/escape.js'
 
@@ -46,6 +46,23 @@ export interface TocOptions {
   onToc?: (entries: TocEntry[]) => void
 }
 
+function extractInlineText(tokens: InlineToken[]): string {
+  const parts: string[] = []
+  for (const token of tokens) {
+    if (token.type === 'text' || token.type === 'code') {
+      parts.push(token.text)
+    } else if (
+      token.type === 'strong'
+      || token.type === 'em'
+      || token.type === 'del'
+      || token.type === 'link'
+    ) {
+      parts.push(extractInlineText(token.tokens))
+    }
+  }
+  return parts.join('')
+}
+
 /**
  * Create the TOC plugin
  *
@@ -71,10 +88,9 @@ export function tocPlugin(options: TocOptions = {}): MarkdownPlugin {
         if (token.type !== 'heading') return token
         if (token.level < minDepth || token.level > maxDepth) return token
 
-        // Render inline tokens to get plain-ish text for slugification
-        const text = builder.renderInline(token.tokens)
-        // Strip HTML tags for slug and TOC text
-        const plainText = text.replace(/<[^>]*>/g, '')
+        // Walk tokens directly so malformed raw HTML cannot trigger repeated
+        // whole-suffix scans before the sanitizer runs.
+        const plainText = extractInlineText(token.tokens)
         const id = slugger.slug(plainText)
 
         tocEntries.push({ level: token.level, text: plainText, id })

@@ -12,15 +12,33 @@
  * @returns Slugified string
  */
 export function slugify(text: string): string {
-  return text
+  return stripHtmlTags(text)
     .toLowerCase()
     .replace(/&[#\w]+;/g, '') // Remove HTML entities
-    .replace(/<[^>]*>/g, '')  // Remove HTML tags
     .trim()
     .replace(/[^\w\s-]/g, '') // Remove non-word chars (except spaces and hyphens)
     .replace(/\s+/g, '-')     // Spaces → hyphens
     .replace(/-+/g, '-')      // Collapse multiple hyphens
     .replace(/^-|-$/g, '')    // Trim leading/trailing hyphens
+}
+
+function stripHtmlTags(text: string): string {
+  const chunks: string[] = []
+  let cursor = 0
+
+  while (cursor < text.length) {
+    const opening = text.indexOf('<', cursor)
+    if (opening === -1) break
+    const closing = text.indexOf('>', opening + 1)
+    if (closing === -1) break
+
+    chunks.push(text.slice(cursor, opening))
+    cursor = closing + 1
+  }
+
+  if (cursor === 0) return text
+  chunks.push(text.slice(cursor))
+  return chunks.join('')
 }
 
 /**

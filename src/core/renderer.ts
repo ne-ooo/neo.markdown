@@ -43,31 +43,33 @@ export interface HtmlRendererOptions {
 }
 
 function isExternalHttpUrl(url: string): boolean {
-  if (url.startsWith('//')) return true
-  try {
-    const protocol = new URL(url).protocol.toLowerCase()
-    return protocol === 'http:' || protocol === 'https:' || protocol === 'ftp:'
-  } catch {
-    return false
-  }
+  if (/^[\\/]{2}/.test(url)) return true
+  const scheme = /^([a-z][a-z\d+.-]*):/i.exec(url)
+  if (!scheme) return false
+  const protocol = scheme[1].toLowerCase()
+  return protocol === 'http' || protocol === 'https' || protocol === 'ftp'
 }
 
 function isRelativeUrl(url: string): boolean {
-  return !url.startsWith('#') && !url.startsWith('//') && !/^[a-z][a-z\d+.-]*:/i.test(url)
+  return !url.startsWith('#') && !/^[\\/]{2}/.test(url) && !/^[a-z][a-z\d+.-]*:/i.test(url)
 }
 
-function resolveAgainstBase(url: string, baseUrl: string): string {
+function resolveBaseUrl(baseUrl: string | undefined): URL | null {
+  if (!baseUrl) return null
   const safeBase = sanitizeUrl(baseUrl)
-  if (!safeBase) return url
+  if (!safeBase) return null
 
   try {
     const directoryBase = safeBase.endsWith('/') ? safeBase : `${safeBase}/`
     const base = new URL(directoryBase)
-    if (base.protocol !== 'http:' && base.protocol !== 'https:') return url
-    return sanitizeUrl(new URL(url, base).href) || url
+    return base.protocol === 'http:' || base.protocol === 'https:' ? base : null
   } catch {
-    return url
+    return null
   }
+}
+
+function resolveAgainstBase(url: string, baseUrl: URL): string {
+  return sanitizeUrl(new URL(url, baseUrl).href) || url
 }
 
 /**
@@ -75,14 +77,21 @@ function resolveAgainstBase(url: string, baseUrl: string): string {
  */
 export class HtmlRenderer implements Renderer {
   private rendererOptions: HtmlRendererOptions
+  private baseUrl: URL | null
 
   constructor(options: HtmlRendererOptions = {}) {
     this.rendererOptions = options
+    this.baseUrl = resolveBaseUrl(
+      typeof options.safeLinks === 'object' ? options.safeLinks.baseUrl : undefined
+    )
   }
   /**
    * Render heading
    */
   heading(token: HeadingToken): string {
+    if (!Number.isSafeInteger(token.level) || token.level < 1 || token.level > 6) {
+      throw new TypeError('Heading level must be an integer from 1 to 6')
+    }
     const text = this.renderInline(token.tokens)
     return `<h${token.level}>${text}</h${token.level}>\n`
   }
@@ -124,7 +133,16 @@ export class HtmlRenderer implements Renderer {
    */
   list(token: ListToken): string {
     const tag = token.ordered ? 'ol' : 'ul'
-    const start = token.ordered && token.start !== 1 ? ` start="${token.start}"` : ''
+    if (
+      token.ordered
+      && token.start !== undefined
+      && !Number.isSafeInteger(token.start)
+    ) {
+      throw new TypeError('Ordered list start must be a safe integer')
+    }
+    const start = token.ordered && token.start !== undefined && token.start !== 1
+      ? ` start="${token.start}"`
+      : ''
     const body = token.items.map((item) => this.listitem(item)).join('')
     return `<${tag}${start}>\n${body}</${tag}>\n`
   }
@@ -207,6 +225,9 @@ export class HtmlRenderer implements Renderer {
    * Render table cell
    */
   tablecell(text: string, align: 'left' | 'center' | 'right' | null, header: boolean): string {
+    if (align !== null && align !== 'left' && align !== 'center' && align !== 'right') {
+      throw new TypeError('Table alignment must be left, center, right, or null')
+    }
     const tag = header ? 'th' : 'td'
     const alignAttr = align ? ` align="${align}"` : ''
     return `<${tag}${alignAttr}>${text}</${tag}>\n`
@@ -282,15 +303,16 @@ export class HtmlRenderer implements Renderer {
 
     if (safeLinks) {
       const config = typeof safeLinks === 'object' ? safeLinks : {}
-      const isExternal = isExternalHttpUrl(href)
       const isAnchor = href.startsWith('#')
 
-      if (isExternal) {
+      if (!isAnchor && this.baseUrl && isRelativeUrl(href)) {
+        href = resolveAgainstBase(href, this.baseUrl)
+      }
+
+      if (isExternalHttpUrl(href)) {
         const rel = config.externalRel ?? 'nofollow noopener noreferrer'
         const target = config.externalTarget ?? '_blank'
         extraAttrs = ` rel="${escape(rel)}" target="${escape(target)}"`
-      } else if (!isAnchor && config.baseUrl && isRelativeUrl(href)) {
-        href = resolveAgainstBase(href, config.baseUrl)
       }
     }
 
@@ -313,11 +335,10 @@ export class HtmlRenderer implements Renderer {
     const safeLinks = this.rendererOptions.safeLinks
     if (
       safeLinks
-      && typeof safeLinks === 'object'
-      && safeLinks.baseUrl
+      && this.baseUrl
       && isRelativeUrl(src)
     ) {
-      src = resolveAgainstBase(src, safeLinks.baseUrl)
+      src = resolveAgainstBase(src, this.baseUrl)
     }
 
     const title = token.title ? ` title="${escape(token.title)}"` : ''
@@ -337,7 +358,9 @@ export class HtmlRenderer implements Renderer {
    * Render block tokens to HTML
    */
   renderBlock(tokens: BlockToken[]): string {
-    return tokens.map((token) => this.renderBlockToken(token)).join('')
+    let html = ''
+    for (const token of tokens) html += this.renderBlockToken(token)
+    return html
   }
 
   /**
@@ -374,7 +397,9 @@ export class HtmlRenderer implements Renderer {
    * Render inline tokens to HTML
    */
   renderInline(tokens: InlineToken[]): string {
-    return tokens.map((token) => this.renderInlineToken(token)).join('')
+    let html = ''
+    for (const token of tokens) html += this.renderInlineToken(token)
+    return html
   }
 
   /**

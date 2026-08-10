@@ -112,6 +112,9 @@ const parser = createParser({
 })
 ```
 
+The parser also applies fixed inline nesting and work limits. These limits stop
+deep formatting from exhausting the call stack or causing repeated rescans.
+
 ### Tree-Shakeable Blocks
 
 Import only the block rules you need:
@@ -331,15 +334,18 @@ const cleanupCopyCode = initializeCopyCode()
 A plugin is a function that receives a `PluginBuilder`:
 
 ```typescript
-import type { MarkdownPlugin } from '@lpm.dev/neo.markdown'
+import { escapeHtml, type MarkdownPlugin } from '@lpm.dev/neo.markdown'
 
 const myPlugin: MarkdownPlugin = (builder) => {
   // Override how code blocks render
   builder.setRenderer('code', (token) => {
-    return `<pre class="custom">${token.text}</pre>\n`
+    return `<pre class="custom">${escapeHtml(token.text)}</pre>\n`
   })
 }
 ```
+
+Renderer overrides, plugins, and HTML transforms are trusted application code.
+Escape all untrusted token text before you insert it into HTML.
 
 ### PluginBuilder API
 

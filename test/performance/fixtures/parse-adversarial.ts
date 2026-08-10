@@ -1,21 +1,50 @@
 import { createParser } from '../../../src/index.js'
+import { InlineTokenizer } from '../../../src/core/inline-tokenizer.js'
+import { copyCodePlugin } from '../../../src/plugins/copy-code.js'
+import { tocPlugin } from '../../../src/plugins/toc.js'
 
 const INPUT_SIZES = [2_000, 8_000, 20_000] as const
-const scenarios = {
-  emphasis: (size: number) => '*_~'.repeat(size),
-  links: (size: number) => '[x]('.repeat(size),
-  html: (size: number) => '<a '.repeat(size),
-  table: (size: number) => `|${' cell |'.repeat(size)}`,
+const defaultParser = createParser({ gfm: true, maxNestingDepth: 32 })
+const ugcParser = createParser({ ugc: true, gfm: true, maxNestingDepth: 32 })
+const htmlParser = createParser({ allowHtml: true })
+const tocParser = createParser({ allowHtml: true, plugins: [tocPlugin()] })
+const copyParser = createParser({ allowHtml: true, plugins: [copyCodePlugin()] })
+const breaksTokenizer = new InlineTokenizer([], { breaks: true })
+
+function nestedEmphasis(depth: number): string {
+  const openings: string[] = []
+  const closings: string[] = []
+  for (let index = 0; index < depth; index++) {
+    const strong = index % 2 === 0
+    openings.push(strong ? '**a ' : '*a ')
+    closings.push(strong ? '**' : '*')
+  }
+  return `${openings.reverse().join('')}x${closings.join('')}`
+}
+
+const scenarios: Record<string, (size: number) => unknown> = {
+  emphasis: (size) => defaultParser.parse('*_~'.repeat(size)),
+  unmatchedEmphasis: (size) => defaultParser.parse('**a '.repeat(size)),
+  unmatchedDelete: (size) => defaultParser.parse('~~a '.repeat(size)),
+  nestedEmphasis: (size) => defaultParser.parse(nestedEmphasis(size)),
+  nestedMax: (size) => ugcParser.parse(nestedEmphasis(size * 10 - 1)),
+  inlineCode: (size) => defaultParser.parse(`x${'`'.repeat(size * 4)}a`),
+  links: (size) => defaultParser.parse('[x]('.repeat(size)),
+  html: (size) => defaultParser.parse('<a '.repeat(size)),
+  htmlEnabled: (size) => htmlParser.parse('<a '.repeat(size * 4)),
+  tocHtml: (size) => tocParser.parse(`# ${'<!--'.repeat(size * 2)}`),
+  copyHtml: (size) => copyParser.parse('<pre '.repeat(size * 2)),
+  table: (size) => defaultParser.parse(`|${' cell |'.repeat(size)}`),
+  breaks: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 4)),
 } as const
 
-const scenario = process.argv[2] as keyof typeof scenarios
-const makeInput = scenarios[scenario]
-if (!makeInput) throw new TypeError(`Unknown adversarial scenario: ${scenario}`)
+const scenario = process.argv[2] ?? ''
+const run = scenarios[scenario]
+if (!run) throw new TypeError(`Unknown adversarial scenario: ${scenario}`)
 
-const parser = createParser({ gfm: true, maxNestingDepth: 32 })
 for (const size of INPUT_SIZES) {
-  const html = parser.parse(makeInput(size))
-  if (typeof html !== 'string') throw new TypeError('Parser returned a non-string value')
+  const output = run(size)
+  if (output === undefined) throw new TypeError('Scenario returned no result')
 }
 
 process.stdout.write('ok\n')

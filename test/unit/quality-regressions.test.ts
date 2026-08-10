@@ -180,6 +180,52 @@ describe('parser quality regressions', () => {
     expect(() => parser.parse('safe')).toThrow('Raw HTML tokens require allowHtml: true')
   })
 
+  it('rejects malformed, cyclic, and over-depth token graphs before rendering', () => {
+    const parser = createParser({ ugc: true })
+    const injectedStart = [{
+      type: 'list',
+      raw: '',
+      ordered: true,
+      start: '1" data-review-marker="yes',
+      items: [],
+    }] as unknown as BlockToken[]
+    expect(() => parser.render(injectedStart)).toThrow('safe integer')
+
+    const invalidHeading = [{
+      type: 'heading',
+      raw: '',
+      text: '',
+      level: '1 data-review-marker=yes',
+      tokens: [],
+    }] as unknown as BlockToken[]
+    expect(() => parser.render(invalidHeading)).toThrow('Heading level')
+
+    const invalidTable = [{
+      type: 'table',
+      raw: '',
+      align: ['left" data-review-marker="yes'],
+      header: [{ text: 'safe', tokens: [{ type: 'text', raw: 'safe', text: 'safe' }] }],
+      rows: [],
+    }] as unknown as BlockToken[]
+    expect(() => parser.render(invalidTable)).toThrow('Table alignment')
+
+    const cycle = { type: 'blockquote', raw: '', tokens: [] } as unknown as {
+      type: 'blockquote'
+      raw: string
+      tokens: BlockToken[]
+    }
+    cycle.tokens.push(cycle as BlockToken)
+    expect(() => parser.render([cycle as BlockToken])).toThrow('Cyclic token graph')
+
+    let nested: BlockToken = {
+      type: 'paragraph', raw: 'safe', text: 'safe', tokens: [{ type: 'text', raw: 'safe', text: 'safe' }],
+    }
+    for (let depth = 0; depth < 300; depth++) {
+      nested = { type: 'blockquote', raw: '', tokens: [nested] }
+    }
+    expect(() => parser.render([nested])).toThrow('render depth')
+  })
+
   it('enforces configured and UGC input limits', () => {
     expect(() => createParser({ maxInputLength: -1 })).toThrow(
       'maxInputLength must be a non-negative safe integer'
@@ -201,6 +247,13 @@ describe('parser quality regressions', () => {
     expect(parser.parse(markdown)).toContain('['.repeat(1_000))
     expect(parser.parse('[x]('.repeat(20_000))).toBeTypeOf('string')
     expect(parser.parse('[**bold**')).toBe('<p>[<strong>bold</strong></p>\n')
+  })
+
+  it('coalesces long invalid-special runs into bounded inline token counts', () => {
+    const tokens = createParser({ ugc: true }).tokenize('!'.repeat(1_000_000))
+    const paragraph = tokens[0]
+    expect(paragraph?.type).toBe('paragraph')
+    if (paragraph?.type === 'paragraph') expect(paragraph.tokens).toHaveLength(1)
   })
 
   it('stops direct links at the matching destination parenthesis', () => {

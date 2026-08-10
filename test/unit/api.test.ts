@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createParser, HtmlRenderer, parse } from '../../src/index.js'
+import { createParser, escapeHtml, HtmlRenderer, parse } from '../../src/index.js'
 
 describe('createParser', () => {
   it('returns an object with a parse method', () => {
@@ -108,6 +108,10 @@ describe('HtmlRenderer', () => {
 })
 
 describe('escape utils (via parse output)', () => {
+  it('exports an HTML escape helper for custom renderers', () => {
+    expect(escapeHtml('<b title="x">')).toBe('&lt;b title=&quot;x&quot;&gt;')
+  })
+
   it('escapes & in code blocks', () => {
     const html = parse('```\na & b\n```')
     expect(html).toContain('a &amp; b')

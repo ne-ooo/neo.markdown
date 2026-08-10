@@ -213,6 +213,16 @@ describe('React iframe embeds', () => {
 
     await unmount(renderer)
   })
+
+  it('uses a least-privilege CodeSandbox iframe policy', async () => {
+    const renderer = await render(<CodeSandbox id="safe" />)
+    const props = iframe(renderer).props
+
+    expect(props.sandbox).toBe('allow-same-origin allow-scripts')
+    expect(props.allow).toBeUndefined()
+
+    await unmount(renderer)
+  })
 })
 
 describe('Tweet', () => {
@@ -281,5 +291,22 @@ describe('Tweet', () => {
 
     expect(vi.getTimerCount()).toBe(0)
     expect(removeEventListener).toHaveBeenCalled()
+  })
+
+  it('shares one readiness poll across concurrent Tweet components', async () => {
+    vi.useFakeTimers()
+    installDocument(new EventTarget() as HTMLScriptElement)
+    vi.stubGlobal('window', {})
+    const renderer = await render(
+      <Fragment>
+        {Array.from({ length: 100 }, (_, index) => <Tweet id={String(index)} key={index} />)}
+      </Fragment>
+    )
+
+    expect(vi.getTimerCount()).toBe(1)
+    await act(async () => vi.runAllTimers())
+    expect(vi.getTimerCount()).toBe(0)
+    await unmount(renderer)
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

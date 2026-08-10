@@ -80,6 +80,14 @@ describe('safeLinks option', () => {
     expect(parser.parse('[relative](//example.com/path)')).toContain('target="_blank"')
   })
 
+  it('treats browser-special slash and backslash authorities as external', () => {
+    const parser = createParser({ safeLinks: true })
+    const html = parser.parse(String.raw`[external](/\external.example/docs)`)
+
+    expect(html).toContain('rel="nofollow noopener noreferrer"')
+    expect(html).toContain('target="_blank"')
+  })
+
   it('escapes configuration-derived link attributes', () => {
     const parser = createParser({
       safeLinks: {

@@ -38,6 +38,32 @@ function validateClassName(name: string, value: string): string {
   return value
 }
 
+function wrapOpeningPreTags(html: string, wrapper: string): string {
+  const chunks: string[] = []
+  let cursor = 0
+
+  while (cursor < html.length) {
+    const opening = html.indexOf('<pre', cursor)
+    if (opening === -1) break
+
+    const boundary = html[opening + 4]
+    if (boundary !== undefined && /[A-Za-z\d_]/.test(boundary)) {
+      chunks.push(html.slice(cursor, opening + 4))
+      cursor = opening + 4
+      continue
+    }
+
+    const closing = html.indexOf('>', opening + 4)
+    if (closing === -1) break
+    chunks.push(html.slice(cursor, opening), wrapper, html.slice(opening, closing + 1))
+    cursor = closing + 1
+  }
+
+  if (cursor === 0) return html
+  chunks.push(html.slice(cursor))
+  return chunks.join('')
+}
+
 /** Return the default stylesheet so applications can serve it as a CSP-safe asset. */
 export function getCopyCodeStyles(options: Pick<CopyCodeOptions, 'buttonClass' | 'wrapperClass'> = {}): string {
   const wrapperClass = validateClassName('wrapperClass', options.wrapperClass ?? 'code-block')
@@ -101,12 +127,14 @@ export function copyCodePlugin(options: CopyCodeOptions = {}): MarkdownPlugin {
 
   return (builder) => {
     builder.addHtmlTransform((html) => {
-      let result = html
+      let result = wrapOpeningPreTags(
+        html,
+        `<div class="${wrapperClass}" data-copy-code-wrapper>${button}`
+      )
         .replace(
-          /<pre\b([^>]*)>/g,
-          `<div class="${wrapperClass}" data-copy-code-wrapper>${button}<pre$1>`
+          /<\/pre>(\n?)/g,
+          `</pre></div>$1`
         )
-        .replace(/<\/pre>(\n?)/g, `</pre></div>$1`)
 
       if (injectStyles && result.includes('data-copy-code-wrapper')) {
         result = `<style>${getCopyCodeStyles({ wrapperClass, buttonClass })}</style>${result}`

@@ -20,6 +20,7 @@ export type * from './core/types.js'
 export { createParser } from './create-parser.js'
 export { HtmlRenderer } from './core/renderer.js'
 export { DEFAULT_ALLOWED_TAGS, DEFAULT_ALLOWED_ATTRIBUTES } from './core/sanitizer.js'
+export { escape as escapeHtml } from './utils/escape.js'
 
 /**
  * Parse markdown to HTML

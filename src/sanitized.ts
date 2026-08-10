@@ -11,6 +11,7 @@ export type * from './core/types.js'
 export { HtmlRenderer } from './core/renderer.js'
 export { DEFAULT_ALLOWED_TAGS, DEFAULT_ALLOWED_ATTRIBUTES } from './core/sanitizer.js'
 export { sanitizeHtml } from './sanitizers/structural.js'
+export { escape as escapeHtml } from './utils/escape.js'
 
 /** Create a parser with the built-in structural HTML sanitizer. */
 export function createParser(options: ParserOptions = {}): Parser {

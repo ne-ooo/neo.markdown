@@ -19,10 +19,11 @@ import { Tokenizer } from './tokenizer.js'
 import { InlineTokenizer } from './inline-tokenizer.js'
 import { HtmlRenderer } from './renderer.js'
 import { PluginBuilderImpl } from './plugin-builder.js'
-import { buildSanitizerConfig } from './sanitizer.js'
+import { buildSanitizerConfig, markSanitizerConfigStable } from './sanitizer.js'
 
 const MAX_UGC_INPUT_LENGTH = 1_000_000
 const RAW_HTML_ERROR = 'Raw HTML tokens require allowHtml: true'
+const HARD_MAX_RENDER_DEPTH = 256
 
 /**
  * Markdown parser implementation
@@ -117,11 +118,11 @@ export class MarkdownParser implements Parser {
 
     // Build sanitizer config if sanitization is enabled.
     this.sanitizerConfig = (this.options.allowHtml && this.options.sanitize)
-      ? buildSanitizerConfig({
+      ? markSanitizerConfigStable(buildSanitizerConfig({
           allowedTags: this.options.allowedTags,
           allowedAttributes: this.options.allowedAttributes,
           allowStyle: this.options.allowStyle,
-        })
+        }))
       : null
 
     // Create tokenizers with custom rules from plugins
@@ -156,6 +157,8 @@ export class MarkdownParser implements Parser {
     for (const transform of this.tokenTransforms) {
       transformedTokens = transform(transformedTokens)
     }
+
+    this.validateBlockTokens(transformedTokens, 0, new Set<object>())
 
     if (!this.options.allowHtml) {
       this.assertNoRawHtmlBlocks(transformedTokens)
@@ -314,6 +317,135 @@ export class MarkdownParser implements Parser {
         this.assertNoRawHtmlInline(token.tokens)
       }
     }
+  }
+
+  private validateBlockTokens(
+    tokens: BlockToken[],
+    depth: number,
+    active: Set<object>
+  ): void {
+    if (!Array.isArray(tokens)) throw new TypeError('Block tokens must be an array')
+    if (depth > HARD_MAX_RENDER_DEPTH) throw new RangeError('Token render depth exceeds 256')
+
+    for (const token of tokens) {
+      this.enterToken(token, active)
+      try {
+        switch (token.type) {
+          case 'heading':
+            if (!Number.isSafeInteger(token.level) || token.level < 1 || token.level > 6) {
+              throw new TypeError('Heading level must be an integer from 1 to 6')
+            }
+            this.validateInlineTokens(token.tokens, depth + 1, active)
+            break
+          case 'paragraph':
+            this.validateInlineTokens(token.tokens, depth + 1, active)
+            break
+          case 'blockquote':
+            this.validateBlockTokens(token.tokens, depth + 1, active)
+            break
+          case 'list':
+            if (typeof token.ordered !== 'boolean' || !Array.isArray(token.items)) {
+              throw new TypeError('List tokens require an ordered flag and item array')
+            }
+            if (
+              token.ordered
+              && token.start !== undefined
+              && !Number.isSafeInteger(token.start)
+            ) {
+              throw new TypeError('Ordered list start must be a safe integer')
+            }
+            for (const item of token.items) {
+              this.enterToken(item, active)
+              try {
+                this.validateBlockTokens(item.tokens, depth + 1, active)
+              } finally {
+                active.delete(item)
+              }
+            }
+            break
+          case 'table':
+            if (!Array.isArray(token.align) || !Array.isArray(token.header) || !Array.isArray(token.rows)) {
+              throw new TypeError('Table tokens require alignment, header, and row arrays')
+            }
+            for (const align of token.align) {
+              if (align !== null && align !== 'left' && align !== 'center' && align !== 'right') {
+                throw new TypeError('Table alignment must be left, center, right, or null')
+              }
+            }
+            for (const cell of token.header) {
+              this.enterToken(cell, active)
+              try {
+                this.validateInlineTokens(cell.tokens, depth + 1, active)
+              } finally {
+                active.delete(cell)
+              }
+            }
+            for (const row of token.rows) {
+              if (!Array.isArray(row)) throw new TypeError('Table rows must be arrays')
+              for (const cell of row) {
+                this.enterToken(cell, active)
+                try {
+                  this.validateInlineTokens(cell.tokens, depth + 1, active)
+                } finally {
+                  active.delete(cell)
+                }
+              }
+            }
+            break
+          case 'code':
+          case 'hr':
+          case 'html':
+          case 'definition':
+          case 'directive':
+            break
+          default:
+            throw new TypeError('Unknown block token type')
+        }
+      } finally {
+        active.delete(token)
+      }
+    }
+  }
+
+  private validateInlineTokens(
+    tokens: InlineToken[],
+    depth: number,
+    active: Set<object>
+  ): void {
+    if (!Array.isArray(tokens)) throw new TypeError('Inline tokens must be an array')
+    if (depth > HARD_MAX_RENDER_DEPTH) throw new RangeError('Token render depth exceeds 256')
+
+    for (const token of tokens) {
+      this.enterToken(token, active)
+      try {
+        if (
+          token.type === 'strong'
+          || token.type === 'em'
+          || token.type === 'del'
+          || token.type === 'link'
+        ) {
+          this.validateInlineTokens(token.tokens, depth + 1, active)
+        } else if (
+          token.type !== 'text'
+          && token.type !== 'code'
+          && token.type !== 'image'
+          && token.type !== 'br'
+          && token.type !== 'html'
+        ) {
+          throw new TypeError('Unknown inline token type')
+        }
+      } finally {
+        active.delete(token)
+      }
+    }
+  }
+
+  private enterToken(token: unknown, active: Set<object>): void {
+    if (typeof token !== 'object' || token === null) {
+      throw new TypeError('Tokens must be non-null objects')
+    }
+    if (active.has(token)) throw new TypeError('Cyclic token graph is not renderable')
+    active.add(token)
   }
 
 }
