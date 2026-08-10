@@ -12,9 +12,18 @@ const viteNodePath = requireFromVitest.resolve('vite-node/vite-node.mjs')
 
 const adversarialInputs = [
   'emphasis',
+  'unmatchedEmphasis',
+  'unmatchedDelete',
+  'nestedEmphasis',
+  'nestedMax',
+  'inlineCode',
   'links',
   'html',
+  'htmlEnabled',
+  'tocHtml',
+  'copyHtml',
   'table',
+  'breaks',
 ] as const
 
 describe('adversarial input scaling', () => {

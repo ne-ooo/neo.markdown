@@ -123,6 +123,15 @@ interface ConsentPayload {
 
 const TWITTER_WIDGETS_SRC = 'https://platform.twitter.com/widgets.js'
 
+function createMarkerNonce(): string {
+  const values = new Uint32Array(4)
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(values)
+    return [...values].map((value) => value.toString(36)).join('')
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+}
+
 /**
  * Directive pattern: ::name[label]{key="value" ...}
  */
@@ -240,8 +249,7 @@ function renderCodeSandbox(id: string, attrs: Record<string, string>, responsive
     return (
       `<div class="embed embed-codesandbox" style="position:relative;width:100%;padding-bottom:56.25%;overflow:hidden;border-radius:8px;background:#1a1a1a">` +
       `<iframe src="${src}" title="${escape(title)}" loading="lazy" ` +
-      `allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking" ` +
-      `sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts" ` +
+      `sandbox="allow-same-origin allow-scripts" ` +
       `style="position:absolute;top:0;left:0;width:100%;height:100%;border:none"></iframe>` +
       `</div>\n`
     )
@@ -252,7 +260,7 @@ function renderCodeSandbox(id: string, attrs: Record<string, string>, responsive
   return (
     `<div class="embed embed-codesandbox">` +
     `<iframe src="${src}" title="${escape(title)}" width="${escape(width)}" height="${escape(height)}" loading="lazy" ` +
-    `sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts" ` +
+    `sandbox="allow-same-origin allow-scripts" ` +
     `style="border:none"></iframe>` +
     `</div>\n`
   )
@@ -607,6 +615,34 @@ export function embedPlugin(options: EmbedOptions = {}): MarkdownPlugin {
   const twitterOpts: TwitterOptions = typeof twitter === 'object' ? twitter : {}
 
   return (builder) => {
+    const deferTrustedMarkup = builder.options.allowHtml === true
+      && builder.options.sanitize === true
+    const deferredMarkup = new Map<string, string>()
+    const markerPrefix = `NEOMARKDOWNEMBED${createMarkerNonce()}`
+    let markerCounter = 0
+    const emitTrustedMarkup = (html: string): string => {
+      if (!deferTrustedMarkup) return html
+      const marker = `${markerPrefix}${markerCounter++}END`
+      deferredMarkup.set(marker, html)
+      return marker
+    }
+
+    if (deferTrustedMarkup) {
+      builder.addTokenTransform((tokens) => {
+        deferredMarkup.clear()
+        markerCounter = 0
+        return tokens
+      })
+      builder.addHtmlTransform((html) => {
+        let result = html
+        for (const [marker, markup] of deferredMarkup) {
+          result = result.replace(marker, markup)
+        }
+        deferredMarkup.clear()
+        return result
+      })
+    }
+
     // 1. Add block rule for directive syntax (::youtube[id], ::vimeo[id], ::tweet[id])
     builder.addBlockRule({
       name: 'directive',
@@ -651,39 +687,39 @@ export function embedPlugin(options: EmbedOptions = {}): MarkdownPlugin {
       if (!id) return ''
 
       if (token.name === 'youtube' && youtube) {
-        return maybeConsent(renderYouTube(id, token.attributes, youtubeOpts, responsive), {
+        return emitTrustedMarkup(maybeConsent(renderYouTube(id, token.attributes, youtubeOpts, responsive), {
           provider: 'youtube', id, attributes: token.attributes, responsive, youtubeOptions: youtubeOpts,
-        })
+        }))
       }
       if (token.name === 'vimeo' && vimeo) {
-        return maybeConsent(renderVimeo(id, token.attributes, vimeoOpts, responsive), {
+        return emitTrustedMarkup(maybeConsent(renderVimeo(id, token.attributes, vimeoOpts, responsive), {
           provider: 'vimeo', id, attributes: token.attributes, responsive, vimeoOptions: vimeoOpts,
-        })
+        }))
       }
       if (token.name === 'tweet' && twitter) {
-        return maybeConsent(renderTweet(id, twitterOpts), {
+        return emitTrustedMarkup(maybeConsent(renderTweet(id, twitterOpts), {
           provider: 'twitter', id, attributes: token.attributes, responsive, twitterOptions: twitterOpts,
-        })
+        }))
       }
       if (token.name === 'codesandbox' && codesandbox) {
-        return maybeConsent(renderCodeSandbox(id, token.attributes, responsive), {
+        return emitTrustedMarkup(maybeConsent(renderCodeSandbox(id, token.attributes, responsive), {
           provider: 'codesandbox', id, attributes: token.attributes, responsive,
-        })
+        }))
       }
       if (token.name === 'codepen' && codepen) {
-        return maybeConsent(renderCodePen(id, token.attributes, responsive, token.attributes['user']), {
+        return emitTrustedMarkup(maybeConsent(renderCodePen(id, token.attributes, responsive, token.attributes['user']), {
           provider: 'codepen', id, attributes: token.attributes, responsive,
-        })
+        }))
       }
       if (token.name === 'gist' && gist) {
-        return maybeConsent(renderGist(id, token.attributes, token.attributes['user']), {
+        return emitTrustedMarkup(maybeConsent(renderGist(id, token.attributes, token.attributes['user']), {
           provider: 'gist', id, attributes: token.attributes, responsive,
-        })
+        }))
       }
       if (token.name === 'loom' && loom) {
-        return maybeConsent(renderLoom(id, token.attributes, responsive), {
+        return emitTrustedMarkup(maybeConsent(renderLoom(id, token.attributes, responsive), {
           provider: 'loom', id, attributes: token.attributes, responsive,
-        })
+        }))
       }
 
       return ''

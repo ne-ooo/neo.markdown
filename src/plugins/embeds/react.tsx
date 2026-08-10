@@ -47,11 +47,15 @@ const RESPONSIVE_IFRAME: React.CSSProperties = {
 /**
  * Hook: observe when element enters viewport
  */
-function useInView(margin = '200px'): [React.RefObject<HTMLDivElement | null>, boolean] {
+function useInView(
+  margin = '200px',
+  disabled = false
+): [React.RefObject<HTMLDivElement | null>, boolean] {
   const ref = useRef<HTMLDivElement | null>(null)
   const [inView, setInView] = useState(false)
 
   useEffect(() => {
+    if (disabled) return
     const el = ref.current
     if (!el || typeof IntersectionObserver === 'undefined') {
       setInView(true) // Fallback: render immediately if no IO
@@ -70,7 +74,7 @@ function useInView(margin = '200px'): [React.RefObject<HTMLDivElement | null>, b
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [margin])
+  }, [disabled, margin])
 
   return [ref, inView]
 }
@@ -140,7 +144,7 @@ export const Vimeo: FC<VimeoProps> = ({
   lazyLoad = true,
   className,
 }) => {
-  const [ref, inView] = useInView()
+  const [ref, inView] = useInView('200px', !lazyLoad)
   const dntParam = dnt ? '?dnt=1' : ''
   const src = `https://player.vimeo.com/video/${id}${dntParam}`
 
@@ -190,6 +194,8 @@ export const TWEET_WIDGET_MAX_RETRIES = 100
 export interface TweetWidgetPollOptions {
   intervalMs?: number
   maxAttempts?: number
+  /** Internal/readiness hook invoked when all attempts are used. */
+  onExhausted?: () => void
 }
 
 /** Poll a widget loader with a hard attempt limit and return a cancellation function. */
@@ -211,6 +217,10 @@ export function pollTweetWidgets(
     if (cancelled || attempts >= maxAttempts) return
     attempts++
     if (tryLoad()) return
+    if (attempts >= maxAttempts) {
+      options.onExhausted?.()
+      return
+    }
     timer = globalThis.setTimeout(check, intervalMs)
   }
 
@@ -218,6 +228,75 @@ export function pollTweetWidgets(
   return () => {
     cancelled = true
     if (timer !== undefined) globalThis.clearTimeout(timer)
+  }
+}
+
+const tweetReadySubscribers = new Set<() => void>()
+let stopSharedTweetPolling: (() => void) | undefined
+let watchedTweetScript: HTMLScriptElement | undefined
+let watchedTweetScriptLoad: (() => void) | undefined
+
+function stopTweetReadinessWork(): void {
+  stopSharedTweetPolling?.()
+  stopSharedTweetPolling = undefined
+  if (watchedTweetScript && watchedTweetScriptLoad) {
+    watchedTweetScript.removeEventListener('load', watchedTweetScriptLoad)
+  }
+  watchedTweetScript = undefined
+  watchedTweetScriptLoad = undefined
+}
+
+function notifyTweetReady(): boolean {
+  if (!window.twttr?.widgets) return false
+  const subscribers = [...tweetReadySubscribers]
+  tweetReadySubscribers.clear()
+  stopTweetReadinessWork()
+  for (const subscriber of subscribers) subscriber()
+  return true
+}
+
+function startTweetReadinessPolling(): void {
+  if (stopSharedTweetPolling) return
+  stopSharedTweetPolling = pollTweetWidgets(notifyTweetReady, {
+    onExhausted: () => { stopSharedTweetPolling = undefined },
+  })
+}
+
+function watchTweetScript(script: HTMLScriptElement): void {
+  if (watchedTweetScript === script) return
+  if (watchedTweetScript && watchedTweetScriptLoad) {
+    watchedTweetScript.removeEventListener('load', watchedTweetScriptLoad)
+  }
+
+  watchedTweetScript = script
+  watchedTweetScriptLoad = () => {
+    if (!notifyTweetReady()) startTweetReadinessPolling()
+  }
+  script.addEventListener('load', watchedTweetScriptLoad, { once: true })
+}
+
+function subscribeTweetReady(subscriber: () => void): () => void {
+  tweetReadySubscribers.add(subscriber)
+  let script = document.querySelector<HTMLScriptElement>(
+    'script[src*="platform.twitter.com/widgets.js"]'
+  )
+  const existing = Boolean(script)
+
+  if (!script) {
+    script = document.createElement('script')
+    script.src = 'https://platform.twitter.com/widgets.js'
+    script.async = true
+    document.head.appendChild(script)
+  }
+  watchTweetScript(script)
+
+  if (existing) {
+    if (!notifyTweetReady()) startTweetReadinessPolling()
+  }
+
+  return () => {
+    tweetReadySubscribers.delete(subscriber)
+    if (tweetReadySubscribers.size === 0) stopTweetReadinessWork()
   }
 }
 
@@ -235,48 +314,16 @@ export const Tweet: FC<TweetProps> = ({
     if (!inView || loaded || !containerRef.current) return
 
     let cancelled = false
-    let stopPolling = (): void => undefined
-
-    const load = (): boolean => {
-      if (cancelled || !window.twttr?.widgets) return false
-      stopPolling()
+    const load = (): void => {
+      if (cancelled || !window.twttr?.widgets) return
       window.twttr.widgets.load(containerRef.current ?? undefined)
       setLoaded(true)
-      return true
     }
-
-    const startPolling = (): void => {
-      stopPolling()
-      stopPolling = pollTweetWidgets(load)
-    }
-
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      'script[src*="platform.twitter.com/widgets.js"]'
-    )
-    let script = existingScript
-    let removeLoadListener = false
-
-    const onLoad = (): void => {
-      if (!load()) startPolling()
-    }
-
-    if (!script) {
-      script = document.createElement('script')
-      script.src = 'https://platform.twitter.com/widgets.js'
-      script.async = true
-      script.addEventListener('load', onLoad, { once: true })
-      removeLoadListener = true
-      document.head.appendChild(script)
-    } else if (!load()) {
-      script.addEventListener('load', onLoad, { once: true })
-      removeLoadListener = true
-      startPolling()
-    }
+    const unsubscribe = subscribeTweetReady(load)
 
     return () => {
       cancelled = true
-      stopPolling()
-      if (removeLoadListener) script?.removeEventListener('load', onLoad)
+      unsubscribe()
     }
   }, [inView, loaded])
 
@@ -326,8 +373,7 @@ export const CodeSandbox: FC<CodeSandboxProps> = ({
         src={src}
         title={title}
         loading="lazy"
-        allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
-        sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
+        sandbox="allow-same-origin allow-scripts"
         style={RESPONSIVE_IFRAME}
       />
     </div>

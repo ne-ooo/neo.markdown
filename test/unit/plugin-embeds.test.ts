@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { parse } from '../../src/index.js'
+import { createParser as createSanitizedParser } from '../../src/sanitized.js'
 import { embedPlugin, initializeEmbeds } from '../../src/plugins/embeds.js'
 import { matchEmbedUrl } from '../../src/utils/url-patterns.js'
 
@@ -312,6 +313,10 @@ describe('embedPlugin - New Providers Directives', () => {
     expect(result).toContain('codesandbox.io/embed/my-sandbox')
     expect(result).toContain('<iframe')
     expect(result).toContain('loading="lazy"')
+    expect(result).toContain('sandbox="allow-same-origin allow-scripts"')
+    expect(result).not.toContain('camera')
+    expect(result).not.toContain('microphone')
+    expect(result).not.toContain('geolocation')
   })
 
   it('should render CodePen directive with user attribute', () => {
@@ -385,6 +390,24 @@ describe('embedPlugin - New Providers Auto-Embed', () => {
 // ---------------------------------------------------------------------------
 
 describe('embedPlugin - GDPR Consent Mode', () => {
+  it('preserves trusted embed markup through the sanitized entry', () => {
+    const direct = createSanitizedParser({
+      allowHtml: true,
+      sanitize: true,
+      plugins: [embedPlugin({ youtube: true })],
+    }).parse('::youtube[dQw4w9WgXcQ]')
+    const consent = createSanitizedParser({
+      allowHtml: true,
+      sanitize: true,
+      plugins: [embedPlugin({ youtube: true, consent: true })],
+    }).parse('::youtube[dQw4w9WgXcQ]')
+
+    expect(direct).toContain('<iframe')
+    expect(direct).toContain('youtube-nocookie.com')
+    expect(consent).toContain('data-embed-consent-button')
+    expect(consent).toContain('<button')
+  })
+
   it('should render consent placeholder instead of iframe when consent: true', () => {
     const plugin = embedPlugin({ youtube: true, consent: true })
     const result = parse('::youtube[dQw4w9WgXcQ]', { plugins: [plugin] })

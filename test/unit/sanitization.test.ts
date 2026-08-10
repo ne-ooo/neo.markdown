@@ -292,6 +292,19 @@ describe('HTML sanitization', () => {
         expect(sanitize('<div data-id="123">text</div>')).toContain('data-id="123"')
       })
 
+      it('strips reserved embed activation markers from user HTML', () => {
+        const html = sanitize(
+          '<div class="safe" data-embed-gist data-gist-src="https://gist.github.com/example/deadbeef.js"></div>' +
+          '<blockquote class="quote twitter-tweet">tweet</blockquote>'
+        )
+
+        expect(html).toContain('class="safe"')
+        expect(html).toContain('class="quote"')
+        expect(html).not.toContain('data-embed-gist')
+        expect(html).not.toContain('data-gist-src')
+        expect(html).not.toContain('twitter-tweet')
+      })
+
       it('preserves role attribute', () => {
         expect(sanitize('<div role="button">text</div>')).toContain('role="button"')
       })
@@ -373,6 +386,14 @@ describe('HTML sanitization', () => {
       it('cannot override always-blocked tags', () => {
         const html = sanitize('<script>alert(1)</script>', { allowedTags: ['script'] })
         expect(html).not.toContain('<script')
+      })
+
+      it('observes mutations to direct public sanitizer configurations', () => {
+        const config = buildSanitizerConfig({})
+        expect(sanitizeHtml('<custom-tag>content</custom-tag>', config)).not.toContain('<custom-tag>')
+
+        config.allowedTags.add('custom-tag')
+        expect(sanitizeHtml('<custom-tag>content</custom-tag>', config)).toContain('<custom-tag>')
       })
     })
 

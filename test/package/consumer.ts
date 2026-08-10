@@ -1,5 +1,6 @@
 import {
   createParser,
+  escapeHtml,
   type Parser,
   type ParserOptions,
 } from '@lpm.dev/neo.markdown'
@@ -21,10 +22,11 @@ const parser: Parser = createParser({
 const selective: Parser = createSelectiveParser({ blocks: [heading, paragraph] })
 const sanitized: Parser = createSanitizedParser({ allowHtml: true, sanitize: true })
 const html: string = parser.parse('# Package types')
+const escaped: string = escapeHtml('<unsafe>')
 const selectiveHtml: string = selective.parse('# Selective types')
 const sanitizedHtml: string = sanitized.parse('<p>Package sanitizer</p>')
 const stylesheet: string = getCopyCodeStyles()
 const cleanup: () => void = initializeCopyCode()
 const cleanupEmbeds: () => void = initializeEmbeds()
 
-void [html, selectiveHtml, sanitizedHtml, stylesheet, cleanup, cleanupEmbeds]
+void [html, escaped, selectiveHtml, sanitizedHtml, stylesheet, cleanup, cleanupEmbeds]

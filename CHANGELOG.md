@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Security
+
+- Inline formatting now has a hard nesting limit, which prevents stack exhaustion on small crafted inputs.
+- `render()` rejects malformed, cyclic, and over-depth runtime token graphs before HTML generation.
+- The sanitizer removes reserved embed activation markers from user HTML while preserving trusted plugin embeds.
+- Safe-link handling classifies browser-special slash and backslash authorities as external.
+- CodeSandbox embeds use a reduced iframe capability policy by default.
+
+### Performance
+
+- Emphasis, deletion, code-span, and inline-HTML parsing now use linear delimiter and terminator indexes.
+- TOC and copy-code transforms avoid whole-suffix regular-expression rescans.
+- Repeated invalid inline syntax is coalesced into bounded text-token counts.
+- Safe-link base URLs and structural sanitizer options are compiled once per parser.
+- React Tweet embeds share one readiness poll, and eager Vimeo embeds skip intersection observers.
+- Adversarial scaling tests cover every fixed denial-of-service input with hard process timeouts.
+
+### Added
+
+- Exported `escapeHtml()` for safe custom renderer output.
+
 ## [2.0.0] - 2026-08-10
 
 ### Security
