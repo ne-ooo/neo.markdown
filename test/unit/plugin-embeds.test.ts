@@ -324,6 +324,16 @@ describe('embedPlugin - New Providers Directives', () => {
     expect(result).toContain('embed-codepen')
     expect(result).toContain('codepen.io/myuser/embed/abc123')
     expect(result).toContain('<iframe')
+    expect(result).toContain('sandbox="allow-same-origin allow-scripts"')
+  })
+
+  it('should sandbox non-responsive CodePen directives', () => {
+    const nonResponsive = embedPlugin({ codepen: true, responsive: false })
+    const result = parse('::codepen[abc123]{user="myuser"}', {
+      plugins: [nonResponsive],
+    })
+
+    expect(result).toContain('sandbox="allow-same-origin allow-scripts"')
   })
 
   it('should render GitHub Gist directive', () => {
