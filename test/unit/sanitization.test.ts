@@ -139,6 +139,29 @@ describe('HTML sanitization', () => {
       it('allows relative paths', () => {
         expect(sanitize('<a href="/path/to/page">link</a>')).toContain('href="/path/to/page"')
       })
+
+      it('prevents opener access from links that create a browsing context', () => {
+        const blank = sanitize(
+          '<a href="https://evil.example" target="_blank" rel="opener nofollow">click</a>'
+        )
+        const named = sanitize(
+          '<a href="https://evil.example" target="preview">click</a>'
+        )
+
+        expect(blank).toContain('rel="nofollow noopener noreferrer"')
+        expect(blank).not.toMatch(/\bopener\b/)
+        expect(named).toContain('rel="noopener noreferrer"')
+      })
+
+      it('does not alter same-context anchor relationships', () => {
+        const html = sanitize(
+          '<a href="/account" target="_self" rel="author">account</a>'
+        )
+
+        expect(html).toContain('target="_self"')
+        expect(html).toContain('rel="author"')
+        expect(html).not.toContain('noopener')
+      })
     })
 
     describe('always-blocked tags', () => {

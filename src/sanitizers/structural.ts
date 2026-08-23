@@ -28,7 +28,7 @@ const RESERVED_EMBED_DATA_ATTRIBUTE = /^data-(?:embed(?:-|$)|gist-(?:src|height)
 type StructuralSanitizerOptions = NonNullable<Parameters<typeof structuralSanitizeHtml>[1]>
 const stableOptions = new WeakMap<SanitizerConfig, StructuralSanitizerOptions>()
 
-function stripReservedEmbedMarkers(
+function hardenSanitizedTag(
   tagName: string,
   attribs: Record<string, string>
 ): { tagName: string; attribs: Record<string, string> } {
@@ -44,6 +44,22 @@ function stripReservedEmbedMarkers(
       .join(' ')
     if (className) filtered['class'] = className
     else delete filtered['class']
+  }
+
+  if (tagName.toLowerCase() === 'a') {
+    const target = filtered['target']?.trim().toLowerCase()
+    const rel = (filtered['rel'] ?? '')
+      .split(/\s+/)
+      .filter((value) => value && value.toLowerCase() !== 'opener')
+
+    if (target && target !== '_self' && target !== '_parent' && target !== '_top') {
+      const lowerRel = new Set(rel.map((value) => value.toLowerCase()))
+      if (!lowerRel.has('noopener')) rel.push('noopener')
+      if (!lowerRel.has('noreferrer')) rel.push('noreferrer')
+    }
+
+    if (rel.length > 0) filtered['rel'] = rel.join(' ')
+    else delete filtered['rel']
   }
 
   return { tagName, attribs: filtered }
@@ -62,7 +78,7 @@ function buildStructuralOptions(config: SanitizerConfig): StructuralSanitizerOpt
     enforceHtmlBoundary: false,
     parseStyleAttributes: config.allowStyle,
     allowedStyles: config.allowStyle ? { '*': SAFE_INLINE_STYLES } : undefined,
-    transformTags: { '*': stripReservedEmbedMarkers },
+    transformTags: { '*': hardenSanitizedTag },
     exclusiveFilter: (frame) => (
       frame.tag === 'input'
       && (

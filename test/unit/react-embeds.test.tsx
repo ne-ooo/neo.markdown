@@ -223,6 +223,15 @@ describe('React iframe embeds', () => {
 
     await unmount(renderer)
   })
+
+  it('uses a least-privilege CodePen iframe policy', async () => {
+    const renderer = await render(<CodePen id="safe" user="neo" />)
+    const props = iframe(renderer).props
+
+    expect(props.sandbox).toBe('allow-same-origin allow-scripts')
+
+    await unmount(renderer)
+  })
 })
 
 describe('Tweet', () => {

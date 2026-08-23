@@ -278,6 +278,7 @@ function renderCodePen(id: string, attrs: Record<string, string>, responsive: bo
     return (
       `<div class="embed embed-codepen" style="position:relative;width:100%;padding-bottom:56.25%;overflow:hidden;border-radius:8px;background:#1a1a1a">` +
       `<iframe src="${src}" title="${escape(title)}" loading="lazy" ` +
+      `sandbox="allow-same-origin allow-scripts" ` +
       `allowfullscreen ` +
       `style="position:absolute;top:0;left:0;width:100%;height:100%;border:none"></iframe>` +
       `</div>\n`
@@ -289,6 +290,7 @@ function renderCodePen(id: string, attrs: Record<string, string>, responsive: bo
   return (
     `<div class="embed embed-codepen">` +
     `<iframe src="${src}" title="${escape(title)}" width="${escape(width)}" height="${escape(height)}" loading="lazy" ` +
+    `sandbox="allow-same-origin allow-scripts" ` +
     `allowfullscreen style="border:none"></iframe>` +
     `</div>\n`
   )

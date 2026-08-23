@@ -412,6 +412,7 @@ export const CodePen: FC<CodePenProps> = ({
         src={src}
         title={title}
         loading="lazy"
+        sandbox="allow-same-origin allow-scripts"
         allowFullScreen
         style={RESPONSIVE_IFRAME}
       />
