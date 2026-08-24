@@ -109,7 +109,8 @@
     "typecheck": "tsc --noEmit",
     "bench": "vitest bench",
     "check:tree-shaking": "node scripts/verify-tree-shaking.mjs",
-    "prepublishOnly": "lpm run build && lpm test && lpm run test:package && lpm run check:tree-shaking && lpm check"
+    "release:check": "lpm run typecheck && lpm run test:coverage && lpm run build && lpm run test:package && lpm run check:tree-shaking && lpm audit --fail-on=vuln",
+    "prepublishOnly": "lpm run release:check"
   },
   "dependencies": {
     "sanitize-html": "2.17.5"

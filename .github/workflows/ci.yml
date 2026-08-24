@@ -13,6 +13,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  LPM_VERSION: "0.75.0"
+
 jobs:
   verify:
     name: Node ${{ matrix.node }}
@@ -32,31 +35,22 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Install the pinned LPM CLI
-        env:
-          LPM_INSTALL_VERSION: v0.73.0
-        run: |
-          curl --proto '=https' --tlsv1.2 -fsSL \
-            https://raw.githubusercontent.com/lpm-dev/rust-client/0fcaf264a7de59894b609be280900ac10a8fe534/install.sh \
-            | sh
-          echo "$HOME/.lpm/bin" >> "$GITHUB_PATH"
+      - name: Install LPM
+        run: npm install --global "@lpm-registry/cli@${LPM_VERSION}"
 
       - name: Install the locked dependency graph
         if: matrix.node != '18.20.8'
-        run: lpm install --frozen-lockfile --no-skills --no-editor-setup --strict-integrity --policy=deny
+        run: lpm ci --strict-integrity --no-skills --no-editor-setup --no-security-summary --policy=deny
 
       - name: Install the locked dependency graph on Node.js 18
         if: matrix.node == '18.20.8'
-        run: lpm install --frozen-lockfile --no-skills --no-editor-setup --strict-integrity --policy=deny --no-engine-strict
+        run: lpm ci --strict-integrity --no-skills --no-editor-setup --no-security-summary --policy=deny --no-engine-strict
 
       - name: Verify the lockfile stayed frozen
         run: git diff --exit-code -- package.json lpm.lock
 
-      - name: Reject known vulnerabilities
-        run: lpm audit --fail-on=vuln
-
       - name: Run the release gate
-        run: lpm run prepublishOnly
+        run: lpm run release:check
 
-      - name: Run tests with coverage
-        run: lpm run test:coverage
+      - name: Check the publishable package
+        run: lpm publish --check --yes

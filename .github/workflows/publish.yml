@@ -1,0 +1,64 @@
+name: Publish to LPM
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-lpm-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LPM_VERSION: "0.75.0"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24.11.0"
+
+      - name: Install LPM
+        run: npm install --global "@lpm-registry/cli@${LPM_VERSION}"
+
+      - name: Install locked dependencies
+        run: >-
+          lpm ci --strict-integrity --no-skills --no-editor-setup
+          --no-security-summary --policy=deny
+
+      - name: Verify release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./package.json').version")"
+          if [[ "${GITHUB_REF_NAME}" != "v${package_version}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package v${package_version}" >&2
+            exit 1
+          fi
+          for skill in .lpm/skills/*.md; do
+            if ! grep -Fqx "version: \"${package_version}\"" "${skill}"; then
+              echo "${skill} version does not match package ${package_version}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify release
+        run: lpm run release:check
+
+      - name: Validate publish contents
+        run: lpm publish --check --yes
+
+      - name: Publish with GitHub OIDC
+        run: lpm publish --yes

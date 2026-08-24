@@ -6,28 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Security
-
-- Inline formatting now has a hard nesting limit, which prevents stack exhaustion on small crafted inputs.
-- `render()` rejects malformed, cyclic, and over-depth runtime token graphs before HTML generation.
-- The sanitizer removes reserved embed activation markers from user HTML while preserving trusted plugin embeds.
-- Safe-link handling classifies browser-special slash and backslash authorities as external.
-- CodeSandbox embeds use a reduced iframe capability policy by default.
-
-### Performance
-
-- Emphasis, deletion, code-span, and inline-HTML parsing now use linear delimiter and terminator indexes.
-- TOC and copy-code transforms avoid whole-suffix regular-expression rescans.
-- Repeated invalid inline syntax is coalesced into bounded text-token counts.
-- Safe-link base URLs and structural sanitizer options are compiled once per parser.
-- React Tweet embeds share one readiness poll, and eager Vimeo embeds skip intersection observers.
-- Adversarial scaling tests cover every fixed denial-of-service input with hard process timeouts.
-
-### Added
-
-- Exported `escapeHtml()` for safe custom renderer output.
-
-## [2.0.0] - 2026-08-10
+## [2.0.0] - 2026-08-25
 
 ### Security
 
@@ -37,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Embed consent output no longer contains inline event handlers.
 - Consent payloads describe known providers and cannot inject arbitrary HTML.
 - `allowStyle: true` permits only non-layout properties with restricted values.
+- Inline formatting now has a hard nesting limit, which prevents stack exhaustion on small crafted inputs.
+- `render()` rejects malformed, cyclic, and over-depth runtime token graphs before HTML generation.
+- The sanitizer removes reserved embed activation markers from user HTML while preserving trusted plugin embeds.
+- Sanitized links that open a new browsing context enforce `noopener noreferrer` and remove `opener`.
+- Safe-link handling classifies browser-special slash and backslash authorities as external.
+- CodeSandbox embeds use a reduced iframe capability policy by default.
+- CodePen embeds use a least-privilege iframe sandbox.
 
 ### Performance
 
@@ -45,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Table detection avoids backtracking on long pipe-heavy lines.
 - The main and `/core` entries no longer load `sanitize-html`.
 - The bundle gate now includes all production dependencies in its measurements.
+- Emphasis, deletion, code-span, and inline-HTML parsing now use linear delimiter and terminator indexes.
+- TOC and copy-code transforms avoid whole-suffix regular-expression rescans.
+- Repeated invalid inline syntax is coalesced into bounded text-token counts.
+- Safe-link base URLs and structural sanitizer options are compiled once per parser.
+- React Tweet embeds share one readiness poll, and eager Vimeo embeds skip intersection observers.
+- Adversarial scaling tests cover every fixed denial-of-service input with hard process timeouts.
 
 ### Added
 
@@ -56,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - CommonMark tests lock the exact passing example numbers.
 - React embed tests cover lazy loading, script reuse, and cleanup.
 - Adversarial scaling tests run in child processes with hard execution limits.
+- Exported `escapeHtml()` for safe custom renderer output.
 
 ### Changed
 
