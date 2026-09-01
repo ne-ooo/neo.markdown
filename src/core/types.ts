@@ -485,6 +485,8 @@ export interface BlockRuleContext {
   tokenize(src: string, depth: number): BlockToken[]
   /** Return true when a higher-priority enabled rule starts at src. */
   interruptsParagraph(src: string, paragraphPriority: number): boolean
+  /** Consume structural-token capacity from the current parser work budget. */
+  consumeTokens(count?: number): void
 }
 
 /**

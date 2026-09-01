@@ -1,4 +1,4 @@
-import type { BlockRule, TableCell } from '../../core/types.js'
+import type { BlockRule, BlockRuleContext, TableCell } from '../../core/types.js'
 
 const TABLE = /^ {0,3}((?=\S)(?=[^\n]*\|)[^\n]+)\n {0,3}((?=[ :|-]*\|)[ :|-]+)\n((?:(?=[^\n]*\|)[^\n]*(?:\n|$))*)/
 
@@ -30,8 +30,10 @@ function splitRow(line: string): string[] {
   return cells
 }
 
-function parseRow(line: string): TableCell[] {
-  return splitRow(line).map((text) => ({ text: text.trim(), tokens: [] }))
+function parseRow(line: string, context?: BlockRuleContext): TableCell[] {
+  const values = splitRow(line)
+  context?.consumeTokens(values.length)
+  return values.map((text) => ({ text: text.trim(), tokens: [] }))
 }
 
 function parseAlignment(line: string): Array<'left' | 'center' | 'right' | null> {
@@ -54,7 +56,7 @@ export const table: BlockRule = {
   name: 'table',
   priority: 700,
   starts: (src, options) => options.gfm === true && TABLE.test(src),
-  tokenize(src, options) {
+  tokenize(src, options, context) {
     if (options.gfm !== true) return null
     const match = TABLE.exec(src)
     if (!match) return null
@@ -62,14 +64,15 @@ export const table: BlockRule = {
     const raw = match[0]
     const align = parseAlignment(match[2])
     if (align.length === 0) return null
-    const header = parseRow(match[1])
+    const header = parseRow(match[1], context)
     if (header.length !== align.length) return null
 
     const rows: TableCell[][] = []
     if (match[3].trim()) {
       for (const line of match[3].trim().split('\n')) {
         if (!line.includes('|')) continue
-        const cells = parseRow(line)
+        const cells = parseRow(line, context)
+        if (cells.length < align.length) context?.consumeTokens(align.length - cells.length)
         while (cells.length < align.length) cells.push({ text: '', tokens: [] })
         if (cells.length > align.length) cells.splice(align.length)
         rows.push(cells)

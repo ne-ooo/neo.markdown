@@ -10,7 +10,14 @@ describe('optionless parser caches', () => {
   it('keeps one parser per convenience entry and isolates calls with options', async () => {
     const parserParse = vi.fn((markdown: string) => markdown)
     const createParser = vi.fn(() => ({ parse: parserParse }))
+    const MarkdownParser = vi.fn(function MockMarkdownParser() {
+      return { parse: parserParse }
+    })
     vi.doMock('../../src/create-parser.js', () => ({ createParser }))
+    vi.doMock('../../src/core/parser.js', () => ({
+      MarkdownParser,
+      MarkdownParserBase: MarkdownParser,
+    }))
 
     const [main, commonmark, gfm] = await Promise.all([
       import('../../src/index.js'),
@@ -24,7 +31,8 @@ describe('optionless parser caches', () => {
       expect(entry.parse('configured', {})).toBe('configured')
     }
 
-    expect(createParser).toHaveBeenCalledTimes(6)
+    expect(createParser).toHaveBeenCalledTimes(4)
+    expect(MarkdownParser).toHaveBeenCalledTimes(2)
     expect(parserParse).toHaveBeenCalledTimes(9)
   })
 

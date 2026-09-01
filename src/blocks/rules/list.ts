@@ -20,6 +20,7 @@ function processItem(
   loose: boolean,
   context?: BlockRuleContext
 ): ListItemToken {
+  context?.consumeTokens()
   const base = {
     text: item.text,
     loose,

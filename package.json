@@ -31,64 +31,124 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./sanitized": {
-      "types": "./dist/sanitized.d.ts",
-      "import": "./dist/sanitized.js",
-      "require": "./dist/sanitized.cjs"
+      "import": {
+        "types": "./dist/sanitized.d.ts",
+        "default": "./dist/sanitized.js"
+      },
+      "require": {
+        "types": "./dist/sanitized.d.cts",
+        "default": "./dist/sanitized.cjs"
+      }
     },
     "./core": {
-      "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.js",
-      "require": "./dist/core/index.cjs"
+      "import": {
+        "types": "./dist/core/index.d.ts",
+        "default": "./dist/core/index.js"
+      },
+      "require": {
+        "types": "./dist/core/index.d.cts",
+        "default": "./dist/core/index.cjs"
+      }
     },
     "./blocks": {
-      "types": "./dist/blocks/index.d.ts",
-      "import": "./dist/blocks/index.js",
-      "require": "./dist/blocks/index.cjs"
+      "import": {
+        "types": "./dist/blocks/index.d.ts",
+        "default": "./dist/blocks/index.js"
+      },
+      "require": {
+        "types": "./dist/blocks/index.d.cts",
+        "default": "./dist/blocks/index.cjs"
+      }
     },
     "./inline": {
-      "types": "./dist/inline/index.d.ts",
-      "import": "./dist/inline/index.js",
-      "require": "./dist/inline/index.cjs"
+      "import": {
+        "types": "./dist/inline/index.d.ts",
+        "default": "./dist/inline/index.js"
+      },
+      "require": {
+        "types": "./dist/inline/index.d.cts",
+        "default": "./dist/inline/index.cjs"
+      }
     },
     "./commonmark": {
-      "types": "./dist/presets/commonmark.d.ts",
-      "import": "./dist/presets/commonmark.js",
-      "require": "./dist/presets/commonmark.cjs"
+      "import": {
+        "types": "./dist/presets/commonmark.d.ts",
+        "default": "./dist/presets/commonmark.js"
+      },
+      "require": {
+        "types": "./dist/presets/commonmark.d.cts",
+        "default": "./dist/presets/commonmark.cjs"
+      }
     },
     "./gfm": {
-      "types": "./dist/presets/gfm.d.ts",
-      "import": "./dist/presets/gfm.js",
-      "require": "./dist/presets/gfm.cjs"
+      "import": {
+        "types": "./dist/presets/gfm.d.ts",
+        "default": "./dist/presets/gfm.js"
+      },
+      "require": {
+        "types": "./dist/presets/gfm.d.cts",
+        "default": "./dist/presets/gfm.cjs"
+      }
     },
     "./plugins/highlight": {
-      "types": "./dist/plugins/highlight.d.ts",
-      "import": "./dist/plugins/highlight.js",
-      "require": "./dist/plugins/highlight.cjs"
+      "import": {
+        "types": "./dist/plugins/highlight.d.ts",
+        "default": "./dist/plugins/highlight.js"
+      },
+      "require": {
+        "types": "./dist/plugins/highlight.d.cts",
+        "default": "./dist/plugins/highlight.cjs"
+      }
     },
     "./plugins/embeds": {
-      "types": "./dist/plugins/embeds.d.ts",
-      "import": "./dist/plugins/embeds.js",
-      "require": "./dist/plugins/embeds.cjs"
+      "import": {
+        "types": "./dist/plugins/embeds.d.ts",
+        "default": "./dist/plugins/embeds.js"
+      },
+      "require": {
+        "types": "./dist/plugins/embeds.d.cts",
+        "default": "./dist/plugins/embeds.cjs"
+      }
     },
     "./plugins/toc": {
-      "types": "./dist/plugins/toc.d.ts",
-      "import": "./dist/plugins/toc.js",
-      "require": "./dist/plugins/toc.cjs"
+      "import": {
+        "types": "./dist/plugins/toc.d.ts",
+        "default": "./dist/plugins/toc.js"
+      },
+      "require": {
+        "types": "./dist/plugins/toc.d.cts",
+        "default": "./dist/plugins/toc.cjs"
+      }
     },
     "./plugins/copy-code": {
-      "types": "./dist/plugins/copy-code.d.ts",
-      "import": "./dist/plugins/copy-code.js",
-      "require": "./dist/plugins/copy-code.cjs"
+      "import": {
+        "types": "./dist/plugins/copy-code.d.ts",
+        "default": "./dist/plugins/copy-code.js"
+      },
+      "require": {
+        "types": "./dist/plugins/copy-code.d.cts",
+        "default": "./dist/plugins/copy-code.cjs"
+      }
     },
     "./plugins/embeds/react": {
-      "types": "./dist/plugins/embeds/react.d.ts",
-      "import": "./dist/plugins/embeds/react.js",
-      "require": "./dist/plugins/embeds/react.cjs"
+      "import": {
+        "types": "./dist/plugins/embeds/react.d.ts",
+        "default": "./dist/plugins/embeds/react.js"
+      },
+      "require": {
+        "types": "./dist/plugins/embeds/react.d.cts",
+        "default": "./dist/plugins/embeds/react.cjs"
+      }
     },
     "./package.json": "./package.json"
   },

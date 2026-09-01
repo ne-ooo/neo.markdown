@@ -2,7 +2,8 @@
  * React embed components for neo.markdown
  *
  * Production-quality components with:
- * - IntersectionObserver lazy loading
+ * - IntersectionObserver lazy loading for Vimeo and Tweet
+ * - Native iframe lazy loading for the other providers
  * - Privacy-enhanced modes
  * - Accessible titles
  * - Script deduplication (Tweet)

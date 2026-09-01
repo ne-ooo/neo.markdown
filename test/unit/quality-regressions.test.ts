@@ -240,6 +240,57 @@ describe('parser quality regressions', () => {
       .parse('x'.repeat(1_000_001))).toThrow('exceeds maxInputLength 1000000')
   })
 
+  it('enforces a parser-wide UGC token budget', () => {
+    const parser = createParser({ ugc: true })
+    expect(() => parser.parse('# a\n'.repeat(50_001))).toThrow(
+      'Markdown token count exceeds UGC limit 50000'
+    )
+
+    const paragraph: BlockToken = {
+      type: 'paragraph',
+      raw: 'a',
+      text: 'a',
+      tokens: [{ type: 'text', raw: 'a', text: 'a' }],
+    }
+    expect(() => parser.render(Array(50_001).fill(paragraph))).toThrow(
+      'Markdown token count exceeds UGC limit 50000'
+    )
+
+    expect(() => parser.tokenize('<http:x>'.repeat(25_000))).toThrow(
+      'Markdown token count exceeds UGC limit 50000'
+    )
+    expect(() => createParser({ ugc: true, gfm: true })
+      .tokenize('www.a.co '.repeat(24_900))).toThrow(
+      'Markdown token count exceeds UGC limit 50000'
+    )
+  })
+
+  it('rejects over-budget shared token graphs before plugin transforms', () => {
+    let transformEntered = false
+    const plugin: MarkdownPlugin = (builder) => {
+      builder.addTokenTransform((tokens) => {
+        transformEntered = true
+        return tokens
+      })
+    }
+    const parser = createParser({ ugc: true, plugins: [plugin] })
+
+    let node: BlockToken = {
+      type: 'paragraph',
+      raw: 'a',
+      text: 'a',
+      tokens: [{ type: 'text', raw: 'a', text: 'a' }],
+    }
+    for (let depth = 0; depth < 16; depth++) {
+      node = { type: 'blockquote', raw: '>', tokens: [node, node] }
+    }
+
+    expect(() => parser.render([node])).toThrow(
+      'Markdown token count exceeds UGC limit 50000'
+    )
+    expect(transformEntered).toBe(false)
+  })
+
   it('parses unmatched link openers in linear time', { timeout: 1_000 }, () => {
     const parser = createParser()
     const markdown = '['.repeat(80_000)

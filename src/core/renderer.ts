@@ -159,8 +159,6 @@ export class HtmlRenderer implements Renderer {
 
     // Phase 2: Render nested blocks in list items
     if (token.tokens && token.tokens.length > 0) {
-      const content = this.renderBlock(token.tokens)
-
       // Check if this is a tight list item (no blank lines)
       const isTight = !token.loose
 
@@ -177,6 +175,7 @@ export class HtmlRenderer implements Renderer {
         }
       }
       // Loose list item or multiple blocks: keep <p> tags
+      const content = this.renderBlock(token.tokens)
       return `<li>${checkbox}\n${content}</li>\n`
     }
     // Fallback: render text only

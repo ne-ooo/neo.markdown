@@ -11,6 +11,7 @@ import type {
   BlockToken,
   ParserOptions,
 } from './types.js'
+import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
 
 interface InternalBlockRule {
   rule: BlockRule
@@ -83,11 +84,15 @@ export class Tokenizer {
   }
 
   /** Tokenize a complete Markdown document. */
-  tokenize(src: string): BlockToken[] {
-    return this.tokenizeInternal(src, 0)
+  tokenize(src: string, tokenBudget?: TokenBudget): BlockToken[] {
+    return this.tokenizeInternal(src, 0, tokenBudget)
   }
 
-  private tokenizeInternal(src: string, depth: number): BlockToken[] {
+  private tokenizeInternal(
+    src: string,
+    depth: number,
+    tokenBudget?: TokenBudget
+  ): BlockToken[] {
     let markdown = src.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     if (markdown && !markdown.endsWith('\n')) markdown += '\n'
 
@@ -101,7 +106,7 @@ export class Tokenizer {
       }
 
       const remaining = markdown.slice(cursor)
-      const context = this.createContext(depth)
+      const context = this.createContext(depth, tokenBudget)
       let consumed = 0
 
       for (const candidate of this.rules) {
@@ -109,6 +114,7 @@ export class Tokenizer {
         if (!result) continue
 
         this.assertProgress(candidate.rule.name, remaining, result.raw)
+        consumeTokenBudget(tokenBudget)
         tokens.push(result.token)
         consumed = result.raw.length
         break
@@ -122,14 +128,15 @@ export class Tokenizer {
     return tokens
   }
 
-  private createContext(depth: number): BlockRuleContext {
+  private createContext(depth: number, tokenBudget?: TokenBudget): BlockRuleContext {
     return {
       depth,
       maxNestingDepth: this.maxNestingDepth,
-      tokenize: (src, nestedDepth) => this.tokenizeInternal(src, nestedDepth),
+      tokenize: (src, nestedDepth) => this.tokenizeInternal(src, nestedDepth, tokenBudget),
       interruptsParagraph: (src, paragraphPriority) => (
         this.interruptsParagraph(src, paragraphPriority)
       ),
+      consumeTokens: (count = 1) => consumeTokenBudget(tokenBudget, count),
     }
   }
 

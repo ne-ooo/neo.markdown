@@ -40,6 +40,16 @@ const sanitized = await bundle(`
   console.log(parse('<p>safe</p>', { allowHtml: true, sanitize: true }))
 `)
 
+const commonmark = await bundle(`
+  import { parse } from '@lpm.dev/neo.markdown/commonmark'
+  console.log(parse('# commonmark'))
+`)
+
+const gfm = await bundle(`
+  import { parse } from '@lpm.dev/neo.markdown/gfm'
+  console.log(parse('| a |\\n| - |\\n| b |'))
+`)
+
 assert.ok(
   selective.gzip < full.gzip * 0.85,
   `selective bundle must be at least 15% smaller: full=${full.gzip}, selective=${selective.gzip}`
@@ -50,7 +60,14 @@ assert.ok(
   `sanitized bundle must include its structural sanitizer: sanitized=${sanitized.gzip}, full=${full.gzip}`
 )
 
+assert.ok(
+  commonmark.gzip < gfm.gzip * 0.95,
+  `CommonMark preset must be at least 5% smaller: commonmark=${commonmark.gzip}, gfm=${gfm.gzip}`
+)
+
 console.log(`Default parser:   ${full.bytes} bytes (${full.gzip} gzip)`)
 console.log(`Heading + text:   ${selective.bytes} bytes (${selective.gzip} gzip)`)
 console.log(`With sanitizer:   ${sanitized.bytes} bytes (${sanitized.gzip} gzip)`)
+console.log(`CommonMark preset: ${commonmark.bytes} bytes (${commonmark.gzip} gzip)`)
+console.log(`GFM preset:        ${gfm.bytes} bytes (${gfm.gzip} gzip)`)
 console.log(`Selective saving: ${Math.round((1 - selective.gzip / full.gzip) * 100)}% gzip`)

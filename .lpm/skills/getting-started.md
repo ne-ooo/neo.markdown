@@ -218,17 +218,17 @@ Directive syntax in markdown:
 ::vimeo[361905857]
 ::tweet[2034382182353871105]
 ::codesandbox[abc123]
-::codepen[user/pen/xyz]
-::gist[username/gist_id]
+::codepen[xyz]{user="username"}
+::gist[abc123def]{user="username"}
 ::loom[share_id]
 ```
 
 #### React Embed Components
 
-Pre-built React components for embeds, using IntersectionObserver for lazy loading:
+Pre-built React components for embeds. Vimeo and Tweet defer content with IntersectionObserver. The iframe-based components use native `loading="lazy"`. GitHub Gist embeds use the HTML plugin and `initializeEmbeds()` above:
 
 ```tsx
-import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Gist, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
+import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
 
 <YouTube id="dQw4w9WgXcQ" privacyEnhanced />
 <Vimeo id="361905857" />

@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { createParser, parse } from '../../src/index.js'
 import { tocPlugin } from '../../src/plugins/toc.js'
 import type { TocEntry } from '../../src/plugins/toc.js'
+import type { BlockToken } from '../../src/core/types.js'
 import { slugify, createSlugger } from '../../src/utils/slug.js'
 
 // ---------------------------------------------------------------------------
@@ -126,10 +127,56 @@ describe('tocPlugin - Heading Rendering', () => {
     expect(result).toContain('<strong>World</strong>')
   })
 
+  it('should not nest an anchor link around a linked heading', () => {
+    const result = parse('# [Docs](https://example.com)', {
+      plugins: [tocPlugin()],
+    })
+    expect(result).toBe(
+      '<h1 id="docs"><a href="https://example.com">Docs</a></h1>\n'
+    )
+  })
+
+  it('should use image alternative text for heading IDs', () => {
+    let tocEntries: TocEntry[] = []
+    const result = parse('# ![Logo](logo.png)', {
+      plugins: [tocPlugin({
+        anchorLinks: false,
+        onToc: (entries) => { tocEntries = entries },
+      })],
+    })
+    expect(result).toContain('<h1 id="logo">')
+    expect(tocEntries).toEqual([{ level: 1, text: 'Logo', id: 'logo' }])
+  })
+
+  it('should process headings inside block containers in document order', () => {
+    let tocEntries: TocEntry[] = []
+    const result = parse('> # Quoted\n\n- # Listed', {
+      plugins: [tocPlugin({
+        anchorLinks: false,
+        onToc: (entries) => { tocEntries = entries },
+      })],
+    })
+    expect(result).toContain('<h1 id="quoted">Quoted</h1>')
+    expect(result).toContain('<h1 id="listed">Listed</h1>')
+    expect(tocEntries.map((entry) => entry.text)).toEqual(['Quoted', 'Listed'])
+  })
+
   it('should not modify non-heading tokens', () => {
     const plugin = tocPlugin()
     const result = parse('# Heading\n\nParagraph text', { plugins: [plugin] })
     expect(result).toContain('<p>Paragraph text</p>')
+  })
+
+  it('should reject cyclic token graphs before recursive TOC traversal', () => {
+    const cycle = {
+      type: 'blockquote',
+      raw: '',
+      tokens: [],
+    } as unknown as BlockToken & { tokens: BlockToken[] }
+    cycle.tokens.push(cycle)
+
+    const parser = createParser({ plugins: [tocPlugin()] })
+    expect(() => parser.render([cycle])).toThrow('Cyclic token graph')
   })
 })
 

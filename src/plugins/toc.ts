@@ -14,7 +14,7 @@
  * ```
  */
 
-import type { MarkdownPlugin, HeadingToken, InlineToken } from '../core/types.js'
+import type { BlockToken, MarkdownPlugin, HeadingToken, InlineToken } from '../core/types.js'
 import { createSlugger } from '../utils/slug.js'
 import { escape } from '../utils/escape.js'
 
@@ -46,21 +46,54 @@ export interface TocOptions {
   onToc?: (entries: TocEntry[]) => void
 }
 
-function extractInlineText(tokens: InlineToken[]): string {
+const MAX_TOC_TRAVERSAL_DEPTH = 256
+
+function extractInlineText(
+  tokens: InlineToken[],
+  depth = 0,
+  active = new Set<object>()
+): string {
+  if (!Array.isArray(tokens)) throw new TypeError('Inline tokens must be an array')
+  if (depth > MAX_TOC_TRAVERSAL_DEPTH) {
+    throw new RangeError('Token render depth exceeds 256')
+  }
+
   const parts: string[] = []
   for (const token of tokens) {
-    if (token.type === 'text' || token.type === 'code') {
-      parts.push(token.text)
-    } else if (
-      token.type === 'strong'
-      || token.type === 'em'
-      || token.type === 'del'
-      || token.type === 'link'
-    ) {
-      parts.push(extractInlineText(token.tokens))
+    if (typeof token !== 'object' || token === null) {
+      throw new TypeError('Tokens must be non-null objects')
+    }
+    if (active.has(token)) throw new TypeError('Cyclic token graph is not renderable')
+    active.add(token)
+    try {
+      if (token.type === 'text' || token.type === 'code' || token.type === 'image') {
+        parts.push(token.text)
+      } else if (
+        token.type === 'strong'
+        || token.type === 'em'
+        || token.type === 'del'
+        || token.type === 'link'
+      ) {
+        parts.push(extractInlineText(token.tokens, depth + 1, active))
+      }
+    } finally {
+      active.delete(token)
     }
   }
   return parts.join('')
+}
+
+function containsInlineLink(tokens: InlineToken[]): boolean {
+  for (const token of tokens) {
+    if (token.type === 'link') return true
+    if (
+      (token.type === 'strong' || token.type === 'em' || token.type === 'del')
+      && containsInlineLink(token.tokens)
+    ) {
+      return true
+    }
+  }
+  return false
 }
 
 /**
@@ -83,19 +116,55 @@ export function tocPlugin(options: TocOptions = {}): MarkdownPlugin {
     builder.addTokenTransform((tokens) => {
       const slugger = createSlugger()
       const tocEntries: TocEntry[] = []
+      const active = new Set<object>()
 
-      const transformed = tokens.map((token) => {
-        if (token.type !== 'heading') return token
-        if (token.level < minDepth || token.level > maxDepth) return token
+      const transformTokens = (blockTokens: BlockToken[], depth = 0): BlockToken[] => {
+        if (!Array.isArray(blockTokens)) throw new TypeError('Block tokens must be an array')
+        if (depth > MAX_TOC_TRAVERSAL_DEPTH) {
+          throw new RangeError('Token render depth exceeds 256')
+        }
 
-        // Walk tokens directly so malformed raw HTML cannot trigger repeated
-        // whole-suffix scans before the sanitizer runs.
-        const plainText = extractInlineText(token.tokens)
-        const id = slugger.slug(plainText)
+        return blockTokens.map((token) => {
+          if (typeof token !== 'object' || token === null) {
+            throw new TypeError('Tokens must be non-null objects')
+          }
+          if (active.has(token)) throw new TypeError('Cyclic token graph is not renderable')
+          active.add(token)
+          try {
+            if (token.type === 'heading') {
+              if (token.level < minDepth || token.level > maxDepth) return token
 
-        tocEntries.push({ level: token.level, text: plainText, id })
-        return { ...token, tocId: id }
-      })
+              // Walk tokens directly so malformed raw HTML cannot trigger repeated
+              // whole-suffix scans before the sanitizer runs.
+              const plainText = extractInlineText(token.tokens)
+              const id = slugger.slug(plainText)
+
+              tocEntries.push({ level: token.level, text: plainText, id })
+              return { ...token, tocId: id }
+            }
+
+            if (token.type === 'blockquote') {
+              return { ...token, tokens: transformTokens(token.tokens, depth + 1) }
+            }
+
+            if (token.type === 'list') {
+              return {
+                ...token,
+                items: token.items.map((item) => ({
+                  ...item,
+                  tokens: transformTokens(item.tokens, depth + 1),
+                })),
+              }
+            }
+
+            return token
+          } finally {
+            active.delete(token)
+          }
+        })
+      }
+
+      const transformed = transformTokens(tokens)
 
       // Deliver TOC entries via callback
       if (onToc && tocEntries.length > 0) {
@@ -120,7 +189,7 @@ export function tocPlugin(options: TocOptions = {}): MarkdownPlugin {
         return `<h${token.level}>${text}</h${token.level}>\n`
       }
 
-      if (anchorLinks) {
+      if (anchorLinks && !containsInlineLink(token.tokens)) {
         return (
           `<h${token.level} id="${escape(id)}">` +
           `<a class="${escape(anchorClass)}" href="#${escape(id)}">${text}</a>` +

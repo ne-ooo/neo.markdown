@@ -24,6 +24,7 @@ const adversarialInputs = [
   'copyHtml',
   'table',
   'breaks',
+  'embedRestore',
 ] as const
 
 describe('adversarial input scaling', () => {

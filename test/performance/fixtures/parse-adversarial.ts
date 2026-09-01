@@ -1,7 +1,9 @@
 import { createParser } from '../../../src/index.js'
+import { createParser as createSanitizedParser } from '../../../src/sanitized.js'
 import { InlineTokenizer } from '../../../src/core/inline-tokenizer.js'
 import { copyCodePlugin } from '../../../src/plugins/copy-code.js'
 import { tocPlugin } from '../../../src/plugins/toc.js'
+import { embedPlugin } from '../../../src/plugins/embeds.js'
 
 const INPUT_SIZES = [2_000, 8_000, 20_000] as const
 const defaultParser = createParser({ gfm: true, maxNestingDepth: 32 })
@@ -10,6 +12,11 @@ const htmlParser = createParser({ allowHtml: true })
 const tocParser = createParser({ allowHtml: true, plugins: [tocPlugin()] })
 const copyParser = createParser({ allowHtml: true, plugins: [copyCodePlugin()] })
 const breaksTokenizer = new InlineTokenizer([], { breaks: true })
+const sanitizedEmbedParser = createSanitizedParser({
+  allowHtml: true,
+  sanitize: true,
+  plugins: [embedPlugin({ youtube: true })],
+})
 
 function nestedEmphasis(depth: number): string {
   const openings: string[] = []
@@ -36,6 +43,7 @@ const scenarios: Record<string, (size: number) => unknown> = {
   copyHtml: (size) => copyParser.parse('<pre '.repeat(size * 2)),
   table: (size) => defaultParser.parse(`|${' cell |'.repeat(size)}`),
   breaks: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 4)),
+  embedRestore: (size) => sanitizedEmbedParser.parse('::youtube[x]\n'.repeat(size)),
 } as const
 
 const scenario = process.argv[2] ?? ''

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parse } from '../../src/index.js'
+import { createParser, parse } from '../../src/index.js'
+import type { TextToken } from '../../src/core/types.js'
 
 describe('Advanced Lists (Phase 2)', () => {
   describe('Nested Lists', () => {
@@ -77,6 +78,21 @@ describe('Advanced Lists (Phase 2)', () => {
       expect(result).not.toContain('<p>')
       expect(result).toContain('<li>Item 1</li>')
       expect(result).toContain('<li>Item 2</li>')
+    })
+
+    it('should render each tight-list inline subtree once', () => {
+      let textCalls = 0
+      const parser = createParser({
+        renderer: {
+          text(token: TextToken): string {
+            textCalls++
+            return token.text
+          },
+        },
+      })
+
+      expect(parser.parse('- Item 1\n- Item 2')).toContain('<li>Item 1</li>')
+      expect(textCalls).toBe(2)
     })
 
     it('should render loose list with <p> tags', () => {

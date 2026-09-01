@@ -621,6 +621,7 @@ export function embedPlugin(options: EmbedOptions = {}): MarkdownPlugin {
       && builder.options.sanitize === true
     const deferredMarkup = new Map<string, string>()
     const markerPrefix = `NEOMARKDOWNEMBED${createMarkerNonce()}`
+    const markerPattern = new RegExp(`${markerPrefix}\\d+END`, 'g')
     let markerCounter = 0
     const emitTrustedMarkup = (html: string): string => {
       if (!deferTrustedMarkup) return html
@@ -636,10 +637,10 @@ export function embedPlugin(options: EmbedOptions = {}): MarkdownPlugin {
         return tokens
       })
       builder.addHtmlTransform((html) => {
-        let result = html
-        for (const [marker, markup] of deferredMarkup) {
-          result = result.replace(marker, markup)
-        }
+        const result = html.replace(
+          markerPattern,
+          (marker) => deferredMarkup.get(marker) ?? marker
+        )
         deferredMarkup.clear()
         return result
       })

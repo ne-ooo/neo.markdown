@@ -1,8 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { createParser } from '../../src/index.js'
+import { createParser as createGfmParser } from '../../src/presets/gfm.js'
+import { createParser as createCommonMarkParser } from '../../src/presets/commonmark.js'
+import { MarkdownParser } from '../../src/core/parser.js'
+import { InlineTokenizer } from '../../src/core/inline-tokenizer.js'
+import { allBlockRules } from '../../src/blocks/rules.js'
 
 describe('gfm option', () => {
   describe('gfm: false — strict CommonMark mode', () => {
+    it('the CommonMark preset cannot enter a partial-GFM mode', () => {
+      const parser = createCommonMarkParser({ gfm: true })
+      expect(parser.parse('~~gone~~')).not.toContain('<del>')
+      expect(parser.parse('- [x] done')).not.toContain('<input')
+      expect(parser.parse('| a |\n| - |\n| b |')).not.toContain('<table>')
+    })
+
     it('table syntax is rendered as paragraph text, not <table>', () => {
       const parser = createParser({ gfm: false })
       const html = parser.parse('| A | B |\n|---|---|\n| 1 | 2 |')
@@ -64,6 +76,32 @@ describe('gfm option', () => {
   })
 
   describe('gfm: true (or default) — GFM features enabled', () => {
+    it('public low-level constructors retain GFM behavior', () => {
+      const inline = new InlineTokenizer()
+        .tokenize('~~gone~~ www.example.com')
+      expect(inline.some((token) => token.type === 'del')).toBe(true)
+      expect(inline.some((token) => token.type === 'link')).toBe(true)
+
+      const commonMarkInline = new InlineTokenizer([], { gfm: false })
+        .tokenize('~~gone~~ www.example.com')
+      expect(commonMarkInline.some((token) => token.type === 'del')).toBe(false)
+      expect(commonMarkInline.some((token) => token.type === 'link')).toBe(false)
+
+      const parser = new MarkdownParser({ gfm: true }, allBlockRules)
+      expect(parser.parse('~~gone~~')).toContain('<del>gone</del>')
+    })
+
+    it('the GFM preset factory enables GFM defaults', () => {
+      const html = createGfmParser().parse('| A |\n|---|\n| 1 |')
+      expect(html).toContain('<table>')
+    })
+
+    it('the GFM preset factory permits explicit overrides', () => {
+      const html = createGfmParser({ gfm: false, breaks: false })
+        .parse('| A |\n|---|\n| 1 |')
+      expect(html).not.toContain('<table>')
+    })
+
     it('tables work', () => {
       const parser = createParser({ gfm: true })
       const html = parser.parse('| A | B |\n|---|---|\n| 1 | 2 |')

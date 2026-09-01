@@ -160,10 +160,10 @@ export function renderWithToc(md: string): { html: string; toc: TocEntry[] } {
 
 ## React Embed Components
 
-Pre-built React components for embedding YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, GitHub Gist, and Loom. Import from `@lpm.dev/neo.markdown/plugins/embeds/react`:
+Pre-built React components for embedding YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, and Loom. Import from `@lpm.dev/neo.markdown/plugins/embeds/react`:
 
 ```tsx
-import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Gist, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
+import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
 
 export function BlogPost({ content }: { content: string }) {
   return (
@@ -177,7 +177,7 @@ export function BlogPost({ content }: { content: string }) {
 }
 ```
 
-These components use IntersectionObserver for lazy loading — the embed iframe is only inserted when the component scrolls into view. This avoids loading heavy third-party scripts until needed.
+Vimeo and Tweet defer content with IntersectionObserver. YouTube, CodeSandbox, CodePen, and Loom render their iframe immediately and use native `loading="lazy"`.
 
 ## Security with User-Generated Markdown
 

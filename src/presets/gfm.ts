@@ -20,12 +20,12 @@
  */
 
 import type { Parser, ParserOptions } from '../core/types.js'
-import { createParser } from '../create-parser.js'
+import { createParser as createBaseParser } from '../create-parser.js'
 
 let defaultParser: Parser | undefined
 
-function createGfmParser(options?: Partial<ParserOptions>): Parser {
-  return createParser({
+export function createParser(options?: Partial<ParserOptions>): Parser {
+  return createBaseParser({
     allowHtml: false,
     sanitize: false,
     gfm: true,
@@ -43,13 +43,12 @@ function createGfmParser(options?: Partial<ParserOptions>): Parser {
  */
 export function parse(markdown: string, options?: Partial<ParserOptions>): string {
   if (options === undefined) {
-    defaultParser ??= createGfmParser()
+    defaultParser ??= createParser()
     return defaultParser.parse(markdown)
   }
 
-  return createGfmParser(options).parse(markdown)
+  return createParser(options).parse(markdown)
 }
 
 // Re-export types
 export type * from '../core/types.js'
-export { createParser } from '../create-parser.js'

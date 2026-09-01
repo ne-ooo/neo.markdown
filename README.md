@@ -1,144 +1,186 @@
 # @lpm.dev/neo.markdown
 
-Modern, tree-shakeable Markdown-subset parser. TypeScript-first, XSS-safe by default, and extensible through a simple plugin system.
+`@lpm.dev/neo.markdown` converts a Markdown subset to HTML and supports GFM
+features, sanitization, and plugins.
+
+## Features
+
+- **Markdown subset:** The conformance suite measures behavior against
+  CommonMark 0.31.2 fixtures.
+- **GFM features:** Supports tables, task lists, strikethrough, and autolinks.
+- **HTML controls:** Escapes raw HTML by default and provides a structural
+  sanitizer entry point.
+- **Plugins:** Supports syntax highlighting, embeds, a table of contents, copy
+  buttons, and application rules.
+- **Resource controls:** Limits input length, token count, nesting depth, and
+  inline work.
+- **TypeScript support:** The package exports parser, token, renderer, rule, and
+  plugin types.
+- **Dependency surface:** One runtime dependency supplies the structural HTML
+  sanitizer.
 
 ## Install
+
+Install the package with LPM:
 
 ```bash
 lpm install @lpm.dev/neo.markdown
 ```
 
-## Quick Start
+React 18 or later is an optional peer dependency for the React embed entry
+point.
+
+## Quick start
 
 ```typescript
-import { parse } from '@lpm.dev/neo.markdown'
+import { parse } from "@lpm.dev/neo.markdown";
 
-const html = parse('# Hello\n\nWorld')
-// '<h1>Hello</h1>\n<p>World</p>\n'
+const html = parse("# Hello\n\nWorld");
+// => "<h1>Hello</h1>\n<p>World</p>\n"
 ```
-
-## Features
-
-- **Markdown subset** — continuously measured against CommonMark 0.31.2 fixtures
-- **GFM** (GitHub Flavored Markdown) — tables, task lists, strikethrough
-- **XSS protection** — HTML escaped by default
-- **Plugin system** — highlight, embeds, TOC, copy-code, or write your own
-- **Tree-shakeable** — sub-path imports for each layer
-- **Optional structural HTML sanitization** through the `/sanitized` entry
-- **TypeScript** — full type declarations
 
 ## API
 
-### `parse(markdown, options?)`
+### `parse(markdown, options?): string`
 
-Optionless calls reuse one lazy parser for lower setup cost. A call that passes options uses a new parser. Use `createParser(options)` when you parse many documents with the same options.
+`parse()` converts Markdown source to HTML. An optionless call reuses one lazy
+parser.
+
+A call with options creates a parser for that call. Use `createParser()` for
+repeated work with the same options.
 
 ```typescript
-import { parse } from '@lpm.dev/neo.markdown'
+import { parse } from "@lpm.dev/neo.markdown";
 
-// Basic
-parse('# Hello')
-// => '<h1>Hello</h1>\n'
+parse("# Hello");
+// => "<h1>Hello</h1>\n"
 
-// XSS-safe by default
-parse('<script>alert("xss")</script>')
-// => '<p>&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;</p>\n'
+parse('<script>alert("xss")</script>');
+// => "<p>&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;</p>\n"
 
-// Allow trusted HTML
-parse('<div class="box">content</div>', { allowHtml: true })
-// => '<div class="box">content</div>\n'
+parse('<div class="box">content</div>', { allowHtml: true });
+// => "<div class=\"box\">content</div>\n"
 ```
 
-### `createParser(options?)`
+### `createParser(options?): Parser`
+
+`createParser()` creates a parser with `parse()`, `tokenize()`, and `render()`
+methods.
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown'
+import { createParser } from "@lpm.dev/neo.markdown";
 
-const parser = createParser({ allowHtml: false })
+const parser = createParser({
+  allowHtml: false,
+  gfm: true,
+});
 
-parser.parse('# Hello')
-parser.parse('**bold** text')
+parser.parse("**bold** text");
+const tokens = parser.tokenize("# Heading");
+parser.render(tokens);
 ```
 
-### Options
+### Parser options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `allowHtml` | `boolean` | `false` | Allow raw HTML in output |
-| `sanitize` | `boolean` | `false` | Sanitize HTML (strip dangerous tags/attributes). Requires `allowHtml: true` |
-| `sanitizer` | `HtmlSanitizer` | — | Custom sanitizer provider for the main or `/core` entry |
-| `allowedTags` | `string[]` | — | Extend default allowed tags when `sanitize: true` |
-| `allowedAttributes` | `Record<string, string[]>` | — | Extend default per-tag attributes when `sanitize: true` |
-| `allowStyle` | `boolean` | `false` | Allow a restricted set of inline style properties when `sanitize: true` |
-| `gfm` | `boolean` | `false` | Enable GFM features (tables, task lists, strikethrough, autolinks) |
-| `breaks` | `boolean` | `false` | Convert bare `\n` to `<br>` |
-| `maxNestingDepth` | `number` | `100` | Limit nested blockquotes/lists; hard-capped at 100 |
-| `maxInputLength` | `number` | — | Reject longer input. `ugc: true` has a hard maximum of 1,000,000 UTF-16 code units |
-| `lazyImages` | `boolean` | `true` | Add `loading="lazy"` to all images |
-| `safeLinks` | `boolean \| object` | `false` | Add `rel="nofollow noopener noreferrer"` + `target="_blank"` to external links. Object: `{ externalRel?, externalTarget?, baseUrl? }` |
-| `ugc` | `boolean` | `false` | Enforces safe links, disables raw HTML, and limits input to 1,000,000 code units |
-| `blocks` | `BlockRule[]` | — | Select block rules. Import `createParser` from `/core` for a bundle containing only those rules |
-| `renderer` | `Partial<Renderer>` | — | Override default renderer methods |
-| `plugins` | `MarkdownPlugin[]` | `[]` | Plugins to extend the parser |
+| Option              | Type                       | Default           | Description                                                  |
+| ------------------- | -------------------------- | ----------------- | ------------------------------------------------------------ |
+| `allowHtml`         | `boolean`                  | `false`           | Pass raw HTML to the output.                                 |
+| `sanitize`          | `boolean`                  | `false`           | Sanitize raw HTML. This requires `allowHtml: true`.          |
+| `sanitizer`         | `HtmlSanitizer`            | None              | Provide an HTML sanitizer for the main or `/core` entry.     |
+| `allowedTags`       | `string[]`                 | Built-in list     | Add allowed tags during sanitization.                        |
+| `allowedAttributes` | `Record<string, string[]>` | Built-in list     | Add allowed attributes for each tag.                         |
+| `allowStyle`        | `boolean`                  | `false`           | Allow a restricted set of inline style properties.           |
+| `gfm`               | `boolean`                  | `false`           | Enable GFM features.                                         |
+| `breaks`            | `boolean`                  | `false`           | Convert bare newlines to `<br>`.                             |
+| `maxNestingDepth`   | `number`                   | `100`             | Limit nested blockquotes and lists. The hard maximum is 100. |
+| `maxInputLength`    | `number`                   | No general limit  | Reject longer input. UGC mode has a hard limit.              |
+| `lazyImages`        | `boolean`                  | `true`            | Add `loading="lazy"` to rendered images.                     |
+| `safeLinks`         | `boolean \| object`        | `false`           | Set attributes for external links.                           |
+| `ugc`               | `boolean`                  | `false`           | Apply the user-generated-content controls.                   |
+| `blocks`            | `BlockRule[]`              | Complete rule set | Select the block rules.                                      |
+| `renderer`          | `Partial<Renderer>`        | HTML renderer     | Override renderer methods.                                   |
+| `plugins`           | `MarkdownPlugin[]`         | `[]`              | Add parser plugins.                                          |
 
-### HTML Sanitization
+The `safeLinks` object accepts `externalRel`, `externalTarget`, and `baseUrl`.
 
-Import the `/sanitized` entry to use the built-in structural sanitizer:
+### HTML sanitization
+
+Import the `/sanitized` entry to use the built-in structural sanitizer.
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown/sanitized'
+import { createParser } from "@lpm.dev/neo.markdown/sanitized";
 
 const parser = createParser({
   allowHtml: true,
   sanitize: true,
-})
+});
 
-parser.parse('<script>alert("xss")</script>')  // script stripped entirely
-parser.parse('<img onerror="hack" src="x">')   // onerror stripped, tag kept
-parser.parse('<a href="javascript:evil">click</a>')  // href stripped
-parser.parse('<details><summary>OK</summary>Safe</details>')  // preserved
+parser.parse('<script>alert("xss")</script>');
+// The script element is removed.
+
+parser.parse('<img onerror="hack" src="x">');
+// The onerror attribute is removed.
+
+parser.parse('<a href="javascript:evil">click</a>');
+// The href attribute is removed.
 ```
 
-`allowStyle: true` permits `color`, `background-color`, `font-style`, `font-weight`, `text-align`, `text-decoration`, and `white-space`.
-The sanitizer removes layout properties, CSS expressions, and URL values.
+With `allowStyle: true`, the sanitizer permits these properties:
 
-### User-Generated Content
+- `color`
+- `background-color`
+- `font-style`
+- `font-weight`
+- `text-align`
+- `text-decoration`
+- `white-space`
 
-Use UGC mode for READMEs, comments, and other untrusted Markdown:
+The sanitizer removes layout properties, CSS expressions, and URL values from
+inline styles.
+
+### User-generated-content mode
+
+Use UGC mode for comments, READMEs, and other untrusted Markdown.
 
 ```typescript
-const parser = createParser({
-  ugc: true,  // safe links, no raw HTML, and a fixed input limit
-})
+import { createParser } from "@lpm.dev/neo.markdown";
+
+const parser = createParser({ ugc: true });
+const html = parser.parse(userMarkdown);
 ```
+
+UGC mode disables raw HTML and applies safe-link defaults. It limits input to
+1,000,000 UTF-16 code units and 50,000 tokens.
 
 The parser also applies fixed inline nesting and work limits. These limits stop
-deep formatting from exhausting the call stack or causing repeated rescans.
+deep formatting and repeated rescans after the budgets are exhausted.
 
-### Tree-Shakeable Blocks
+### Select block rules
 
-Import only the block rules you need:
+Use the `/core` entry and explicit `/blocks` imports to exclude unused block
+rules.
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown/core'
-import { heading, paragraph, code, list } from '@lpm.dev/neo.markdown/blocks'
+import { createParser } from "@lpm.dev/neo.markdown/core";
+import { code, heading, list, paragraph } from "@lpm.dev/neo.markdown/blocks";
 
 const parser = createParser({
-  blocks: [heading, paragraph, code, list],  // skip tables, hr, html, etc.
-})
+  blocks: [heading, paragraph, code, list],
+});
 ```
 
-The main entry includes the complete default rule set so `createParser()` works without configuration. Use the `/core` factory with explicit `/blocks` imports when bundle-level removal matters.
+The main entry includes the complete default rule set.
 
 ## Plugins
 
-Plugins extend the parser with custom tokenization rules, renderer overrides, and transforms. A plugin is a plain function — no class inheritance, no middleware chains.
+Plugins can add rules, override renderer methods, transform tokens, and
+transform final HTML.
 
 ```typescript
-import { createParser } from '@lpm.dev/neo.markdown'
-import { tocPlugin } from '@lpm.dev/neo.markdown/plugins/toc'
-import { embedPlugin } from '@lpm.dev/neo.markdown/plugins/embeds'
-import { copyCodePlugin } from '@lpm.dev/neo.markdown/plugins/copy-code'
+import { createParser } from "@lpm.dev/neo.markdown";
+import { copyCodePlugin } from "@lpm.dev/neo.markdown/plugins/copy-code";
+import { embedPlugin } from "@lpm.dev/neo.markdown/plugins/embeds";
+import { tocPlugin } from "@lpm.dev/neo.markdown/plugins/toc";
 
 const parser = createParser({
   gfm: true,
@@ -146,25 +188,32 @@ const parser = createParser({
     tocPlugin({ maxDepth: 3 }),
     embedPlugin({ youtube: true, twitter: true, autoEmbed: true }),
     copyCodePlugin(),
-  ]
-})
-
-const html = parser.parse(markdown)
+  ],
+});
 ```
 
-### Highlight Plugin
+### Highlight plugin
 
-Syntax highlighting for code blocks via `@lpm.dev/neo.highlight`.
+The highlight plugin uses `@lpm.dev/neo.highlight` for fenced code blocks.
 
 ```bash
 lpm install @lpm.dev/neo.highlight
 ```
 
 ```typescript
-import { highlightPlugin } from '@lpm.dev/neo.markdown/plugins/highlight'
-import { tokenize, renderToHTML, getThemeStylesheet } from '@lpm.dev/neo.highlight'
-import { javascript, typescript, python } from '@lpm.dev/neo.highlight/grammars'
-import { githubDark } from '@lpm.dev/neo.highlight/themes/github-dark'
+import { parse } from "@lpm.dev/neo.markdown";
+import { highlightPlugin } from "@lpm.dev/neo.markdown/plugins/highlight";
+import {
+  getThemeStylesheet,
+  renderToHTML,
+  tokenize,
+} from "@lpm.dev/neo.highlight";
+import {
+  javascript,
+  python,
+  typescript,
+} from "@lpm.dev/neo.highlight/grammars";
+import { githubDark } from "@lpm.dev/neo.highlight/themes/github-dark";
 
 const html = parse(markdown, {
   plugins: [
@@ -175,417 +224,384 @@ const html = parse(markdown, {
       getThemeStylesheet,
       theme: githubDark,
       lineNumbers: true,
-    })
-  ]
-})
+    }),
+  ],
+});
 ```
 
-Code block meta strings are parsed for highlight line annotations:
+Code metadata can select highlighted lines:
 
 ````markdown
 ```typescript {1,3-5} title="example.ts"
-const a = 1
-const b = 2
-const c = 3
+const a = 1;
+const b = 2;
+const c = 3;
 ```
 ````
 
-The `lang` and `meta` are split automatically — `lang: "typescript"`, `meta: "{1,3-5} title=\"example.ts\""`.
+The package separates the language and metadata before it calls the plugin.
+Expanded highlight metadata has a hard limit of 10,000 lines.
 
-### Embed Plugin
+### Embed plugin
 
-YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen, GitHub Gist, and Loom embeds with privacy-enhanced defaults, responsive containers, and GDPR consent mode.
+The embed plugin supports YouTube, Vimeo, Twitter/X, CodeSandbox, CodePen,
+GitHub Gist, and Loom.
 
 ```typescript
+import { parse } from "@lpm.dev/neo.markdown";
 import {
   embedPlugin,
   initializeEmbeds,
-} from '@lpm.dev/neo.markdown/plugins/embeds'
+} from "@lpm.dev/neo.markdown/plugins/embeds";
 
 const html = parse(markdown, {
   plugins: [
     embedPlugin({
-      youtube: { privacyEnhanced: true },  // youtube-nocookie.com (default)
-      vimeo: { dnt: true },                // Do Not Track (default)
-      twitter: { dnt: true, theme: 'dark' },
+      youtube: { privacyEnhanced: true },
+      vimeo: { dnt: true },
+      twitter: { dnt: true, theme: "dark" },
       codesandbox: true,
       codepen: true,
       gist: true,
       loom: true,
-      autoEmbed: true,   // bare URLs → embeds
-      responsive: true,  // 16:9 container (default)
-      consent: false,     // GDPR consent placeholder
-    })
-  ]
-})
+      autoEmbed: true,
+      responsive: true,
+      consent: false,
+    }),
+  ],
+});
+
+const cleanup = initializeEmbeds();
 ```
 
-After the rendered HTML mounts, initialize the consent buttons and external embed clients:
+Call the initializer after the HTML mounts. It manages consent actions, Gist
+frames, and Twitter widgets.
 
-```typescript
-const cleanup = initializeEmbeds()
+The initializer returns a no-operation cleanup function during server rendering.
 
-// When the rendered root unmounts, run this.
-cleanup()
-```
-
-The initializer handles consent clicks, Gist frames, and Twitter widgets. It returns a no-op cleanup function during server rendering.
-
-**Directive syntax:**
+Supported directives:
 
 ```markdown
-::youtube[dQw4w9WgXcQ]
-::vimeo[53373707]{title="My Video"}
-::tweet[1234567890]
-::codesandbox[my-sandbox-id]
-::codepen[pen-id]{user="username"}
-::gist[abc123def]{user="username" file="index.ts"}
-::loom[video-hash]
+::youtube[dQw4w9WgXcQ] ::vimeo[53373707]{title="My Video"} ::tweet[1234567890]
+::codesandbox[my-sandbox-id] ::codepen[pen-id]{user="username"}
+::gist[abc123def]{user="username" file="index.ts"} ::loom[video-hash]
 ```
 
-**Auto-embed:** A paragraph containing only a supported URL is automatically converted to an embed.
+With `autoEmbed: true`, a paragraph that contains only a supported URL becomes
+an embed.
 
-**GDPR consent mode:** With `consent: true`, embeds render as a "Click to load external content" button. The actual embed loads only after user interaction.
+With `consent: true`, the plugin emits a consent control. External content loads
+after the user activates that control.
 
-**React components** are also available:
+React components are available from the optional React entry:
 
 ```tsx
-import { YouTube, Vimeo, Tweet, CodeSandbox, CodePen, Loom } from '@lpm.dev/neo.markdown/plugins/embeds/react'
+import {
+  CodePen,
+  CodeSandbox,
+  Loom,
+  Tweet,
+  Vimeo,
+  YouTube,
+} from "@lpm.dev/neo.markdown/plugins/embeds/react";
 
-<YouTube id="dQw4w9WgXcQ" />
-<Vimeo id="53373707" />
-<Tweet id="1234567890" theme="dark" />
+<YouTube id="dQw4w9WgXcQ" />;
+<Vimeo id="53373707" />;
+<Tweet id="1234567890" theme="dark" />;
 ```
 
-React components include IntersectionObserver lazy loading, script deduplication (Tweet), and proper cleanup on unmount.
+These components use `IntersectionObserver` for lazy loading. The Tweet
+component deduplicates its script and removes resources on unmount.
 
-### TOC Plugin
+### Table-of-contents plugin
 
-Heading anchors, slug IDs, and table of contents extraction.
+The TOC plugin adds heading IDs and can add anchor links.
 
 ```typescript
-import { tocPlugin } from '@lpm.dev/neo.markdown/plugins/toc'
-import type { TocEntry } from '@lpm.dev/neo.markdown/plugins/toc'
+import { parse } from "@lpm.dev/neo.markdown";
+import { tocPlugin } from "@lpm.dev/neo.markdown/plugins/toc";
+import type { TocEntry } from "@lpm.dev/neo.markdown/plugins/toc";
 
-let toc: TocEntry[] = []
+let tableOfContents: TocEntry[] = [];
 
 const html = parse(markdown, {
   plugins: [
     tocPlugin({
       maxDepth: 3,
       anchorLinks: true,
-      anchorClass: 'anchor',
-      onToc: (entries) => { toc = entries },
-    })
-  ]
-})
-
-// toc = [
-//   { level: 1, text: 'Title', id: 'title' },
-//   { level: 2, text: 'Section 1', id: 'section-1' },
-//   ...
-// ]
+      anchorClass: "anchor",
+      onToc: (entries) => {
+        tableOfContents = entries;
+      },
+    }),
+  ],
+});
 ```
 
-**Output:**
+Duplicate heading IDs receive numeric suffixes such as `intro-1` and `intro-2`.
 
-```html
-<h1 id="title"><a class="anchor" href="#title">Title</a></h1>
-<h2 id="section-1"><a class="anchor" href="#section-1">Section 1</a></h2>
-```
+### Copy-code plugin
 
-Duplicate headings get suffixed automatically: `intro`, `intro-1`, `intro-2`.
-
-### Copy-Code Plugin
-
-Injects an inert copy-to-clipboard button into every `<pre>` code block. The plugin does not emit inline JavaScript. Install the delegated client initializer after mounting the rendered HTML.
+The copy-code plugin adds an inert button to each `<pre>` block. It does not
+emit inline JavaScript.
 
 ```typescript
+import { parse } from "@lpm.dev/neo.markdown";
 import {
   copyCodePlugin,
   initializeCopyCode,
-} from '@lpm.dev/neo.markdown/plugins/copy-code'
+} from "@lpm.dev/neo.markdown/plugins/copy-code";
 
 const html = parse(markdown, {
   plugins: [
     copyCodePlugin({
-      buttonText: 'Copy',
-      buttonClass: 'copy-code-button',
-      wrapperClass: 'code-block',
-    })
-  ]
-})
+      buttonText: "Copy",
+      buttonClass: "copy-code-button",
+      wrapperClass: "code-block",
+    }),
+  ],
+});
 
-// Client entry point; call once and retain the cleanup function if needed.
-const cleanupCopyCode = initializeCopyCode()
+const cleanup = initializeCopyCode();
 ```
 
-**Output:**
+Call the delegated initializer after the rendered HTML mounts.
 
-```html
-<div class="code-block" data-copy-code-wrapper>
-  <button class="copy-code-button" type="button" data-copy-code>Copy</button>
-  <pre><code>...</code></pre>
-</div>
-```
+## Custom plugins
 
-## Writing Custom Plugins
+A `MarkdownPlugin` receives a `PluginBuilder`.
 
-A plugin is a function that receives a `PluginBuilder`:
-
-```typescript
-import { escapeHtml, type MarkdownPlugin } from '@lpm.dev/neo.markdown'
-
-const myPlugin: MarkdownPlugin = (builder) => {
-  // Override how code blocks render
-  builder.setRenderer('code', (token) => {
-    return `<pre class="custom">${escapeHtml(token.text)}</pre>\n`
-  })
-}
-```
+| Method                    | Description                              |
+| ------------------------- | ---------------------------------------- |
+| `addBlockRule(rule)`      | Add a block tokenization rule.           |
+| `addInlineRule(rule)`     | Add an inline tokenization rule.         |
+| `setRenderer(method, fn)` | Override a renderer method.              |
+| `addTokenTransform(fn)`   | Transform block tokens before rendering. |
+| `addHtmlTransform(fn)`    | Transform final HTML.                    |
+| `renderInline(tokens)`    | Render inline tokens.                    |
+| `renderBlock(tokens)`     | Render block tokens.                     |
+| `options`                 | Read the parser options.                 |
 
 Renderer overrides, plugins, and HTML transforms are trusted application code.
-Escape all untrusted token text before you insert it into HTML.
+Escape untrusted token text before insertion into HTML.
 
-### PluginBuilder API
-
-| Method | Description |
-|--------|-------------|
-| `addBlockRule(rule)` | Add a custom block-level tokenization rule |
-| `addInlineRule(rule)` | Add a custom inline tokenization rule |
-| `setRenderer(method, fn)` | Override a renderer method (e.g. `'code'`, `'heading'`) |
-| `addTokenTransform(fn)` | Transform tokens after tokenization, before rendering |
-| `addHtmlTransform(fn)` | Transform the final HTML string |
-| `renderInline(tokens)` | Utility: render inline tokens to HTML |
-| `renderBlock(tokens)` | Utility: render block tokens to HTML |
-| `options` | Read-only access to parser options |
-
-### Custom Block Rule
+### Custom block rule
 
 ```typescript
+import { escapeHtml } from "@lpm.dev/neo.markdown";
+import type { MarkdownPlugin } from "@lpm.dev/neo.markdown";
+
 const notePlugin: MarkdownPlugin = (builder) => {
   builder.addBlockRule({
-    name: 'note',
-    priority: 'before:paragraph',
-    starts: (src) => src.startsWith(':::note\n'),
-    tokenize(src, options) {
-      const match = /^:::note\n([\s\S]*?)\n:::(?:\n|$)/.exec(src)
-      if (!match) return null
-      return {
-        token: { type: 'html', raw: match[0], text: `<div class="note">${match[1]}</div>` },
-        raw: match[0],
+    name: "note",
+    priority: "before:paragraph",
+    starts: (source) => source.startsWith(":::note\n"),
+    tokenize(source) {
+      const match = /^:::note\n([\s\S]*?)\n:::(?:\n|$)/.exec(source);
+      if (!match) {
+        return null;
       }
+
+      return {
+        token: {
+          type: "html",
+          raw: match[0],
+          text: `<div class="note">${escapeHtml(match[1] ?? "")}</div>`,
+        },
+        raw: match[0],
+      };
     },
-  })
-}
+  });
+};
 ```
 
-Rules support numeric priority (higher = tried first) or positional constraints such as `'before:paragraph'` and `'after:code'`. A rule that can interrupt a paragraph should provide a cheap `starts()` check. Every successful rule must return a non-empty `raw` value that is an exact source prefix; invalid results throw instead of risking an infinite loop.
+A rule can use numeric priority or a position such as `before:paragraph` or
+`after:code`.
 
-### Custom Inline Rule
+A successful rule must return a nonempty `raw` value that is an exact source
+prefix. Invalid results throw an error.
+
+### Custom inline rule
 
 ```typescript
-const highlightPlugin: MarkdownPlugin = (builder) => {
+import { escapeHtml } from "@lpm.dev/neo.markdown";
+import type { MarkdownPlugin } from "@lpm.dev/neo.markdown";
+
+const markPlugin: MarkdownPlugin = (builder) => {
   builder.addInlineRule({
-    name: 'highlight',
-    priority: 'before:em',
-    triggerChars: [61], // '=' char code
-    tokenize(src) {
-      const match = /^==(.*?)==/.exec(src)
-      if (!match) return null
-      return {
-        token: { type: 'html', raw: match[0], text: `<mark>${match[1]}</mark>` },
-        raw: match[0],
+    name: "mark",
+    priority: "before:em",
+    triggerChars: [61],
+    tokenize(source) {
+      const match = /^==(.*?)==/.exec(source);
+      if (!match) {
+        return null;
       }
+
+      return {
+        token: {
+          type: "html",
+          raw: match[0],
+          text: `<mark>${escapeHtml(match[1] ?? "")}</mark>`,
+        },
+        raw: match[0],
+      };
     },
-  })
-}
+  });
+};
 ```
 
-Inline priorities can target `escape`, `code`, `strong`, `em`, `del`, `link`, `html`, `br`, `autolink`, or `text`.
+Inline priorities can target `escape`, `code`, `strong`, `em`, `del`, `link`,
+`html`, `br`, `autolink`, or `text`.
 
-### Token Transform
+## Supported syntax
 
-```typescript
-const removeHr: MarkdownPlugin = (builder) => {
-  builder.addTokenTransform((tokens) =>
-    tokens.filter((t) => t.type !== 'hr')
-  )
-}
-```
+The default parser supports these block elements:
 
-### HTML Transform
+- ATX and Setext headings
+- Paragraphs and blockquotes
+- Ordered and unordered lists
+- Indented and fenced code blocks
+- HTML blocks with raw HTML active
+- Link definitions
+- Horizontal rules
+- GFM tables and task lists with GFM active
 
-```typescript
-const addWrapper: MarkdownPlugin = (builder) => {
-  builder.addHtmlTransform((html) =>
-    `<article class="prose">${html}</article>`
-  )
-}
-```
+It supports these inline elements:
 
-## Supported Syntax
-
-### Block elements
-
-```markdown
-# Heading 1
-## Heading 2
-
-Paragraph text with **bold**, *italic*, and `code`.
-
-> Blockquote
-
-- Unordered list
-- Item two
-
-1. Ordered list
-2. Item two
-
-    Code block (indented)
-
-```code block (fenced)```
-
----
-
-| Table | Header |
-|-------|--------|
-| Cell  | Cell   |
-
-- [x] Task list item
-- [ ] Unchecked item
-```
-
-### Inline elements
-
-```markdown
-**bold** or __bold__
-*italic* or _italic_
-~~strikethrough~~
-`inline code`
-[link text](https://example.com)
-![alt text](image.png)
-<https://autolink.example.com>
-```
+- Strong and emphasized text
+- Strikethrough with GFM active
+- Inline code
+- Links and images
+- Autolinks
+- Raw inline HTML with raw HTML active
+- Hard and optional soft line breaks
 
 ## Presets
 
 ```typescript
-// Core Markdown-subset preset (GFM extensions disabled)
-import { parse } from '@lpm.dev/neo.markdown/commonmark'
+import { parse as parseCommonMark } from "@lpm.dev/neo.markdown/commonmark";
+import { parse as parseGfm } from "@lpm.dev/neo.markdown/gfm";
 
-// GFM preset (GitHub Flavored Markdown — tables, task lists, strikethrough)
-import { parse } from '@lpm.dev/neo.markdown/gfm'
+parseCommonMark(markdown);
+parseGfm(markdown);
 ```
 
-## Sub-path Imports
+The CommonMark preset disables GFM extensions. The GFM preset enables tables,
+task lists, strikethrough, and autolinks.
 
-| Import | Description |
-|--------|-------------|
-| `@lpm.dev/neo.markdown` | Main entry — `parse()` and `createParser()` |
-| `@lpm.dev/neo.markdown/core` | Core classes (Tokenizer, InlineTokenizer, HtmlRenderer, PluginBuilderImpl) |
-| `@lpm.dev/neo.markdown/blocks` | Individual block rules for tree-shaking (`heading`, `paragraph`, `code`, `list`, etc.) |
-| `@lpm.dev/neo.markdown/inline` | Inline token types and InlineTokenizer |
-| `@lpm.dev/neo.markdown/commonmark` | CommonMark preset |
-| `@lpm.dev/neo.markdown/gfm` | GFM preset |
-| `@lpm.dev/neo.markdown/plugins/highlight` | Syntax highlighting plugin |
-| `@lpm.dev/neo.markdown/plugins/embeds` | Embed plugin (YouTube, Vimeo, Twitter, CodeSandbox, CodePen, Gist, Loom) |
-| `@lpm.dev/neo.markdown/plugins/embeds/react` | React embed components with IntersectionObserver |
-| `@lpm.dev/neo.markdown/plugins/toc` | Table of contents plugin |
-| `@lpm.dev/neo.markdown/plugins/copy-code` | Copy-to-clipboard button plugin |
+## Conformance and limits
 
-## Conformance
+The package implements a Markdown subset. It does not claim complete CommonMark
+or GFM compliance.
 
-This package implements a Markdown subset; it does not claim full CommonMark or GFM compliance. The mandatory CommonMark 0.31.2 test locks the exact 313 passing examples out of 652 official examples. It normalizes void-tag style and quote entities. Selected official GFM 0.29 extension fixtures are also mandatory. Structural containers and full delimiter-stack parsing remain future work.
+The mandatory CommonMark 0.31.2 test records 313 passing examples from 652
+official examples. It normalizes void-tag style and quote entities.
 
-## Migration from marked
+Selected official GFM 0.29 extension fixtures are also mandatory. Structural
+containers and complete delimiter-stack parsing remain outside the current
+subset.
 
-```typescript
-// Before (marked)
-import { marked } from 'marked'
-const html = marked('# Hello')
+## Security
 
-// After (neo.markdown)
-import { parse } from '@lpm.dev/neo.markdown'
-const html = parse('# Hello')
+Raw HTML is escaped by default. Set `allowHtml: true` only for trusted HTML or
+with an appropriate sanitizer.
+
+The main and `/core` entries require an application-provided sanitizer. The
+`/sanitized` entry includes the structural sanitizer.
+
+UGC mode disables raw HTML, applies safe links, and sets finite resource limits.
+It does not make trusted plugins or renderer overrides safe.
+
+Embed plugins load content from external services. Use consent mode and
+application policy where privacy or external requests require user approval.
+
+## Migration from `marked`
+
+The parser uses a `parse()` function, but it implements a Markdown subset.
+Compare the supported syntax before migration.
+
+```diff
+- import { marked } from "marked";
+- const html = marked("# Hello");
++ import { parse } from "@lpm.dev/neo.markdown";
++ const html = parse("# Hello");
 ```
 
-## Migration from markdown-it
+Run the application tests after the migration.
 
-```typescript
-// Before (markdown-it)
-import MarkdownIt from 'markdown-it'
-const md = new MarkdownIt()
-const html = md.render('# Hello')
+## Migration from `markdown-it`
 
-// After (neo.markdown)
-import { createParser } from '@lpm.dev/neo.markdown'
-const parser = createParser()
-const html = parser.parse('# Hello')
+If the application reuses options, create one parser.
+
+```diff
+- import MarkdownIt from "markdown-it";
+- const parser = new MarkdownIt();
+- const html = parser.render("# Hello");
++ import { createParser } from "@lpm.dev/neo.markdown";
++ const parser = createParser();
++ const html = parser.parse("# Hello");
 ```
 
-## Migration from rehype-pretty-code + rehype-slug
+Run the application tests after the migration.
 
-If you're using the remark/rehype stack for syntax highlighting, heading anchors, and embeds, neo.markdown replaces the entire chain:
+## Migration from the remark and rehype stack
 
-```typescript
-// Before — remark/rehype stack
-import { unified } from 'unified'
-import remarkParse from 'remark-parse'
-import remarkGfm from 'remark-gfm'
-import remarkRehype from 'remark-rehype'
-import rehypePrettyCode from 'rehype-pretty-code'  // Shiki ~1MB
-import rehypeSlug from 'rehype-slug'
-import rehypeAutolinkHeadings from 'rehype-autolink-headings'
-import rehypeStringify from 'rehype-stringify'
+Use focused plugins for highlighting, heading anchors, embeds, and sanitization.
 
-const result = await unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkRehype)
-  .use(rehypePrettyCode, { theme: 'github-dark' })
-  .use(rehypeSlug)
-  .use(rehypeAutolinkHeadings)
-  .use(rehypeStringify)
-  .process(markdown)
+| Existing plugin                    | Package equivalent                                            |
+| ---------------------------------- | ------------------------------------------------------------- |
+| `rehype-pretty-code`               | `highlightPlugin()` with `@lpm.dev/neo.highlight`.            |
+| `rehype-slug`                      | `tocPlugin({ anchorLinks: false })`.                          |
+| `rehype-autolink-headings`         | `tocPlugin({ anchorLinks: true })`.                           |
+| Application embed components       | `embedPlugin()`.                                              |
+| `rehype-raw` and `rehype-sanitize` | The `/sanitized` entry with raw HTML and sanitization active. |
+
+The pipelines do not have identical syntax or plugin semantics. Run conformance
+and application tests after migration.
+
+## Performance
+
+The repository measures basic Markdown, GFM, large documents, and adversarial
+inputs.
+
+See [BENCHMARKS.md](./BENCHMARKS.md) for the environment, method, results, and
+limits.
+
+Run the benchmark suite:
+
+```bash
+lpm run bench
 ```
 
-```typescript
-// After — neo.markdown (one import, one parser, done)
-import { createParser } from '@lpm.dev/neo.markdown'
-import { highlightPlugin } from '@lpm.dev/neo.markdown/plugins/highlight'
-import { tocPlugin } from '@lpm.dev/neo.markdown/plugins/toc'
-import { tokenize, renderToHTML, getThemeStylesheet } from '@lpm.dev/neo.highlight'
-import { javascript, typescript } from '@lpm.dev/neo.highlight/grammars'
-import { githubDark } from '@lpm.dev/neo.highlight/themes/github-dark'
+Benchmark results depend on the runtime, computer, options, plugins, and input
+data.
 
-const parser = createParser({
-  gfm: true,
-  plugins: [
-    highlightPlugin({
-      grammars: [javascript, typescript],
-      tokenize,
-      renderToHTML,
-      getThemeStylesheet,
-      theme: githubDark,
-    }),
-    tocPlugin({ maxDepth: 3 }),
-  ]
-})
+## Runtime support
 
-const html = parser.parse(markdown)
-```
+- **Node.js:** 18 or later
+- **Browsers:** Modern browsers
+- **Module formats:** ESM and CommonJS
+- **TypeScript:** Declaration files for all entry points
+- **React:** 18 or later for `plugins/embeds/react`
 
-**What replaces what:**
+## Package entry points
 
-| rehype plugin | neo.markdown equivalent |
-|--------------|------------------------|
-| `rehype-pretty-code` (Shiki) | `highlightPlugin()` with `@lpm.dev/neo.highlight` |
-| `rehype-slug` | `tocPlugin({ anchorLinks: false })` |
-| `rehype-autolink-headings` | `tocPlugin({ anchorLinks: true })` |
-| Custom embed components | `embedPlugin({ youtube: true, twitter: true })` |
-| `rehype-raw` + `rehype-sanitize` | `/sanitized` with `allowHtml: true, sanitize: true` |
+| Import                                       | Purpose                                             |
+| -------------------------------------------- | --------------------------------------------------- |
+| `@lpm.dev/neo.markdown`                      | Main parser, complete rules, utilities, and types.  |
+| `@lpm.dev/neo.markdown/sanitized`            | Main parser with the built-in structural sanitizer. |
+| `@lpm.dev/neo.markdown/core`                 | Parser classes and an explicit-rules factory.       |
+| `@lpm.dev/neo.markdown/blocks`               | Individual block rules.                             |
+| `@lpm.dev/neo.markdown/inline`               | Inline tokenizer exports.                           |
+| `@lpm.dev/neo.markdown/commonmark`           | Markdown-subset preset without GFM extensions.      |
+| `@lpm.dev/neo.markdown/gfm`                  | Preset with GFM extensions.                         |
+| `@lpm.dev/neo.markdown/plugins/highlight`    | Syntax-highlighting plugin.                         |
+| `@lpm.dev/neo.markdown/plugins/embeds`       | Embed plugin and client initializer.                |
+| `@lpm.dev/neo.markdown/plugins/embeds/react` | React embed components.                             |
+| `@lpm.dev/neo.markdown/plugins/toc`          | Table-of-contents plugin.                           |
+| `@lpm.dev/neo.markdown/plugins/copy-code`    | Copy-button plugin and client initializer.          |
 
 ## License
 
-MIT
+MIT. See [LICENSE](./LICENSE).
