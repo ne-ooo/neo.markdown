@@ -46,7 +46,7 @@ export const DEFAULT_ALLOWED_TAGS = new Set([
  */
 export const ALWAYS_BLOCKED_TAGS = new Set([
   'script', 'iframe', 'object', 'embed', 'form',
-  'textarea', 'select', 'button', 'style', 'link', 'meta',
+  'textarea', 'xmp', 'select', 'button', 'style', 'link', 'meta',
   'base', 'applet', 'svg', 'math',
 ])
 
@@ -65,6 +65,7 @@ export const DEFAULT_ALLOWED_ATTRIBUTES: Record<string, Set<string>> = {
   'time': new Set(['datetime']),
   'source': new Set(['srcset', 'sizes', 'media', 'type']),
   'code': new Set(['class']),
+  'pre': new Set(['tabindex']),
   'video': new Set(['src', 'width', 'height', 'poster', 'controls', 'loading']),
   'audio': new Set(['src', 'controls']),
   'input': new Set(['type', 'checked', 'disabled']),

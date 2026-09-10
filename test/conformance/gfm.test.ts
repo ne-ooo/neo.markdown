@@ -1,41 +1,32 @@
 import { describe, expect, it } from 'vitest'
 import { parse } from '../../src/index.js'
+import { parse as parseGfm } from '../../src/presets/gfm.js'
+import corpus from '../fixtures/gfm-official.json'
 
-// Selected normative fixtures from the official GFM 0.29 specification:
-// https://github.github.com/gfm/
-describe('official GFM 0.29 extension fixtures', () => {
-  it('parses escaped pipes in tables', () => {
-    const markdown = '| f\\|oo  |\n| ------ |\n| b `\\|` az |\n| b **\\|** im |'
-    expect(parse(markdown, { gfm: true, lazyImages: false })).toBe(
-      '<table>\n<thead>\n<tr>\n<th>f|oo</th>\n</tr>\n</thead>\n<tbody>\n' +
-      '<tr>\n<td>b <code>|</code> az</td>\n</tr>\n' +
-      '<tr>\n<td>b <strong>|</strong> im</td>\n</tr>\n' +
-      '</tbody>\n</table>\n'
-    )
-  })
+// GFM 0.29-gfm, CC-BY-SA-4.0. See THIRD_PARTY_NOTICES.md.
+// Normalize quote entities and the two exact equivalent checkbox serializations.
+function normalize(html: string): string {
+  return html.replaceAll("&#39;", "'").replaceAll('<input disabled="" type="checkbox">', '<input type="checkbox" disabled>')
+    .replaceAll('<input checked="" disabled="" type="checkbox">', '<input type="checkbox" checked disabled>')
+}
+const policyExamples = new Set([633, 634, 635])
+function expected(html: string, example: number): string {
+  return policyExamples.has(example)
+    ? html.replace(/<a href="xmpp:[^"]*">([^<]*)<\/a>/g, '$1')
+    : html
+}
 
-  it('rejects a table whose header and delimiter widths differ', () => {
-    const markdown = '| abc | def |\n| --- |\n| bar |'
-    expect(parse(markdown, { gfm: true })).toBe(
-      '<p>| abc | def |\n| --- |\n| bar |</p>\n'
-    )
+describe('all 28 normative GFM 0.29 extension examples', () => {
+  it('pins the complete extension corpus and its policy exceptions', () => {
+    expect(corpus.examples).toHaveLength(28)
+    expect(corpus.examples.filter(f => policyExamples.has(f.example)).map(f => f.example)).toEqual([633, 634, 635])
   })
-
-  it('renders task-list markers only in GFM mode', () => {
-    const markdown = '- [ ] foo\n- [x] bar'
-    const html = parse(markdown, { gfm: true })
-    expect(html).toContain('<input type="checkbox" disabled> foo')
-    expect(html).toContain('<input type="checkbox" checked disabled> bar')
-    expect(parse(markdown, { gfm: false })).not.toContain('<input')
-  })
-
-  it('excludes punctuation and unmatched parentheses from autolinks', () => {
-    const markdown = 'Visit www.commonmark.org.\n\n(www.google.com/search?q=Markup+(business))'
-    const html = parse(markdown, { gfm: true })
-    expect(html).toContain('<a href="http://www.commonmark.org">www.commonmark.org</a>.')
-    expect(html).toContain(
-      '(<a href="http://www.google.com/search?q=Markup+(business)">' +
-      'www.google.com/search?q=Markup+(business)</a>)'
-    )
-  })
+  for (const fixture of corpus.examples) {
+    it(`${fixture.example}: ${fixture.section}${policyExamples.has(fixture.example) ? ' (XMPP URL policy)' : ''}`, () => {
+      const actual = parse(fixture.markdown, { gfm: true, allowHtml: true, lazyImages: false })
+      expect(normalize(actual)).toBe(normalize(expected(fixture.html, fixture.example)))
+      expect(parseGfm(fixture.markdown, { allowHtml: true, lazyImages: false, breaks: false })).toBe(actual)
+      if (policyExamples.has(fixture.example)) expect(normalize(actual)).not.toBe(normalize(fixture.html))
+    })
+  }
 })

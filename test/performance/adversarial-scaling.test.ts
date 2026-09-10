@@ -1,14 +1,34 @@
 import { execFileSync } from 'node:child_process'
-import { createRequire } from 'node:module'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { buildSync } from 'esbuild'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 const EXECUTION_LIMIT_MS = 2_000
 const fixturePath = fileURLToPath(
   new URL('./fixtures/parse-adversarial.ts', import.meta.url)
 )
-const requireFromVitest = createRequire(createRequire(import.meta.url).resolve('vitest'))
-const viteNodePath = requireFromVitest.resolve('vite-node/vite-node.mjs')
+let fixtureDirectory: string
+let bundledFixture: string
+
+beforeAll(() => {
+  fixtureDirectory = mkdtempSync(join(tmpdir(), 'neo-adversarial-'))
+  bundledFixture = join(fixtureDirectory, 'parse.cjs')
+  buildSync({
+    entryPoints: [fixturePath],
+    outfile: bundledFixture,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node22',
+  })
+})
+
+afterAll(() => {
+  if (fixtureDirectory) rmSync(fixtureDirectory, { recursive: true, force: true })
+})
 
 const adversarialInputs = [
   'emphasis',
@@ -25,6 +45,15 @@ const adversarialInputs = [
   'table',
   'breaks',
   'embedRestore',
+  'balancedEmphasis',
+  'referenceLabels',
+  'nestedContainers',
+  'entities',
+  'gfmEmails',
+  'gfmEmailMisses',
+  'gfmTildeRuns',
+  'gfmTableRows',
+  'gfmTagFilter',
 ] as const
 
 describe('adversarial input scaling', () => {
@@ -34,11 +63,12 @@ describe('adversarial input scaling', () => {
     (scenario) => {
       const output = execFileSync(
         process.execPath,
-        [viteNodePath, fixturePath, scenario],
+        [bundledFixture, scenario],
         {
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'pipe'],
           timeout: EXECUTION_LIMIT_MS,
+          killSignal: 'SIGKILL',
         }
       )
 

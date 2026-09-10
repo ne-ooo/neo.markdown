@@ -8,9 +8,9 @@ describe('CommonMark subset regressions', () => {
 
   it('supports longer and unclosed fenced code blocks', () => {
     expect(parse('````js\ncode\n`````')).toBe(
-      '<pre><code class="language-js">code</code></pre>\n'
+      '<pre><code class="language-js">code\n</code></pre>\n'
     )
-    expect(parse('~~~\nunclosed')).toBe('<pre><code>unclosed</code></pre>\n')
+    expect(parse('~~~\nunclosed')).toBe('<pre><code>unclosed\n</code></pre>\n')
   })
 
   it('does not close a fence with a shorter delimiter run', () => {

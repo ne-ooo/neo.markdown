@@ -189,6 +189,8 @@ export function tocPlugin(options: TocOptions = {}): MarkdownPlugin {
         return `<h${token.level}>${text}</h${token.level}>\n`
       }
 
+      builder.document?.addTocEntry({ level: token.level, text: extractInlineText(token.tokens), id })
+
       if (anchorLinks && !containsInlineLink(token.tokens)) {
         return (
           `<h${token.level} id="${escape(id)}">` +

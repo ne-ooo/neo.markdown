@@ -1,7 +1,7 @@
 ---
 name: getting-started
 description: How to use @lpm.dev/neo.markdown — parse(), createParser(), plugin system (highlight, embeds, TOC, copy-code), PluginBuilder API, custom block/inline rules, renderer overrides, token transforms, CodeToken.meta, directive syntax, sub-path exports, sanitization, ugc, safeLinks, blocks
-version: "2.0.0"
+version: "3.0.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -10,6 +10,9 @@ globs:
 ---
 
 # Getting Started with @lpm.dev/neo.markdown
+
+Version 3 requires Node.js 22.12 or later. The existing string API remains available.
+Nonempty parsed code tokens retain their final newline.
 
 ## Quick Start
 
@@ -136,6 +139,9 @@ The `/core` factory requires an explicit `blocks` array. Import from the main pa
 
 ## Plugin System
 
+Parsed code tokens retain their final newline in `text`. Renderer callbacks, highlighting, diagnostics, and copy controls receive the same source.
+The `meta` field retains raw fence metadata. The `lang` field decodes Markdown escapes and character references.
+
 Plugins extend the parser with custom tokenization, rendering, and transforms. A plugin is a plain function:
 
 ```typescript
@@ -171,15 +177,32 @@ highlightPlugin({
   getThemeStylesheet, // generates CSS mapping .neo-hl-keyword → var(--neo-hl-keyword)
   theme: githubDark,
   lineNumbers: true,
+  errorPolicy: 'plain',
+  maxInputLength: 100_000,
+  onError: (error, context) => console.error(context.language, error),
 })
 ```
 
-In React, generate the theme CSS separately and include it as a `<style>` element (not inside `dangerouslySetInnerHTML`):
+Language hints and registered aliases ignore case and surrounding whitespace.
+The default `errorPolicy: 'throw'` preserves strict errors. With `'plain'`, a failed block becomes escaped source and the rest of the document renders.
+The callback receives `{ stage, code, language, meta }`. Its own errors propagate.
+
+Limits are `maxInputLength`, `maxMatchCount`, `maxTokenCount`, `maxTokenDepth`, `maxRenderedLength`, and `maxLines`.
+They apply to highlighting. The plain fallback retains the complete code token, so also set the parser's input limit for untrusted documents.
+
+Use `diffHighlight: { added: [1], removed: [2] }` for fixed diff lines.
+A `diffHighlight(token)` callback can select different lines for each code block.
+
+For React, set `injectStyles: false` in the highlight plugin. Generate the theme CSS separately and include it through the layout:
 
 ```tsx
 const themeCSS = getThemeStylesheet(githubDark)
 // Render as: <style>{themeCSS}</style>
 ```
+
+With `allowHtml: true` and `sanitize: true`, inline highlight styles are removed but token classes remain.
+The external stylesheet is required for theme colors and line styles in that configuration.
+Keep the sanitizer's CSS restrictions active. `injectStyles` controls stylesheet insertion, not inline token attributes.
 
 Code block meta strings are parsed: `` ```ts {1,3-5} `` → `lang: "ts"`, `meta: "{1,3-5}"`.
 
@@ -282,121 +305,24 @@ const cleanup = initializeCopyCode()
 
 Set `injectStyles: false` for a strict style CSP. Use `getCopyCodeStyles()` to write the default CSS to an external stylesheet. Class names are validated as single CSS identifiers, and all labels are HTML-escaped.
 
-## Writing Custom Plugins
+See [authoring and plugins](./authoring-and-plugins.md) for the remaining APIs.
 
-### PluginBuilder API
+## Incremental documents
 
-| Method | Description |
-|--------|-------------|
-| `addBlockRule(rule)` | Custom block-level tokenization rule |
-| `addInlineRule(rule)` | Custom inline tokenization rule |
-| `setRenderer(method, fn)` | Override a renderer method (e.g. `'code'`, `'heading'`) |
-| `addTokenTransform(fn)` | Transform tokens after tokenization, before rendering |
-| `addHtmlTransform(fn)` | Transform the final HTML string |
-| `renderInline(tokens)` | Utility: render inline tokens to HTML |
-| `renderBlock(tokens)` | Utility: render block tokens to HTML |
-| `options` | Read-only access to parser options |
+Import `createIncrementalMarkdown` from `@lpm.dev/neo.markdown/incremental` for repeated document updates.
+The `update` and `append` methods return structured document results.
+The session resumes built-in block parsing from checkpoints with dependency ranges and reuses unchanged blocks.
+Reference changes invalidate only affected inline cache entries, including unresolved links.
+Open fences, tables, lists, and blockquotes continue from safe cursors, including nested child blocks.
+Earlier dependency changes restart the affected block. Rendering still processes the complete document on every update.
+Plugins disable reuse by default. Custom blocks and caller renderer overrides always disable reuse.
+For eligible render plugins, wrap each plugin with `defineIncrementalPlugin()` and set `pluginReuse: "declared"`.
+Pure inline plugins also require `effects: "none"` and explicit static or revision dependencies.
+Normal sanitization and UGC limits still apply.
+Dispose the session after use. Read `docs/incremental.md` for cache and cumulative work limits.
 
-### Custom Block Rule
 
-```typescript
-const notePlugin: MarkdownPlugin = (builder) => {
-  builder.addBlockRule({
-    name: 'note',
-    priority: 'before:paragraph', // or numeric: 800
-    starts: (src) => src.startsWith(':::note\n'),
-    tokenize(src, options) {
-      const match = /^:::note\n([\s\S]*?)\n:::(?:\n|$)/.exec(src)
-      if (!match) return null
-      return {
-        token: { type: 'html', raw: match[0], text: `<div class="note">${match[1]}</div>` },
-        raw: match[0],
-      }
-    },
-  })
-}
-```
-
-Use `starts()` when the rule can interrupt a paragraph. A successful block or inline rule must consume a non-empty source prefix in `raw`; the parser rejects invalid rule results.
-
-### Custom Inline Rule
-
-```typescript
-const highlightPlugin: MarkdownPlugin = (builder) => {
-  builder.addInlineRule({
-    name: 'highlight',
-    priority: 'before:em',
-    triggerChars: [61], // '=' char code — preserves fast-path optimization
-    tokenize(src) {
-      const match = /^==(.*?)==/.exec(src)
-      if (!match) return null
-      return {
-        token: { type: 'html', raw: match[0], text: `<mark>${match[1]}</mark>` },
-        raw: match[0],
-      }
-    },
-  })
-}
-```
-
-### Renderer Override
-
-```typescript
-const plugin: MarkdownPlugin = (builder) => {
-  builder.setRenderer('heading', (token) => {
-    const text = builder.renderInline(token.tokens) // utility for rendering
-    return `<h${token.level} class="custom">${text}</h${token.level}>\n`
-  })
-}
-```
-
-### Token Transform
-
-```typescript
-const removeHr: MarkdownPlugin = (builder) => {
-  builder.addTokenTransform((tokens) => tokens.filter((t) => t.type !== 'hr'))
-}
-```
-
-### HTML Transform
-
-```typescript
-const wrapper: MarkdownPlugin = (builder) => {
-  builder.addHtmlTransform((html) => `<article>${html}</article>`)
-}
-```
-
-## Sub-path Exports
-
-| Import Path | What You Get |
-|-------------|-------------|
-| `@lpm.dev/neo.markdown` | `parse`, `createParser`, `HtmlRenderer`, all types |
-| `@lpm.dev/neo.markdown/core` | Core parser, tokenizers, renderer, PluginBuilderImpl, types |
-| `@lpm.dev/neo.markdown/blocks` | Block token types, `Tokenizer` class, individual block rules (`heading`, `paragraph`, `code`, etc.) |
-| `@lpm.dev/neo.markdown/inline` | Inline token types and `InlineTokenizer` class |
-| `@lpm.dev/neo.markdown/commonmark` | CommonMark preset |
-| `@lpm.dev/neo.markdown/gfm` | GFM preset |
-| `@lpm.dev/neo.markdown/plugins/highlight` | Syntax highlighting plugin |
-| `@lpm.dev/neo.markdown/plugins/embeds` | Embed plugin (YouTube, Vimeo, Twitter, CodeSandbox, CodePen, Gist, Loom) |
-| `@lpm.dev/neo.markdown/plugins/embeds/react` | React embed components (`<YouTube>`, `<Vimeo>`, `<Tweet>`, etc.) |
-| `@lpm.dev/neo.markdown/plugins/toc` | TOC plugin (heading anchors) |
-| `@lpm.dev/neo.markdown/plugins/copy-code` | Copy-code button plugin |
-
-## Working with Tokens
-
-Access the AST for custom processing:
-
-```typescript
-import { createParser } from '@lpm.dev/neo.markdown'
-import type { BlockToken, HeadingToken, CodeToken } from '@lpm.dev/neo.markdown'
-
-const parser = createParser()
-const tokens: BlockToken[] = parser.tokenize('# Hello\n\n```ts {1}\ncode\n```')
-
-// HeadingToken: { type: 'heading', level: 1, text: 'Hello', tokens: [...] }
-// CodeToken: { type: 'code', lang: 'ts', meta: '{1}', text: 'code' }
-
-const html = parser.render(tokens)
-```
-
-Note: `parser.tokenize()` returns tokens BEFORE plugin token transforms run. Token transforms only run inside `parser.parse()`.
+For editor ownership, use `createMarkdownApplication()` from `@lpm.dev/neo.markdown/application`.
+For React, use `useMarkdownDocument()` from `@lpm.dev/neo.markdown/application/react` with stable options.
+Read `docs/application-adapter.md` for worker selection, lazy fallbacks, cancellation, and recovery.
+Stable entry paths and legacy aliases follow `docs/api-stability.md`.

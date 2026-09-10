@@ -1,7 +1,7 @@
 ---
 name: anti-patterns
 description: Common mistakes and silent failures when using @lpm.dev/neo.markdown — prioritized wrong/correct pairs
-version: "2.0.0"
+version: "3.0.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"

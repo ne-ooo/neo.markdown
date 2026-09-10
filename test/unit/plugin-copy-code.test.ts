@@ -70,6 +70,7 @@ describe('copyCodePlugin', () => {
     })
     expect(result).not.toContain('<style>')
     expect(getCopyCodeStyles()).toContain('.copy-code-button')
+    expect(getCopyCodeStyles()).toContain('.code-block:focus-within .copy-code-button{opacity:1}')
   })
 
   it('exports an SSR-safe explicit initializer', () => {

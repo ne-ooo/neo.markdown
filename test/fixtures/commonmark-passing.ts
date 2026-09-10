@@ -1,5 +1,5 @@
-/** CommonMark 0.31.2 examples that this Markdown subset passes exactly. */
-export const EXPECTED_PASSING_COMMONMARK_EXAMPLES = [
+/** Original per-example floor, retained to prevent regressions across the compatibility work. */
+export const ORIGINAL_PASSING_COMMONMARK_EXAMPLES = [
   12, 13, 14, 15, 17, 20, 22, 28, 29, 30, 35, 42, 44, 45, 46, 47, 50, 51,
   52, 53, 54, 55, 56, 58, 59, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 73,
   74, 75, 76, 77, 78, 80, 83, 84, 86, 88, 89, 90, 91, 96, 97, 102, 103,
@@ -22,3 +22,14 @@ export const EXPECTED_PASSING_COMMONMARK_EXAMPLES = [
   614, 617, 618, 623, 625, 627, 628, 629, 630, 631, 640, 641, 644, 645, 646,
   647, 648, 650, 651, 652,
 ] as const
+
+/** Intentional URL-policy differences, reviewed independently of parser correctness. */
+export const COMMONMARK_SECURITY_DIFFERENCES = {
+  596: "<p>irc://foo.bar:2233/baz</p>\n",
+  598: "<p>a+b+c:d</p>\n",
+  599: "<p>made-up-scheme://foo,bar</p>\n",
+  601: "<p>localhost:5001/foo</p>\n",
+} as const
+
+export const EXPECTED_PASSING_COMMONMARK_EXAMPLES = Array.from({ length: 652 }, (_, index) => index + 1)
+  .filter(number => !(number in COMMONMARK_SECURITY_DIFFERENCES))

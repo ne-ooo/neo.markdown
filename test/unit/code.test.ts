@@ -35,42 +35,42 @@ describe('Code', () => {
   describe('Code Blocks', () => {
     it('should parse fenced code block with backticks', () => {
       const result = parse('```\ncode here\n```')
-      expect(result).toBe('<pre><code>code here</code></pre>\n')
+      expect(result).toBe('<pre><code>code here\n</code></pre>\n')
     })
 
     it('should parse fenced code block with tildes', () => {
       const result = parse('~~~\ncode here\n~~~')
-      expect(result).toBe('<pre><code>code here</code></pre>\n')
+      expect(result).toBe('<pre><code>code here\n</code></pre>\n')
     })
 
     it('should parse code block with language', () => {
       const result = parse('```javascript\nconst x = 1\n```')
-      expect(result).toBe('<pre><code class="language-javascript">const x = 1</code></pre>\n')
+      expect(result).toBe('<pre><code class="language-javascript">const x = 1\n</code></pre>\n')
     })
 
     it('should parse code block with TypeScript language', () => {
       const result = parse('```typescript\nconst x: number = 1\n```')
-      expect(result).toBe('<pre><code class="language-typescript">const x: number = 1</code></pre>\n')
+      expect(result).toBe('<pre><code class="language-typescript">const x: number = 1\n</code></pre>\n')
     })
 
     it('should escape HTML in code blocks', () => {
       const result = parse('```\n<script>alert("xss")</script>\n```')
-      expect(result).toBe('<pre><code>&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;</code></pre>\n')
+      expect(result).toBe('<pre><code>&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;\n</code></pre>\n')
     })
 
     it('should preserve blank lines in code blocks', () => {
       const result = parse('```\nline 1\n\nline 3\n```')
-      expect(result).toBe('<pre><code>line 1\n\nline 3</code></pre>\n')
+      expect(result).toBe('<pre><code>line 1\n\nline 3\n</code></pre>\n')
     })
 
     it('should handle code block after paragraph', () => {
       const result = parse('A paragraph\n\n```\ncode\n```')
-      expect(result).toBe('<p>A paragraph</p>\n<pre><code>code</code></pre>\n')
+      expect(result).toBe('<p>A paragraph</p>\n<pre><code>code\n</code></pre>\n')
     })
 
     it('should parse multiple code blocks', () => {
       const result = parse('```\nfirst\n```\n\n```\nsecond\n```')
-      expect(result).toBe('<pre><code>first</code></pre>\n<pre><code>second</code></pre>\n')
+      expect(result).toBe('<pre><code>first\n</code></pre>\n<pre><code>second\n</code></pre>\n')
     })
   })
 })

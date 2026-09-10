@@ -26,7 +26,7 @@ describe('renderer option', () => {
     })
 
     const html = parser.parse('```\nconsole.log("hi")\n```')
-    expect(html).toBe('<pre class="highlight"><code>console.log("hi")</code></pre>\n')
+    expect(html).toBe('<pre class="highlight"><code>console.log("hi")\n</code></pre>\n')
   })
 
   it('custom link renderer is called', () => {

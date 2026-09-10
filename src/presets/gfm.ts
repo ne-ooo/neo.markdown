@@ -19,7 +19,7 @@
  * ```
  */
 
-import type { Parser, ParserOptions } from '../core/types.js'
+import type { Parser, ParserOptions, DocumentOptions, DocumentResult } from '../core/types.js'
 import { createParser as createBaseParser } from '../create-parser.js'
 
 let defaultParser: Parser | undefined
@@ -51,4 +51,12 @@ export function parse(markdown: string, options?: Partial<ParserOptions>): strin
 }
 
 // Re-export types
+export function parseDocument(markdown: string, options?: Partial<ParserOptions>, documentOptions?: DocumentOptions): DocumentResult {
+  if (options === undefined) {
+    defaultParser ??= createParser()
+    return defaultParser.parseDocument(markdown, documentOptions)
+  }
+  return createParser(options).parseDocument(markdown, documentOptions)
+}
+
 export type * from '../core/types.js'

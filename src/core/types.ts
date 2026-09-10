@@ -65,8 +65,44 @@ export interface CodeToken extends Token {
   type: 'code'
   lang?: string
   meta?: string
+  /** Exact info text after the opening fence, before its line ending. */
+  info?: string
   text: string
 }
+
+/** Parsed fence metadata. Values are data, never trusted HTML. */
+export interface CodeBlockMetadata {
+  readonly attributes: Readonly<Record<string, string | true>>
+  readonly highlightLines: readonly number[]
+  readonly diagnostics: readonly CodeMetadataDiagnostic[]
+}
+
+export interface CodeMetadataDiagnostic {
+  readonly code: 'invalid-syntax' | 'duplicate-key' | 'limit-exceeded'
+  /** Offsets into rawMeta, in UTF-16 code units. */
+  readonly start: number
+  readonly end: number
+  readonly message: string
+}
+
+/** One immutable snapshot per code-block render, shared by all block hooks. */
+export interface CodeBlockContext {
+  /** Code text after Markdown newline and container-indent normalization. */
+  readonly source: string
+  /** Trimmed, lowercase language spelling. Alias resolution belongs to the highlighter. */
+  readonly language: string | undefined
+  readonly rawLanguage: string | undefined
+  /** Exact fence info when supplied by a fenced token. */
+  readonly rawInfo: string | undefined
+  /** Undecoded metadata, with outer whitespace removed like CodeToken.meta. */
+  readonly rawMeta: string | undefined
+  readonly token: Readonly<CodeToken>
+  /** Physical source lines, excluding a final empty line after a terminator. */
+  readonly lineCount: number
+}
+
+/** Trusted rendering code. Escape metadata before inserting it into returned HTML. */
+export type CodeBlockRenderHook = (context: CodeBlockContext, render: () => string) => string
 
 /**
  * Directive token (for plugins like embeds)
@@ -373,6 +409,9 @@ export interface ParserOptions {
    */
   renderer?: Partial<Renderer>
 
+  /** Wrap code-block rendering, including output from a highlighting plugin. Runs before sanitization. */
+  renderCodeBlock?: CodeBlockRenderHook
+
   /**
    * Plugins to extend the parser
    */
@@ -386,7 +425,7 @@ export interface Renderer {
   // Block renderers
   heading(token: HeadingToken): string
   paragraph(token: ParagraphToken): string
-  code(token: CodeToken): string
+  code(token: CodeToken, context?: CodeBlockContext): string
   hr(token: HrToken): string
   blockquote(token: BlockquoteToken): string
   list(token: ListToken): string
@@ -412,6 +451,10 @@ export interface Renderer {
  * Parser interface
  */
 export interface Parser {
+  /** Parse one document with separate assets, diagnostics, and TOC entries. */
+  parseDocument(markdown: string, options?: DocumentOptions): DocumentResult
+  /** Render caller tokens through the same pipeline as parseDocument(). */
+  renderDocument(tokens: BlockToken[], options?: DocumentOptions): DocumentResult
   /**
    * Parse markdown to HTML
    */
@@ -441,12 +484,16 @@ export type MarkdownPlugin = (builder: PluginBuilder) => void
  * Builder interface provided to plugins for registering extensions
  */
 export interface PluginBuilder {
+  /** Collection context for the active structured call. Undefined during string calls and setup. */
+  readonly document: DocumentContext | undefined
   /** Register a custom block-level tokenization rule */
   addBlockRule(rule: BlockRule): void
   /** Register a custom inline tokenization rule */
   addInlineRule(rule: InlineRule): void
   /** Override a renderer method */
   setRenderer<K extends keyof Renderer>(method: K, fn: Renderer[K]): void
+  /** Wrap the final code renderer. Hooks run in registration order, first registered outermost. */
+  addCodeBlockHook(hook: CodeBlockRenderHook): void
   /** Add a token-level transform (runs after tokenization, before rendering) */
   addTokenTransform(fn: (tokens: BlockToken[]) => BlockToken[]): void
   /** Add an HTML-level transform (runs after rendering) */
@@ -457,6 +504,60 @@ export interface PluginBuilder {
   renderBlock(tokens: BlockToken[]): string
   /** Read-only access to parser options */
   readonly options: Readonly<ParserOptions>
+}
+
+/** A trusted CSS asset. The ID identifies one stylesheet within the document. */
+export interface DocumentStylesheet {
+  readonly id: string
+  readonly css: string
+}
+
+/** Heading data supplied by a TOC plugin. Text is plain text, not HTML. */
+export interface DocumentTocEntry {
+  readonly level: number
+  readonly text: string
+  readonly id: string
+}
+
+/** Serializable plugin feedback. Messages and fields are plain text, not HTML. */
+export interface DocumentDiagnostic {
+  readonly source: string
+  readonly code: string
+  readonly severity: 'warning' | 'error'
+  readonly message: string
+  readonly field?: string
+  /** One-based code-block render order, including nested containers. */
+  readonly codeBlock?: { readonly index: number; readonly language?: string }
+  /** UTF-16 offsets into raw fence metadata, with an exclusive end. */
+  readonly metaRange?: { readonly start: number; readonly end: number }
+}
+
+/** Additional collection limits. Parser and plugin limits remain active. */
+export interface DocumentOptions {
+  /** Maximum distinct stylesheet IDs (default: 64). */
+  maxStylesheets?: number
+  /** Maximum combined stylesheet length in UTF-16 units (default: 1,000,000). */
+  maxStylesheetLength?: number
+  /** Maximum reported diagnostics (default: 1,000). */
+  maxDiagnostics?: number
+  /** Maximum TOC entries (default: 10,000). */
+  maxTocEntries?: number
+}
+
+export interface DocumentResult {
+  readonly html: string
+  readonly stylesheets: readonly DocumentStylesheet[]
+  readonly diagnostics: readonly DocumentDiagnostic[]
+  readonly toc: readonly DocumentTocEntry[]
+}
+
+/** Per-call collection services for synchronous plugins. Retained contexts expire after the call. */
+export interface DocumentContext {
+  /** Equal IDs and CSS deduplicate. Conflicting CSS for an ID throws. */
+  addStylesheet(stylesheet: DocumentStylesheet): void
+  /** Automatically attaches the active code-block location unless supplied explicitly. */
+  reportDiagnostic(diagnostic: DocumentDiagnostic): void
+  addTocEntry(entry: DocumentTocEntry): void
 }
 
 /**
@@ -482,11 +583,23 @@ export interface BlockRuleContext {
   readonly depth: number
   readonly maxNestingDepth: number
   /** Tokenize nested block content at an explicit container depth. */
-  tokenize(src: string, depth: number): BlockToken[]
+  tokenize(src: string, depth: number, lazyLines?: ReadonlySet<number>, key?: number): BlockToken[]
+  /** Container continuation lines cannot introduce setext underlines. */
+  isLazyLine?(offset: number): boolean
   /** Return true when a higher-priority enabled rule starts at src. */
-  interruptsParagraph(src: string, paragraphPriority: number): boolean
+  interruptsParagraph(src: string, paragraphPriority: number, excludedRule?: string): boolean
   /** Consume structural-token capacity from the current parser work budget. */
   consumeTokens(count?: number): void
+  /** Internal incremental observation: inspected prefix length, including one unit for an EOF dependency. */
+  dependOn?(end: number): void
+  /** Internal, opt-in continuation services for built-in block rules. */
+  continuation?: {
+    readonly previous: unknown
+    /** Save a snapshot factory at the current dependency frontier. */
+    retain(snapshot: () => unknown): void
+    reused(codeUnits: number): void
+    budget(): number
+  }
 }
 
 /**

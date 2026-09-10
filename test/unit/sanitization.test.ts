@@ -20,6 +20,13 @@ function sanitize(html: string, extra: { allowedTags?: string[]; allowedAttribut
 }
 
 describe('HTML sanitization', () => {
+  it.each(['textarea', 'xmp'])('blocks raw-text %s even in a custom allowlist', (tag) => {
+    const html = sanitize(`<${tag}></${tag}/><img src=x onerror="alert(1)">`, { allowedTags: [tag] })
+    expect(html).not.toContain(`<${tag}`)
+    expect(html).not.toContain('onerror')
+    expect(html).not.toContain('alert(1)')
+  })
+
   describe('sanitizer unit tests (direct HTML input)', () => {
     describe('script injection', () => {
       it('strips <script> tags and content entirely', () => {

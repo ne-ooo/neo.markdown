@@ -1,6 +1,6 @@
 import type { BlockRule } from '../../core/types.js'
 
-const HORIZONTAL_RULE = /^ {0,3}((?:- *){3,}|(?:_ *){3,}|(?:\* *){3,})(?:\n+|$)/
+const HORIZONTAL_RULE = /^ {0,3}((?:-[ \t]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n|$)/
 
 /** Horizontal rule (`---`, `***`, or `___`). */
 export const hr: BlockRule = {

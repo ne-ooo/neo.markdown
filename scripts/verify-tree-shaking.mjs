@@ -51,8 +51,8 @@ const gfm = await bundle(`
 `)
 
 assert.ok(
-  selective.gzip < full.gzip * 0.85,
-  `selective bundle must be at least 15% smaller: full=${full.gzip}, selective=${selective.gzip}`
+  full.gzip - selective.gzip >= 3_400,
+  `selective imports must save at least 3,400 gzip bytes: full=${full.gzip}, selective=${selective.gzip}`
 )
 
 assert.ok(
@@ -61,9 +61,48 @@ assert.ok(
 )
 
 assert.ok(
-  commonmark.gzip < gfm.gzip * 0.95,
-  `CommonMark preset must be at least 5% smaller: commonmark=${commonmark.gzip}, gfm=${gfm.gzip}`
+  commonmark.gzip < gfm.gzip,
+  `CommonMark preset must exclude optional GFM cost: commonmark=${commonmark.gzip}, gfm=${gfm.gzip}`
 )
+
+// The pre-authoring baseline saves 3,432 gzip bytes. Preserve that saving
+// within compression noise. A percentage penalizes shared API additions even
+// when the amount of excluded code stays unchanged. Also check actual module
+// boundaries so optional features cannot hide behind compression ratios.
+async function presetInputs(preset) {
+  const result = await build({
+    stdin: {
+      contents: `import { parse } from './src/presets/${preset}.ts'; console.log(parse('x'))`,
+      resolveDir: root,
+    },
+    bundle: true,
+    format: 'esm',
+    minify: true,
+    platform: 'browser',
+    write: false,
+    metafile: true,
+  })
+  return Object.values(result.metafile.outputs)[0].inputs
+}
+const [commonmarkInputs, gfmInputs] = await Promise.all([
+  presetInputs('commonmark'), presetInputs('gfm'),
+])
+for (const module of ['src/inline/gfm-support.ts', 'src/blocks/rules/table.ts']) {
+  assert.ok(!(commonmarkInputs[module]?.bytesInOutput > 0), `CommonMark includes ${module}`)
+  assert.ok(gfmInputs[module]?.bytesInOutput > 0, `GFM omitted ${module}`)
+}
+
+const selectiveSource = await build({
+  stdin: {
+    contents: `import { createParser } from './src/core/index.ts'; import { heading, paragraph } from './src/blocks/index.ts'; console.log(createParser({blocks:[heading,paragraph]}).parse('x'))`,
+    resolveDir: root,
+  },
+  bundle: true, format: 'esm', minify: true, platform: 'browser', write: false, metafile: true,
+})
+const selectiveInputs = Object.values(selectiveSource.metafile.outputs)[0].inputs
+for (const module of ['src/core/code-block.ts', 'src/blocks/rules/code.ts', 'src/blocks/rules/table.ts', 'src/plugins/highlight.ts', 'src/plugins/highlight-renderer.ts', 'src/plugins/code-presentation.ts', 'src/plugins/code-word-ranges.ts']) {
+  assert.ok(!(selectiveInputs[module]?.bytesInOutput > 0), `Selective parser includes ${module}`)
+}
 
 console.log(`Default parser:   ${full.bytes} bytes (${full.gzip} gzip)`)
 console.log(`Heading + text:   ${selective.bytes} bytes (${selective.gzip} gzip)`)
@@ -71,3 +110,29 @@ console.log(`With sanitizer:   ${sanitized.bytes} bytes (${sanitized.gzip} gzip)
 console.log(`CommonMark preset: ${commonmark.bytes} bytes (${commonmark.gzip} gzip)`)
 console.log(`GFM preset:        ${gfm.bytes} bytes (${gfm.gzip} gzip)`)
 console.log(`Selective saving: ${Math.round((1 - selective.gzip / full.gzip) * 100)}% gzip`)
+
+const workerClient = await bundle(`
+  import { createMarkdownWorkerClient } from '@lpm.dev/neo.markdown/experimental/worker-client'
+  console.log(createMarkdownWorkerClient)
+`)
+const workerClientSource = await build({
+  stdin: { contents: `import { createMarkdownWorkerClient } from './src/experimental/worker-client.ts'; console.log(createMarkdownWorkerClient)`, resolveDir: root },
+  bundle: true, format: 'esm', minify: true, platform: 'browser', write: false, metafile: true,
+})
+for (const [path, input] of Object.entries(Object.values(workerClientSource.metafile.outputs)[0].inputs)) {
+  assert.ok(input.bytesInOutput === 0 || path === '<stdin>' || /src\/experimental\/(worker-client\.ts|worker\/protocol\.ts)$/.test(path), `Worker client includes runtime module ${path}`)
+}
+console.log(`Worker client:     ${workerClient.bytes} bytes (${workerClient.gzip} gzip); no parser or sanitizer runtime`)
+
+const application = await bundle(`
+  import { createMarkdownApplication } from '@lpm.dev/neo.markdown/application'
+  console.log(createMarkdownApplication)
+`)
+const applicationBuild = await build({
+  stdin: { contents: `import { createMarkdownApplication } from '@lpm.dev/neo.markdown/application'; console.log(createMarkdownApplication)`, resolveDir: root },
+  bundle: true, format: 'esm', minify: true, platform: 'browser', write: false, metafile: true,
+})
+for (const [path, input] of Object.entries(Object.values(applicationBuild.metafile.outputs)[0].inputs)) {
+  assert.ok(input.bytesInOutput === 0 || path === '<stdin>' || /(?:dist\/(?:application\/index|experimental\/worker-client)\.js|src\/(?:application\/index|experimental\/worker-client|experimental\/worker\/protocol)\.ts)$/.test(path), `Application adapter includes optional runtime ${path}`)
+}
+console.log(`Application owner: ${application.bytes} bytes (${application.gzip} gzip); worker client included, parser/sanitizer/React excluded`)

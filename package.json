@@ -1,6 +1,6 @@
 {
   "name": "@lpm.dev/neo.markdown",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Modern, tree-shakeable markdown parser with TypeScript support",
   "keywords": [
     "markdown",
@@ -150,37 +150,178 @@
         "default": "./dist/plugins/embeds/react.cjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./plugins/code-presentation": {
+      "import": {
+        "types": "./dist/plugins/code-presentation.d.ts",
+        "default": "./dist/plugins/code-presentation.js"
+      },
+      "require": {
+        "types": "./dist/plugins/code-presentation.d.cts",
+        "default": "./dist/plugins/code-presentation.cjs"
+      }
+    },
+    "./experimental": {
+      "import": {
+        "types": "./dist/experimental/index.d.ts",
+        "default": "./dist/experimental/index.js"
+      },
+      "require": {
+        "types": "./dist/experimental/index.d.cts",
+        "default": "./dist/experimental/index.cjs"
+      }
+    },
+    "./experimental/dom": {
+      "import": {
+        "types": "./dist/experimental/dom.d.ts",
+        "default": "./dist/experimental/dom.js"
+      },
+      "require": {
+        "types": "./dist/experimental/dom.d.cts",
+        "default": "./dist/experimental/dom.cjs"
+      }
+    },
+    "./experimental/worker": {
+      "import": {
+        "types": "./dist/experimental/worker.d.ts",
+        "default": "./dist/experimental/worker.js"
+      },
+      "require": {
+        "types": "./dist/experimental/worker.d.cts",
+        "default": "./dist/experimental/worker.cjs"
+      }
+    },
+    "./experimental/worker-client": {
+      "import": {
+        "types": "./dist/experimental/worker-client.d.ts",
+        "default": "./dist/experimental/worker-client.js"
+      },
+      "require": {
+        "types": "./dist/experimental/worker-client.d.cts",
+        "default": "./dist/experimental/worker-client.cjs"
+      }
+    },
+    "./incremental": {
+      "import": {
+        "types": "./dist/experimental/index.d.ts",
+        "default": "./dist/experimental/index.js"
+      },
+      "require": {
+        "types": "./dist/experimental/index.d.cts",
+        "default": "./dist/experimental/index.cjs"
+      }
+    },
+    "./dom": {
+      "import": {
+        "types": "./dist/experimental/dom.d.ts",
+        "default": "./dist/experimental/dom.js"
+      },
+      "require": {
+        "types": "./dist/experimental/dom.d.cts",
+        "default": "./dist/experimental/dom.cjs"
+      }
+    },
+    "./worker": {
+      "import": {
+        "types": "./dist/experimental/worker.d.ts",
+        "default": "./dist/experimental/worker.js"
+      },
+      "require": {
+        "types": "./dist/experimental/worker.d.cts",
+        "default": "./dist/experimental/worker.cjs"
+      }
+    },
+    "./worker-client": {
+      "import": {
+        "types": "./dist/experimental/worker-client.d.ts",
+        "default": "./dist/experimental/worker-client.js"
+      },
+      "require": {
+        "types": "./dist/experimental/worker-client.d.cts",
+        "default": "./dist/experimental/worker-client.cjs"
+      }
+    },
+    "./application": {
+      "import": {
+        "types": "./dist/application/index.d.ts",
+        "default": "./dist/application/index.js"
+      },
+      "require": {
+        "types": "./dist/application/index.d.cts",
+        "default": "./dist/application/index.cjs"
+      }
+    },
+    "./application/sync": {
+      "import": {
+        "types": "./dist/application/sync.d.ts",
+        "default": "./dist/application/sync.js"
+      },
+      "require": {
+        "types": "./dist/application/sync.d.cts",
+        "default": "./dist/application/sync.cjs"
+      }
+    },
+    "./application/react": {
+      "import": {
+        "types": "./dist/application/react.d.ts",
+        "default": "./dist/application/react.js"
+      },
+      "require": {
+        "types": "./dist/application/react.d.cts",
+        "default": "./dist/application/react.cjs"
+      }
+    }
   },
   "files": [
     "dist",
-    ".lpm",
+    ".lpm/skills",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "docs/compatibility.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE",
+    "docs/efficiency.md",
+    "docs/code-blocks.md",
+    "docs/code-presentation.md",
+    "docs/word-highlighting.md",
+    "docs/document-results.md",
+    "docs/migration-v3.md",
+    "CONTRIBUTING.md",
+    "docs/incremental.md",
+    "docs/dom-patches.md",
+    "docs/worker-sessions.md",
+    "docs/application-adapter.md",
+    "docs/api-stability.md"
   ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
+    "test:conformance": "vitest run test/conformance",
     "test:coverage": "vitest run --coverage",
-    "test:package": "node test/package/smoke.mjs && tsc -p test/package/tsconfig.json",
+    "test:package": "node test/package/smoke.mjs && tsc -p test/package/tsconfig.json && node test/package/api-surface.mjs",
+    "test:integration": "node test/integration/run-highlight.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "bench": "vitest bench",
     "check:tree-shaking": "node scripts/verify-tree-shaking.mjs",
-    "release:check": "lpm run typecheck && lpm run test:coverage && lpm run build && lpm run test:package && lpm run check:tree-shaking && lpm audit --fail-on=vuln",
-    "prepublishOnly": "lpm run release:check"
+    "release:check": "lpm run check:release-metadata && lpm run typecheck && lpm run test:coverage && lpm run build && lpm run test:package && lpm run test:integration && lpm run check:tree-shaking && lpm run security:audit && lpm run security:signatures",
+    "prepublishOnly": "lpm run release:check",
+    "bench:efficiency": "node test/efficiency.mjs",
+    "check:release-metadata": "node scripts/check-release-metadata.mjs",
+    "security:audit": "lpm audit --level info --fail-on vuln",
+    "security:signatures": "lpm audit signatures",
+    "test:incremental": "vitest run test/unit/incremental"
   },
   "dependencies": {
-    "sanitize-html": "2.17.5"
+    "sanitize-html": "2.17.7"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/react": "^19.2.14",
     "@types/react-test-renderer": "19.1.0",
     "@types/sanitize-html": "^2.16.1",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "4.1.11",
     "commonmark-spec": "0.31.2",
     "esbuild": "0.28.2",
     "markdown-it": "^14.1.0",
@@ -191,7 +332,7 @@
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vite": "^6.4.3",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.11"
   },
   "peerDependencies": {
     "react": ">=18.0.0"
@@ -205,7 +346,7 @@
     "tsup>esbuild": "0.28.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
   "sideEffects": false
 }

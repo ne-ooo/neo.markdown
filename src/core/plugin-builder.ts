@@ -13,8 +13,10 @@ import type {
   InlineToken,
   Renderer,
   ParserOptions,
+  CodeBlockRenderHook,
 } from './types.js'
 import type { HtmlRenderer } from './renderer.js'
+import type { DocumentCollector } from './document-result.js'
 
 /**
  * Internal plugin builder that collects plugin registrations
@@ -33,7 +35,25 @@ export class PluginBuilderImpl implements PluginBuilder {
   /** Collected HTML transforms (run after rendering) */
   readonly htmlTransforms: Array<(html: string) => string> = []
 
+  readonly codeBlockHooks: CodeBlockRenderHook[] = []
+
   private renderer: HtmlRenderer
+  private collector: DocumentCollector | undefined
+
+  get document() { return this.collector?.context }
+
+  /** Internal call boundary, including tokenization and all transforms. */
+  withDocument<T>(collector: DocumentCollector | undefined, render: () => T): T {
+    const previous = this.collector
+    if (!collector && !previous) return render()
+    this.collector = collector
+    this.renderer.setDocumentCodeBlockHook(collector?.renderCodeBlock)
+    try { return render() } finally {
+      collector?.close()
+      this.collector = previous
+      this.renderer.setDocumentCodeBlockHook(previous?.renderCodeBlock)
+    }
+  }
 
   constructor(renderer: HtmlRenderer, options: ParserOptions) {
     this.renderer = renderer
@@ -50,6 +70,10 @@ export class PluginBuilderImpl implements PluginBuilder {
 
   setRenderer<K extends keyof Renderer>(method: K, fn: Renderer[K]): void {
     this.rendererOverrides.set(method, fn)
+  }
+
+  addCodeBlockHook(hook: CodeBlockRenderHook): void {
+    this.codeBlockHooks.push(hook)
   }
 
   addTokenTransform(fn: (tokens: BlockToken[]) => BlockToken[]): void {

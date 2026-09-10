@@ -4,7 +4,165 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [3.0.0] - Unreleased
+
+- Update Vitest to 4.1.11 for GHSA-82fw-gwwq-j7x9. Adversarial subprocess checks retain their two-second limit.
+
+- Pass source-preserving line layout through highlight options and retain exact copy output for source-line spans.
+
+### Application adapter and stable document APIs
+
+- Add framework-neutral document ownership through `application` and a React hook through `application/react`.
+- Add `application/sync` for bounded synchronous fallbacks, including session rotation and cleanup.
+- Coalesce pending source during asynchronous fallback setup and dispose abandoned sessions.
+- Add stable `incremental`, `dom`, `worker`, and `worker-client` imports with identical legacy alias runtimes.
+- Record public declarations in an ESM/CommonJS compatibility snapshot.
+- Keep existing string and document APIs compatible.
+
+See [application ownership](./docs/application-adapter.md) and [API stability](./docs/api-stability.md).
+
+### Markdown workers
+
+- Add optional worker handler and client entries for complete document updates.
+- Keep parser configuration, plugins, highlighting, and sanitization inside one dedicated worker per document.
+- Coalesce edits with one active request and one queued revision while retaining incremental parser state.
+- Add cancellation, deadlines, stale-result rejection, finite transport limits, session rotation, and idle cleanup.
+- Preserve structured results and plugin declarations across the worker boundary.
+- Document application ownership and recovery without automatic callback retries.
+
+See [worker sessions](./docs/worker-sessions.md) for configuration and limits.
+
+### Incremental documents
+
+- Added the optional `experimental` entry for repeated structured document updates.
+- Resume built-in block parsing from checkpoints with dependency ranges and reuse unchanged prefixes and suffixes.
+- Track lookahead for references, lists, tables, fences, and other built-in blocks.
+- Invalidate inline cache entries by their resolved and unresolved reference dependencies.
+- Bound block and inline caches while preserving structural and inline UGC token budgets.
+- Continue open fences, tables, lists, and blockquotes from safe cursors, including nested child blocks.
+- Track continuation work and include saved state in cache limits.
+- Retain complete rendering on every update. Earlier dependency changes restart the affected block.
+- Added `defineIncrementalPlugin()` and opt-in reuse for declared render plugins, including highlight, presentation, copy-code, and TOC.
+- Check actual registrations and report bounded fallback reasons through `session.reuse`.
+- Isolate cached tokens before callbacks and charge copy work to the session budget.
+- Reject late registration and reentrant updates after declared setup succeeds.
+- Keep complete parsing for undeclared plugins, custom blocks, caller renderer overrides, and registration mismatches.
+- Keep `pluginReuse: "off"` as the default and run all render callbacks on every update.
+- Enable pure inline declarations with static dependencies or bounded revision getters.
+- Clear inline caches on revision changes while retaining built-in block checkpoints.
+- Guard rendering and document services during inline tokenization and revision sampling.
+- Snapshot rule metadata and custom token graphs without calling property getters. Unsupported graphs remain uncached.
+- Track revision transitions through `pluginInvalidations` and bound snapshot metadata and copy work.
+- Add `IncrementalMarkdownLimitError` for session limit classification, with existing `RangeError` compatibility and unchanged messages.
+- Document application session ownership, cancellation, hydration, and recovery without automatic retries.
+
+See [incremental documents](./docs/incremental.md) for API behavior and limits.
+
+### DOM patches
+
+- Retain syntax indexes across container changes with the optional `maxCodeBlockHtmlLength` cache.
+- Reuse code nodes across multiple blocks, reordering, and changed parent containers within complete-document limits.
+- Stage changed syntax and surrounding markup separately, with validation before live mutation and recovery after external changes.
+- Reuse canonical validation for unchanged regions while counting duplicates toward the node limit.
+- Reduce DOM attribute allocations and repeated ownership walks during nested patches.
+- Patch ordinary descendants inside changed code blocks, presentation figures, lists, tables, and containers.
+- Add explicit lifecycle update hooks for initialized scopes and `patchChildren: false` to disable ordinary descendant patches.
+- Add copy-controller refresh to reset stale feedback after edits and ignore late completions from previous scope revisions.
+- Bound nested snapshots with existing limits and expose `cachedNodes` and optional `patchedRegions` counters.
+- Add the separate `experimental/dom` entry with `createMarkdownView()` for bounded top-level region matching.
+- Preserve unchanged DOM regions and their control state, with cleanup before changed regions are removed.
+- Use complete replacement for unsupported HTML or exceeded patch limits, without retaining patch snapshots.
+- Close the view after lifecycle errors without automatic retries.
+- Support root embed scopes and remove their pending Twitter-load listeners during cleanup.
+
+See [DOM patches](./docs/dom-patches.md) for ownership, limits, and application integration.
+
+### Breaking changes
+
+- Require Node.js 22.12 or later, including CommonJS consumers.
+- Upgrade sanitize-html to 2.17.7, which fixes GHSA-jxwj-j7wr-gfrw and GHSA-g8qq-57p8-ggw5.
+- Keep the string-returning API and all existing package entry points.
+
+See [migration to version 3](./docs/migration-v3.md) before upgrading.
+
+### Structured document results
+
+- Added `parseDocument()` and `renderDocument()` with immutable HTML, stylesheet, diagnostic, and TOC results.
+- Added used stylesheet assets, metadata and highlighting diagnostics, and direct TOC data from built-in plugins.
+- Added bounded collection services for custom plugins and isolated state for nested calls.
+- Preserved string output, plugin callbacks, sanitization order, and strict errors.
+
+See [document results](./docs/document-results.md) for entry points, asset handling, diagnostics, and limits.
+
+### Code blocks
+
+- Added `mark` metadata for word selections with one-based lines and Unicode code-point columns.
+- Added plain, highlighted, sanitized, and fallback selections that preserve focus, diff notation, and clean copy output.
+- Added global and per-block UTF-16 ranges to the highlighting plugin.
+
+See [word highlighting](./docs/word-highlighting.md) for syntax, range limits, and precedence.
+
+- Added a reusable presentation plugin for captions, filenames, focus ranges, and explicit diff prefixes.
+- Added plain and highlighted presentation, external styles, keyboard access, and copy output that excludes removed lines.
+- Kept source tokens unchanged and bounded the complete presentation output.
+
+See [code presentation](./docs/code-presentation.md) for syntax and integration.
+
+- Added exact fence info, immutable render contexts, and bounded metadata parsing helpers.
+- Added composable parser and plugin hooks around the final code renderer, before sanitization.
+- Added per-block highlighting options, token/line/wrapper decorators, and displayed line offsets.
+- Kept metadata parsing outside default and selective parser bundles.
+- Added consumer, sanitizer, copy, and demo checks for these APIs.
+
+See [code-block APIs](./docs/code-blocks.md) for syntax, hook order, and limits.
+
+### Added
+
+- The highlight plugin forwards `styleMode: "class"` for output with a shared stylesheet.
+- `lpm run bench:efficiency` measures startup, heap, and output for representative Markdown fixtures.
+
+- Per-example checks for all 652 CommonMark 0.31.2 fixtures in the main and CommonMark entries.
+- Explicit expected output for the four autolinks that the URL policy blocks.
+- Named character references from WHATWG and additional adversarial checks for the new parser paths.
+- Typed highlighting limits, per-block diff options, and error diagnostics.
+- Explicit `HighlightOptions` annotations now use grammar, token, and theme type parameters. Direct plugin calls infer these types.
+- `errorPolicy: "plain"` preserves escaped source when highlighting fails. The default remains `"throw"`.
+- `injectStyles: false` supports a separate theme stylesheet in Markdown integrations.
+- Built-package integration tests cover ESM, CommonJS, strict TypeScript, sanitization, and browser initializers.
+- Copy-code initialization accepts an `onError` callback for clipboard failures.
+
+### Fixed
+
+- GFM tables accept continuation rows without pipes and omit empty table bodies.
+- GFM strikethrough supports one or two tildes and rejects longer delimiter runs.
+- GFM email autolinks preserve explicit Markdown link destinations. The default renderer applies the GFM raw HTML tag filter.
+- Added all 28 normative GFM extension examples, with explicit expectations for the three XMPP URL-policy differences.
+- Preserved all 648 CommonMark matches and the four existing CommonMark URL restrictions.
+
+- Plain inline text avoids link indexes, and inputs without emphasis avoid delimiter-list allocation.
+
+- CommonMark compatibility increases from the corrected 314-example baseline to 648 matching examples, without baseline regressions.
+- The fixture harness expands the specification's visible tab markers before parsing and comparison.
+- Tabs use four-column indentation. Fenced and indented code retain content boundaries and final newlines.
+- Lists preserve marker changes, continuation indentation, empty items, nesting, and tight versus loose rendering.
+- Blockquotes support lazy paragraph continuation. Setext headings support multiple lines.
+- Emphasis uses delimiter runs, Unicode flanking rules, and the rule of three.
+- Links and references support nested labels, multiline definitions, decoded destinations, titles, and image descriptions.
+- HTML blocks follow their distinct termination rules. Inline HTML requires valid tag syntax.
+- Entity decoding preserves the HTML and URL security policies.
+- Language names and aliases use the same normalization as neo.highlight.
+- Tabs separate fenced-code language identifiers from metadata.
+- Highlight metadata counts CRLF and bare CR lines in caller-provided tokens.
+- Copy buttons preserve highlighted line breaks and omit line numbers and diff markers.
+- Copy cleanup removes label timers and ignores pending clipboard results.
+- The structural sanitizer always rejects `xmp`, including custom allowlists, to mitigate GHSA-jxwj-j7wr-gfrw.
+
+### Compatibility notes
+
+- `CodeToken.text` now includes the final newline for nonempty parsed code blocks. Renderer callbacks, diagnostics, highlighting, and copy controls receive it.
+- Corrected emphasis nesting, list structure, URL encoding, and image descriptions can change rendered output and token trees.
+- Raw fence metadata remains available in `CodeToken.meta`. The language identifier receives Markdown escape and entity decoding.
+- See [compatibility and limits](./docs/compatibility.md) for intentional URL restrictions and coverage.
 
 ## [2.0.0] - 2026-08-25
 

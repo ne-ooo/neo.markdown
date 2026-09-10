@@ -1,7 +1,7 @@
 ---
 name: react-nextjs-integration
 description: Using @lpm.dev/neo.markdown in React and Next.js — SSR, hydration, module-scope parser, serverless patterns, and React embed components
-version: "2.0.0"
+version: "3.0.0"
 globs:
   - "**/*.tsx"
   - "**/*.jsx"
@@ -14,7 +14,9 @@ globs:
 
 ## Module-Scope Parser
 
-Create the parser at module scope. It holds no request-specific state. `Tokenizer`, `InlineTokenizer`, and `HtmlRenderer` store only options and class methods. A single instance is safe to share across concurrent requests.
+An ordinary parser can serve independent synchronous calls from module scope.
+Its plugins and callbacks must also support shared use.
+Incremental sessions retain document state and require separate ownership.
 
 ```typescript
 // lib/markdown.ts
@@ -27,7 +29,62 @@ export function renderMarkdown(md: string): string {
 }
 ```
 
-Do **not** create the parser inside a React component or hook — there is no per-component state to manage, and you'd be recreating 4 class instances on every render for no benefit.
+For fixed configuration, reuse the ordinary parser instead of creating it during every render.
+The incremental session pattern differs because each session retains its document and caches.
+
+## Editor sessions
+
+Use `useMarkdownDocument(source, options)` from `@lpm.dev/neo.markdown/application/react` for package-owned editor lifecycle.
+Memoize the options. Configure worker-local plugins in the application worker entry.
+Use `createMarkdownApplication()` from `application` for framework-neutral ownership.
+Select `createFallback` only without `createWorker`. Worker failures never switch automatically to a synchronous fallback.
+Keep DOM initialization and stylesheet installation in the view component.
+Read [application ownership](../../docs/application-adapter.md) for cancellation, configuration changes, recovery, and limits.
+
+The following rules apply to direct incremental integration as well:
+
+Create each `createIncrementalMarkdown()` session in an effect, outside React rendering and state initializers.
+Keep its configuration stable across source edits.
+Dispose the session on unmount and before plugin, parser configuration, or document changes that require separate ownership.
+Cancel pending scheduled updates during cleanup, including StrictMode effect replay.
+Accept completed results only for the current source, configuration, and update attempt.
+
+If the application coalesces incoming chunks, call `update()` with the complete source.
+Keep the last preview visibly pending until the new result arrives.
+Hide old results immediately after configuration changes or parsing errors.
+Run scoped copy-code and embed cleanup before replacing HTML or unmounting its container.
+
+Rotate sessions between updates with finite budgets.
+`IncrementalMarkdownLimitError` identifies session limits but does not promise safe retries.
+Work exhaustion can occur after callbacks. Other `RangeError` instances can indicate plugin errors.
+After an error, allow a later edit or explicit refresh to create a new session.
+Do not automatically repeat the failed parse. Require shorter input after an input-limit error.
+
+The demo uses the same pending shell for server rendering and initial client rendering.
+Applications that need server-rendered document HTML can retain their ordinary `parseDocument()` flow.
+Sessions cannot cross the server/client boundary. Frame scheduling does not interrupt synchronous parsing.
+
+See [incremental documents](../../docs/incremental.md#application-lifecycle) for lifecycle, declarations, and recovery details.
+
+### DOM ownership
+
+The `dom` entry exports `createMarkdownView()` for DOM patches inside code blocks and containers.
+Give the view an HTML `div` with no React-managed children or `dangerouslySetInnerHTML` prop.
+Create, update, and dispose the view in layout effects.
+Keep React ownership limited to the root attributes and surrounding assets.
+
+Register scoped initializers for copy-code and embeds through the view's `initialize` option.
+Retained regions preserve their state. Cleanup runs before changed regions are removed.
+For nested patches in an initialized scope, return a lifecycle object with `dispose` and `update` functions.
+The update hook reconciles listeners and transient state after the view patches descendants.
+Copy-code exposes `refresh()` for this hook. Embed scopes keep complete replacement.
+Ordinary initializer callbacks keep complete replacement for changed regions.
+Unsupported HTML and exceeded patch limits use complete replacement.
+Lifecycle errors close the view without an automatic retry.
+
+Dispose the currently owned view on unmount, including any view created during recovery.
+Keep the server and initial client output identical before effects run.
+See [DOM patches](../../docs/dom-patches.md) for limits and callback rules.
 
 ## Server Components (Next.js App Router)
 
@@ -68,6 +125,15 @@ Use `useMemo` to avoid re-parsing on unrelated re-renders — `renderMarkdown` i
 
 ## Hydration Mismatch Risk
 
+For the highlight plugin, set `injectStyles: false`. Generate `getThemeStylesheet(theme)` once and include that CSS through the application layout.
+For the copy-code plugin, use `injectStyles: false` with `getCopyCodeStyles()` in the same layout.
+Keep these styles outside the HTML fragment passed to `dangerouslySetInnerHTML`.
+
+After the fragment mounts, call `initializeCopyCode({ root: element })` and `initializeEmbeds({ root: element })` for the active plugins.
+Run both cleanup functions before replacing the fragment or unmounting the component.
+The copy initializer excludes Neo line numbers and diff gutters from copied text.
+Its optional `onError` callback receives clipboard failures.
+
 If you use `allowHtml: true` and the markdown contains browser-dependent HTML (e.g., `<details open>` that browsers auto-close, or elements browsers auto-correct like unclosed `<p>` tags), server-rendered HTML and client DOM will diverge, causing React hydration errors.
 
 ```tsx
@@ -80,11 +146,7 @@ const html = parse(md)
 <div dangerouslySetInnerHTML={{ __html: html }} />
 ```
 
-If you must allow HTML and face hydration issues, suppress the warning on that specific element:
-
-```tsx
-<div suppressHydrationWarning dangerouslySetInnerHTML={{ __html: html }} />
-```
+If hydration differs, fix the generated HTML structure and keep server and client options identical. Use the `/sanitized` entry for untrusted raw HTML. Sanitization and HTML validity are separate concerns; verify the resulting fragment in a browser. Suppressing the hydration warning does not repair the DOM.
 
 ## Streaming SSR
 

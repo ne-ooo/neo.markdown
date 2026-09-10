@@ -14,7 +14,10 @@ import type {
   TableToken,
   HtmlSanitizer,
   SanitizerConfig,
+  DocumentOptions,
+  DocumentResult,
 } from './types.js'
+import { DocumentCollector } from './document-result.js'
 import { Tokenizer } from './tokenizer.js'
 import { InlineTokenizerBase } from './inline-tokenizer.js'
 import { HtmlRenderer } from './renderer.js'
@@ -44,6 +47,7 @@ export class MarkdownParserBase implements Parser {
   private htmlTransforms: Array<(html: string) => string>
   private sanitizerConfig: SanitizerConfig | null
   private sanitizer: HtmlSanitizer | null
+  private builder: PluginBuilderImpl
 
   constructor(
     options: ParserOptions = {},
@@ -82,6 +86,7 @@ export class MarkdownParserBase implements Parser {
     }
 
     this.renderer = new HtmlRenderer({
+      filterHtml: this.options.gfm ? inlineSupport?.filterHtml : undefined,
       lazyImages: this.options.lazyImages,
       safeLinks: this.options.safeLinks,
     })
@@ -97,6 +102,7 @@ export class MarkdownParserBase implements Parser {
 
     // Process plugins
     const builder = new PluginBuilderImpl(this.renderer, this.options)
+    this.builder = builder
 
     if (this.options.plugins) {
       for (const plugin of this.options.plugins) {
@@ -108,6 +114,11 @@ export class MarkdownParserBase implements Parser {
     if (builder.rendererOverrides.size > 0) {
       this.renderer.applyOverrides(builder.rendererOverrides)
     }
+
+    this.renderer.setCodeBlockHooks([
+      ...(this.options.renderCodeBlock ? [this.options.renderCodeBlock] : []),
+      ...builder.codeBlockHooks,
+    ])
 
     // Store transforms
     this.tokenTransforms = builder.tokenTransforms
@@ -152,7 +163,17 @@ export class MarkdownParserBase implements Parser {
    * @returns HTML string
    */
   parse(markdown: string): string {
-    return this.render(this.tokenize(markdown))
+    return this.builder.withDocument(undefined, () => this.render(this.tokenize(markdown)))
+  }
+
+  parseDocument(markdown: string, options?: DocumentOptions): DocumentResult {
+    const document = new DocumentCollector(options)
+    return this.builder.withDocument(document, () => document.finish(this.renderTokens(this.tokenize(markdown))))
+  }
+
+  renderDocument(tokens: BlockToken[], options?: DocumentOptions): DocumentResult {
+    const document = new DocumentCollector(options)
+    return this.builder.withDocument(document, () => document.finish(this.renderTokens(tokens)))
   }
 
   /**
@@ -162,6 +183,10 @@ export class MarkdownParserBase implements Parser {
    * @returns HTML string
    */
   render(tokens: BlockToken[]): string {
+    return this.builder.withDocument(undefined, () => this.renderTokens(tokens))
+  }
+
+  private renderTokens(tokens: BlockToken[]): string {
     // Validate caller-provided graphs before plugins can recursively walk or
     // clone them. Transformed output is validated again below.
     if (this.tokenTransforms.length > 0) {
@@ -225,7 +250,7 @@ export class MarkdownParserBase implements Parser {
     }
 
     const tokenBudget = this.options.ugc ? createTokenBudget() : undefined
-    const blockTokens = this.blockTokenizer.tokenize(markdown, tokenBudget)
+    const blockTokens = this.tokenizeBlocks(markdown, tokenBudget)
     const references = new Map<string, LinkReference>()
     this.collectReferenceDefinitions(blockTokens, references)
 
@@ -239,6 +264,17 @@ export class MarkdownParserBase implements Parser {
     }
 
     return tokens
+  }
+
+  /** Internal extension point for dependency-aware block reuse. */
+  protected tokenizeBlocks(markdown: string, tokenBudget?: TokenBudget): BlockToken[] {
+    return this.blockTokenizer.tokenize(markdown, tokenBudget)
+  }
+
+  /** Resume built-in block rules at a normalized top-level boundary. */
+  protected resumeBlocks(markdown: string, start: number, tokenBudget: TokenBudget | undefined,
+    checkpoint: Parameters<Tokenizer['resume']>[3], continuations?: Parameters<Tokenizer['resume']>[4]): BlockToken[] {
+    return this.blockTokenizer.resume(markdown, start, tokenBudget, checkpoint, continuations)
   }
 
   private collectReferenceDefinitions(
@@ -275,14 +311,14 @@ export class MarkdownParserBase implements Parser {
       if (token.type === 'paragraph') {
         return {
           ...token,
-          tokens: this.inlineTokenizer.tokenize(token.text, references, tokenBudget),
+          tokens: this.tokenizeInline(token.text, references, tokenBudget),
         } as ParagraphToken
       }
 
       if (token.type === 'heading') {
         return {
           ...token,
-          tokens: this.inlineTokenizer.tokenize(token.text, references, tokenBudget),
+          tokens: this.tokenizeInline(token.text, references, tokenBudget),
         } as HeadingToken
       }
 
@@ -308,12 +344,12 @@ export class MarkdownParserBase implements Parser {
           ...token,
           header: token.header.map((cell) => ({
             ...cell,
-            tokens: this.inlineTokenizer.tokenize(cell.text, references, tokenBudget),
+            tokens: this.tokenizeInline(cell.text, references, tokenBudget),
           })),
           rows: token.rows.map((row) =>
             row.map((cell) => ({
               ...cell,
-              tokens: this.inlineTokenizer.tokenize(cell.text, references, tokenBudget),
+              tokens: this.tokenizeInline(cell.text, references, tokenBudget),
             }))
           ),
         } as TableToken
@@ -321,6 +357,11 @@ export class MarkdownParserBase implements Parser {
 
       return token
     })
+  }
+
+  /** Internal extension point for bounded, per-parser inline reuse experiments. */
+  protected tokenizeInline(text: string, references: ReadonlyMap<string, LinkReference>, budget?: TokenBudget): InlineToken[] {
+    return this.inlineTokenizer.tokenize(text, references, budget)
   }
 
   private assertNoRawHtmlBlocks(tokens: BlockToken[]): void {
