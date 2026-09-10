@@ -1,0 +1,1020 @@
+{
+  "./incremental": {
+    "createIncrementalMarkdown": {
+      "kind": "value",
+      "type": "(options?: IncrementalMarkdownOptions | undefined) => { update(source: string, documentOptions?: DocumentOptions | undefined): DocumentResult; append(chunk: string, documentOptions?: DocumentOptions | undefined): DocumentResult; dispose(): void; readonly reuse: IncrementalReusePolicy; readonly metrics: { updates: number; sourceLength: number; workCodeUnits: number; parsedInlineCodeUnits: number; reusedInlineCodeUnits: number; cacheEntries: number; cachedCodeUnits: number; cachedTokens: number; cachedTokenCodeUnits: number; referenceInvalidations: number; blockCheckpoints: number; cachedBlockTokens: number; cachedBlockCodeUnits: number; parsedBlockCodeUnits: number; reusedBlockCodeUnits: number; parsedBlocks: number; reusedBlocks: number; lastBlockRestart: number; lastBlockParsedThrough: number; cachedReferenceDependencies: number; invalidatedInlineEntries: number; continuationHits: number; continuedCodeUnits: number; clonedTokenNodes: number; clonedTokenCodeUnits: number; pluginInvalidations: number; }; }"
+    },
+    "defineIncrementalPlugin": {
+      "kind": "value",
+      "type": "(plugin: MarkdownPlugin, contract: IncrementalPluginContract) => MarkdownPlugin"
+    },
+    "IncrementalMarkdownLimit": {
+      "kind": "type",
+      "type": "IncrementalMarkdownLimit",
+      "variants": [
+        "\"maxInputLength\"",
+        "\"maxUpdates\"",
+        "\"maxWorkCodeUnits\""
+      ]
+    },
+    "IncrementalMarkdownLimitError": {
+      "kind": "class",
+      "type": "IncrementalMarkdownLimitError",
+      "members": {
+        "limit": {
+          "optional": false,
+          "readonly": true,
+          "type": "IncrementalMarkdownLimit"
+        }
+      },
+      "constructors": [
+        "(limit: IncrementalMarkdownLimit): IncrementalMarkdownLimitError"
+      ]
+    },
+    "IncrementalMarkdownOptions": {
+      "kind": "type",
+      "type": "IncrementalMarkdownOptions",
+      "members": {
+        "maxBlockCheckpoints": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedBlockCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedBlockTokens": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedReferenceDependencies": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedTokenCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedTokens": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxEntries": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxInputLength": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxUpdates": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxWorkCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "parser": {
+          "optional": true,
+          "readonly": false,
+          "type": "ParserOptions | undefined"
+        },
+        "pluginReuse": {
+          "optional": true,
+          "readonly": false,
+          "type": "\"off\" | \"declared\" | undefined"
+        }
+      }
+    },
+    "IncrementalPluginContract": {
+      "kind": "type",
+      "type": "IncrementalPluginContract",
+      "variants": [
+        "{ readonly protocol: 1; readonly id: string; } & { readonly profile: \"inline\"; readonly effects: \"none\"; readonly dependencies: InlineDependencies; }",
+        "{ readonly protocol: 1; readonly id: string; } & { readonly profile: \"render\"; }"
+      ]
+    },
+    "IncrementalReusePolicy": {
+      "kind": "type",
+      "type": "IncrementalReusePolicy",
+      "members": {
+        "blockers": {
+          "optional": false,
+          "readonly": true,
+          "type": "readonly { readonly code: ReuseBlockerCode; readonly pluginIndex?: number | undefined; readonly pluginId?: string | undefined; }[]"
+        },
+        "mode": {
+          "optional": false,
+          "readonly": true,
+          "type": "\"declared\" | \"built-in\" | \"fallback\""
+        },
+        "truncated": {
+          "optional": false,
+          "readonly": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "InlineDependencies": {
+      "kind": "type",
+      "type": "InlineDependencies",
+      "variants": [
+        "{ readonly kind: \"revision\"; readonly read: () => string; }",
+        "{ readonly kind: \"static\"; }"
+      ]
+    },
+    "ReuseBlockerCode": {
+      "kind": "type",
+      "type": "ReuseBlockerCode",
+      "variants": [
+        "\"caller-block-rules\"",
+        "\"caller-renderer\"",
+        "\"contract-limit\"",
+        "\"custom-block-rules\"",
+        "\"duplicate-plugin-id\"",
+        "\"plugin-reuse-off\"",
+        "\"registration-mismatch\"",
+        "\"undeclared-plugin\"",
+        "\"unsupported-contract\""
+      ]
+    }
+  },
+  "./dom": {
+    "createMarkdownView": {
+      "kind": "value",
+      "type": "(root: HTMLElement, options?: MarkdownViewOptions | undefined) => { update(html: string): MarkdownViewUpdate; dispose: () => void; readonly metrics: { mode: \"unchanged\" | \"patch\" | \"replace\"; reason?: MarkdownViewFallback | undefined; reusedRegions: number; removedRegions: number; insertedRegions: number; patchedRegions?: number | undefined; cachedCodeBlockHtmlCodeUnits?: number | undefined; cachedCodeBlockNodes?: number | undefined; updates: number; cachedRegions: number; cachedNodes: number; cachedHtmlCodeUnits: number; }; }"
+    },
+    "MarkdownViewFallback": {
+      "kind": "type",
+      "type": "MarkdownViewFallback",
+      "variants": [
+        "\"depth-limit\"",
+        "\"external-mutation\"",
+        "\"html-limit\"",
+        "\"node-limit\"",
+        "\"region-limit\"",
+        "\"unsupported-html\""
+      ]
+    },
+    "MarkdownViewLifecycle": {
+      "kind": "type",
+      "type": "MarkdownViewLifecycle",
+      "members": {
+        "dispose": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => void"
+        },
+        "update": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => void"
+        }
+      }
+    },
+    "MarkdownViewOptions": {
+      "kind": "type",
+      "type": "MarkdownViewOptions",
+      "members": {
+        "initialize": {
+          "optional": true,
+          "readonly": false,
+          "type": "((region: HTMLElement) => void | MarkdownViewLifecycle | (() => void)) | undefined"
+        },
+        "maxCachedHtmlLength": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCodeBlockHtmlLength": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxDepth": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxNodes": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxRegions": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "patchChildren": {
+          "optional": true,
+          "readonly": false,
+          "type": "boolean | undefined"
+        }
+      }
+    },
+    "MarkdownViewUpdate": {
+      "kind": "type",
+      "type": "MarkdownViewUpdate",
+      "members": {
+        "insertedRegions": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "mode": {
+          "optional": false,
+          "readonly": false,
+          "type": "\"unchanged\" | \"patch\" | \"replace\""
+        },
+        "patchedRegions": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "reason": {
+          "optional": true,
+          "readonly": false,
+          "type": "MarkdownViewFallback | undefined"
+        },
+        "removedRegions": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "reusedRegions": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        }
+      }
+    }
+  },
+  "./worker": {
+    "createMarkdownWorkerHandler": {
+      "kind": "value",
+      "type": "(options?: MarkdownWorkerOptions | undefined) => { handle: (input: unknown) => MarkdownWorkerResponse; dispose: () => void; }"
+    },
+    "installMarkdownWorker": {
+      "kind": "value",
+      "type": "(scope: MarkdownWorkerScope, options?: MarkdownWorkerOptions | undefined) => () => void"
+    },
+    "MarkdownWorkerConfiguration": {
+      "kind": "type",
+      "type": "MarkdownWorkerConfiguration",
+      "variants": [
+        "false",
+        "null",
+        "number",
+        "readonly MarkdownWorkerConfiguration[]",
+        "string",
+        "true",
+        "{ readonly [key: string]: MarkdownWorkerConfiguration; }"
+      ]
+    },
+    "MarkdownWorkerLimits": {
+      "kind": "type",
+      "type": "MarkdownWorkerLimits",
+      "members": {
+        "maxDiagnostics": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxInputLength": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxResultCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxStylesheets": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxTocEntries": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        }
+      }
+    },
+    "MarkdownWorkerMetrics": {
+      "kind": "type",
+      "type": "MarkdownWorkerMetrics",
+      "members": {
+        "parsedBlockCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "parsedInlineCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "processingMs": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "reusedBlockCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "reusedInlineCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "sessionGeneration": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "sessionRotations": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "sourceLength": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "updates": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "workCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        }
+      }
+    },
+    "MarkdownWorkerOptions": {
+      "kind": "type",
+      "type": "MarkdownWorkerOptions",
+      "members": {
+        "configure": {
+          "optional": true,
+          "readonly": false,
+          "type": "((configuration: MarkdownWorkerConfiguration) => { session?: IncrementalMarkdownOptions | undefined; document?: DocumentOptions | undefined; }) | undefined"
+        },
+        "limits": {
+          "optional": true,
+          "readonly": false,
+          "type": "Partial<MarkdownWorkerLimits> | undefined"
+        },
+        "maxUpdates": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxWorkCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        }
+      }
+    },
+    "MarkdownWorkerRequest": {
+      "kind": "type",
+      "type": "MarkdownWorkerRequest",
+      "variants": [
+        "{ protocol: \"neo.markdown/1\"; type: \"open\"; id: number; configuration: MarkdownWorkerConfiguration; limits: MarkdownWorkerLimits; htmlDeltas?: boolean | undefined; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"update\"; id: number; revision: number; source: string; htmlBaseRevision?: number | undefined; }"
+      ]
+    },
+    "MarkdownWorkerResponse": {
+      "kind": "type",
+      "type": "MarkdownWorkerResponse",
+      "variants": [
+        "{ protocol: \"neo.markdown/1\"; type: \"error\"; id: number; revision?: number | undefined; error: { code: MarkdownWorkerErrorCode; name: string; message: string; }; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"html-delta\"; id: number; revision: number; result: Omit<DocumentResult, \"html\">; delta: MarkdownHtmlDelta; metrics: MarkdownWorkerMetrics; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"ready\"; id: number; limits: MarkdownWorkerLimits; htmlDeltas?: boolean | undefined; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"result\"; id: number; revision: number; result: DocumentResult; metrics: MarkdownWorkerMetrics; }"
+      ]
+    },
+    "MarkdownWorkerScope": {
+      "kind": "type",
+      "type": "MarkdownWorkerScope",
+      "members": {
+        "addEventListener": {
+          "optional": false,
+          "readonly": false,
+          "type": "(type: \"message\", listener: (event: MessageEvent<unknown>) => void) => void"
+        },
+        "postMessage": {
+          "optional": false,
+          "readonly": false,
+          "type": "(response: MarkdownWorkerResponse) => void"
+        },
+        "removeEventListener": {
+          "optional": false,
+          "readonly": false,
+          "type": "(type: \"message\", listener: (event: MessageEvent<unknown>) => void) => void"
+        }
+      }
+    }
+  },
+  "./worker-client": {
+    "createMarkdownWorkerClient": {
+      "kind": "value",
+      "type": "(options: MarkdownWorkerClientOptions) => MarkdownWorkerClient"
+    },
+    "MarkdownWorkerCallOptions": {
+      "kind": "type",
+      "type": "MarkdownWorkerCallOptions",
+      "members": {
+        "signal": {
+          "optional": true,
+          "readonly": false,
+          "type": "AbortSignal | undefined"
+        },
+        "timeoutMs": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        }
+      }
+    },
+    "MarkdownWorkerClient": {
+      "kind": "type",
+      "type": "MarkdownWorkerClient",
+      "members": {
+        "dispose": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => void"
+        },
+        "metrics": {
+          "optional": false,
+          "readonly": true,
+          "type": "{ workerStarts: number; completedUpdates: number; supersededUpdates: number; pendingCount: number; pendingCodeUnits: number; activeRevision?: number | undefined; queuedRevision?: number | undefined; }"
+        },
+        "update": {
+          "optional": false,
+          "readonly": false,
+          "type": "(source: string, options?: MarkdownWorkerCallOptions | undefined) => Promise<MarkdownWorkerUpdate>"
+        }
+      }
+    },
+    "MarkdownWorkerClientOptions": {
+      "kind": "type",
+      "type": "MarkdownWorkerClientOptions",
+      "members": {
+        "configuration": {
+          "optional": true,
+          "readonly": false,
+          "type": "MarkdownWorkerConfiguration | undefined"
+        },
+        "createWorker": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => MarkdownWorkerTransport"
+        },
+        "htmlDeltas": {
+          "optional": true,
+          "readonly": false,
+          "type": "boolean | undefined"
+        },
+        "idleTimeoutMs": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "limits": {
+          "optional": true,
+          "readonly": false,
+          "type": "Partial<MarkdownWorkerLimits> | undefined"
+        },
+        "maxPendingCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "timeoutMs": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        }
+      }
+    },
+    "MarkdownWorkerConfiguration": {
+      "kind": "type",
+      "type": "MarkdownWorkerConfiguration",
+      "variants": [
+        "false",
+        "null",
+        "number",
+        "readonly MarkdownWorkerConfiguration[]",
+        "string",
+        "true",
+        "{ readonly [key: string]: MarkdownWorkerConfiguration; }"
+      ]
+    },
+    "MarkdownWorkerError": {
+      "kind": "class",
+      "type": "MarkdownWorkerError",
+      "members": {
+        "code": {
+          "optional": false,
+          "readonly": true,
+          "type": "MarkdownWorkerErrorCode"
+        },
+        "remoteName": {
+          "optional": true,
+          "readonly": true,
+          "type": "string | undefined"
+        }
+      },
+      "constructors": [
+        "(code: MarkdownWorkerErrorCode, message: string, remoteName?: string | undefined): MarkdownWorkerError"
+      ]
+    },
+    "MarkdownWorkerErrorCode": {
+      "kind": "type",
+      "type": "MarkdownWorkerErrorCode",
+      "variants": [
+        "\"ABORTED\"",
+        "\"CONFIGURATION_ERROR\"",
+        "\"DISPOSED\"",
+        "\"INPUT_LIMIT\"",
+        "\"OUTPUT_LIMIT\"",
+        "\"PROTOCOL_ERROR\"",
+        "\"QUEUE_FULL\"",
+        "\"RENDER_ERROR\"",
+        "\"SUPERSEDED\"",
+        "\"TIMEOUT\"",
+        "\"WORKER_ERROR\"",
+        "\"WORK_LIMIT\""
+      ]
+    },
+    "MarkdownWorkerLimits": {
+      "kind": "type",
+      "type": "MarkdownWorkerLimits",
+      "members": {
+        "maxDiagnostics": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxInputLength": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxResultCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxStylesheets": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxTocEntries": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        }
+      }
+    },
+    "MarkdownWorkerMetrics": {
+      "kind": "type",
+      "type": "MarkdownWorkerMetrics",
+      "members": {
+        "parsedBlockCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "parsedInlineCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "processingMs": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "reusedBlockCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "reusedInlineCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "sessionGeneration": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "sessionRotations": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "sourceLength": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "updates": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "workCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        }
+      }
+    },
+    "MarkdownWorkerRequest": {
+      "kind": "type",
+      "type": "MarkdownWorkerRequest",
+      "variants": [
+        "{ protocol: \"neo.markdown/1\"; type: \"open\"; id: number; configuration: MarkdownWorkerConfiguration; limits: MarkdownWorkerLimits; htmlDeltas?: boolean | undefined; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"update\"; id: number; revision: number; source: string; htmlBaseRevision?: number | undefined; }"
+      ]
+    },
+    "MarkdownWorkerResponse": {
+      "kind": "type",
+      "type": "MarkdownWorkerResponse",
+      "variants": [
+        "{ protocol: \"neo.markdown/1\"; type: \"error\"; id: number; revision?: number | undefined; error: { code: MarkdownWorkerErrorCode; name: string; message: string; }; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"html-delta\"; id: number; revision: number; result: Omit<DocumentResult, \"html\">; delta: MarkdownHtmlDelta; metrics: MarkdownWorkerMetrics; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"ready\"; id: number; limits: MarkdownWorkerLimits; htmlDeltas?: boolean | undefined; }",
+        "{ protocol: \"neo.markdown/1\"; type: \"result\"; id: number; revision: number; result: DocumentResult; metrics: MarkdownWorkerMetrics; }"
+      ]
+    },
+    "MarkdownWorkerTransport": {
+      "kind": "type",
+      "type": "MarkdownWorkerTransport",
+      "members": {
+        "addEventListener": {
+          "optional": false,
+          "readonly": false,
+          "type": "{ (type: \"message\", listener: (event: MessageEvent<unknown>) => void): void; (type: \"error\" | \"messageerror\", listener: (event: Event) => void): void; }"
+        },
+        "postMessage": {
+          "optional": false,
+          "readonly": false,
+          "type": "(message: MarkdownWorkerRequest) => void"
+        },
+        "removeEventListener": {
+          "optional": false,
+          "readonly": false,
+          "type": "{ (type: \"message\", listener: (event: MessageEvent<unknown>) => void): void; (type: \"error\" | \"messageerror\", listener: (event: Event) => void): void; }"
+        },
+        "terminate": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => void | Promise<unknown>"
+        }
+      }
+    },
+    "MarkdownWorkerUpdate": {
+      "kind": "type",
+      "type": "MarkdownWorkerUpdate",
+      "members": {
+        "metrics": {
+          "optional": false,
+          "readonly": true,
+          "type": "Readonly<MarkdownWorkerMetrics>"
+        },
+        "result": {
+          "optional": false,
+          "readonly": true,
+          "type": "DocumentResult"
+        },
+        "revision": {
+          "optional": false,
+          "readonly": true,
+          "type": "number"
+        },
+        "roundTripMs": {
+          "optional": false,
+          "readonly": true,
+          "type": "number"
+        },
+        "totalMs": {
+          "optional": false,
+          "readonly": true,
+          "type": "number"
+        }
+      }
+    }
+  },
+  "./application": {
+    "createMarkdownApplication": {
+      "kind": "value",
+      "type": "(options: MarkdownApplicationOptions) => MarkdownApplication"
+    },
+    "MarkdownApplication": {
+      "kind": "type",
+      "type": "MarkdownApplication",
+      "members": {
+        "dispose": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => void"
+        },
+        "isCurrent": {
+          "optional": false,
+          "readonly": false,
+          "type": "(outcome: MarkdownApplicationOutcome) => boolean"
+        },
+        "metrics": {
+          "optional": false,
+          "readonly": true,
+          "type": "{ mode: \"worker\" | \"synchronous\"; generations: number; updates: number; pending: boolean; disposed: boolean; worker?: { workerStarts: number; completedUpdates: number; supersededUpdates: number; pendingCount: number; pendingCodeUnits: number; activeRevision?: number | undefined; queuedRevision?: number | undefined; } | undefined; }"
+        },
+        "reset": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => void"
+        },
+        "update": {
+          "optional": false,
+          "readonly": false,
+          "type": "(source: string, options?: MarkdownWorkerCallOptions | undefined) => Promise<MarkdownApplicationOutcome>"
+        }
+      }
+    },
+    "MarkdownApplicationError": {
+      "kind": "class",
+      "type": "MarkdownApplicationError",
+      "members": {
+        "code": {
+          "optional": false,
+          "readonly": true,
+          "type": "MarkdownWorkerErrorCode"
+        }
+      },
+      "constructors": [
+        "(code: MarkdownWorkerErrorCode, message: string, options?: ErrorOptions | undefined): MarkdownApplicationError"
+      ]
+    },
+    "MarkdownApplicationErrorCode": {
+      "kind": "type",
+      "type": "MarkdownWorkerErrorCode",
+      "variants": [
+        "\"ABORTED\"",
+        "\"CONFIGURATION_ERROR\"",
+        "\"DISPOSED\"",
+        "\"INPUT_LIMIT\"",
+        "\"OUTPUT_LIMIT\"",
+        "\"PROTOCOL_ERROR\"",
+        "\"QUEUE_FULL\"",
+        "\"RENDER_ERROR\"",
+        "\"SUPERSEDED\"",
+        "\"TIMEOUT\"",
+        "\"WORKER_ERROR\"",
+        "\"WORK_LIMIT\""
+      ]
+    },
+    "MarkdownApplicationOptions": {
+      "kind": "type",
+      "type": "MarkdownApplicationOptions",
+      "members": {
+        "configuration": {
+          "optional": true,
+          "readonly": false,
+          "type": "MarkdownWorkerConfiguration | undefined"
+        },
+        "createFallback": {
+          "optional": true,
+          "readonly": false,
+          "type": "((configuration: MarkdownWorkerConfiguration, signal: AbortSignal) => MarkdownSynchronousSession | Promise<MarkdownSynchronousSession>) | undefined"
+        },
+        "createWorker": {
+          "optional": true,
+          "readonly": false,
+          "type": "(() => MarkdownWorkerTransport) | undefined"
+        },
+        "htmlDeltas": {
+          "optional": true,
+          "readonly": false,
+          "type": "boolean | undefined"
+        },
+        "idleTimeoutMs": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "limits": {
+          "optional": true,
+          "readonly": false,
+          "type": "Partial<MarkdownWorkerLimits> | undefined"
+        },
+        "maxPendingCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "timeoutMs": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        }
+      }
+    },
+    "MarkdownApplicationOutcome": {
+      "kind": "type",
+      "type": "MarkdownApplicationOutcome",
+      "variants": [
+        "Readonly<{ revision: number; } & { status: \"error\" | \"input-limit\" | \"work-limit\"; error: unknown; }>",
+        "Readonly<{ revision: number; } & { status: \"ready\"; result: DocumentResult; }>"
+      ]
+    },
+    "MarkdownSynchronousSession": {
+      "kind": "type",
+      "type": "MarkdownSynchronousSession",
+      "members": {
+        "dispose": {
+          "optional": false,
+          "readonly": false,
+          "type": "() => void"
+        },
+        "update": {
+          "optional": false,
+          "readonly": false,
+          "type": "(source: string) => DocumentResult"
+        }
+      }
+    },
+    "MarkdownWorkerConfiguration": {
+      "kind": "type",
+      "type": "MarkdownWorkerConfiguration",
+      "variants": [
+        "false",
+        "null",
+        "number",
+        "readonly MarkdownWorkerConfiguration[]",
+        "string",
+        "true",
+        "{ readonly [key: string]: MarkdownWorkerConfiguration; }"
+      ]
+    },
+    "MarkdownWorkerLimits": {
+      "kind": "type",
+      "type": "MarkdownWorkerLimits",
+      "members": {
+        "maxDiagnostics": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxInputLength": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxResultCodeUnits": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxStylesheets": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        },
+        "maxTocEntries": {
+          "optional": false,
+          "readonly": false,
+          "type": "number"
+        }
+      }
+    }
+  },
+  "./application/sync": {
+    "createMarkdownSynchronousSession": {
+      "kind": "value",
+      "type": "(options?: MarkdownSynchronousOptions | undefined) => MarkdownSynchronousSession"
+    },
+    "MarkdownSynchronousOptions": {
+      "kind": "type",
+      "type": "MarkdownSynchronousOptions",
+      "members": {
+        "document": {
+          "optional": true,
+          "readonly": false,
+          "type": "DocumentOptions | undefined"
+        },
+        "maxBlockCheckpoints": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedBlockCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedBlockTokens": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedReferenceDependencies": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedTokenCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxCachedTokens": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxEntries": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxInputLength": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxUpdates": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "maxWorkCodeUnits": {
+          "optional": true,
+          "readonly": false,
+          "type": "number | undefined"
+        },
+        "parser": {
+          "optional": true,
+          "readonly": false,
+          "type": "ParserOptions | undefined"
+        },
+        "pluginReuse": {
+          "optional": true,
+          "readonly": false,
+          "type": "\"off\" | \"declared\" | undefined"
+        }
+      }
+    }
+  },
+  "./application/react": {
+    "MarkdownDocumentPreview": {
+      "kind": "type",
+      "type": "MarkdownDocumentPreview",
+      "variants": [
+        "Readonly<{ revision: number; } & { status: \"error\" | \"input-limit\" | \"work-limit\"; error: unknown; }> & { refresh(): void; }",
+        "Readonly<{ revision: number; } & { status: \"ready\"; result: DocumentResult; }> & { refresh(): void; }",
+        "{ status: \"pending\"; result?: DocumentResult | undefined; } & { refresh(): void; }"
+      ]
+    },
+    "useMarkdownDocument": {
+      "kind": "value",
+      "type": "(source: string, options: MarkdownApplicationOptions) => MarkdownDocumentPreview"
+    }
+  }
+}

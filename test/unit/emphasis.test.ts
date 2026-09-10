@@ -67,8 +67,8 @@ describe('Emphasis (Bold and Italic)', () => {
     it('should parse bold italic using ***', () => {
       // Phase 3: Fixed! Triple *** delimiter handling
       const result = parse('***bold and italic***')
-      // Most markdown parsers do strong-em (not em-strong) for ***
-      expect(result).toBe('<p><strong><em>bold and italic</em></strong></p>\n')
+      // CommonMark consumes the inner strong pair before the outer emphasis.
+      expect(result).toBe('<p><em><strong>bold and italic</strong></em></p>\n')
     })
 
     it('should handle complex nesting', () => {

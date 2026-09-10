@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      highlight_ref:
+        description: Highlighter candidate commit or tag (must match the integration version)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  LPM_VERSION: "0.75.0"
+  LPM_VERSION: "0.76.5"
 
 jobs:
   verify:
@@ -24,11 +29,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["18.20.8", "26"]
+        node: ["22.12.0", "24", "26"]
 
     steps:
       - name: Check out the repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Read the highlighter integration contract
+        id: highlighter
+        run: node -e 'const fs = require("node:fs"); const pair = require("./test/integration/highlight-version.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "ref=" + pair.ref + "\n");'
+
+      - name: Check out the supported highlighter for integration tests
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          repository: ne-ooo/neo.highlight
+          ref: ${{ inputs.highlight_ref || steps.highlighter.outputs.ref }}
+          path: .integration/neo.highlight
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -39,18 +55,21 @@ jobs:
         run: npm install --global "@lpm-registry/cli@${LPM_VERSION}"
 
       - name: Install the locked dependency graph
-        if: matrix.node != '18.20.8'
         run: lpm ci --strict-integrity --no-skills --no-editor-setup --no-security-summary --policy=deny
-
-      - name: Install the locked dependency graph on Node.js 18
-        if: matrix.node == '18.20.8'
-        run: lpm ci --strict-integrity --no-skills --no-editor-setup --no-security-summary --policy=deny --no-engine-strict
 
       - name: Verify the lockfile stayed frozen
         run: git diff --exit-code -- package.json lpm.lock
 
+      - name: Build the highlighter integration dependency
+        working-directory: .integration/neo.highlight
+        run: |
+          lpm ci --strict-integrity --no-skills --no-editor-setup --no-security-summary --policy=deny
+          lpm run build
+
       - name: Run the release gate
         run: lpm run release:check
+        env:
+          NEO_HIGHLIGHT_DIR: .integration/neo.highlight
 
       - name: Check the publishable package
         run: lpm publish --check --yes

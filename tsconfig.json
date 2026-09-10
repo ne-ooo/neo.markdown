@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
@@ -21,8 +25,28 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@lpm.dev/neo.markdown/experimental": [
+        "./src/experimental/index.ts"
+      ],
+      "@lpm.dev/neo.markdown/incremental": [
+        "./src/experimental/index.ts"
+      ],
+      "@lpm.dev/neo.markdown/worker-client": [
+        "./src/experimental/worker-client.ts"
+      ],
+      "@lpm.dev/neo.markdown/application": [
+        "./src/application/index.ts"
+      ]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test"
+  ]
 }

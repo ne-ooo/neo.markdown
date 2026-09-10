@@ -1,6 +1,6 @@
 /** Default parser entry with the built-in structural HTML sanitizer. */
 
-import type { Parser, ParserOptions } from './core/types.js'
+import type { Parser, ParserOptions, DocumentOptions, DocumentResult } from './core/types.js'
 import { MarkdownParser } from './core/parser.js'
 import { allBlockRules } from './blocks/rules.js'
 import { sanitizeHtml } from './sanitizers/structural.js'
@@ -29,4 +29,13 @@ export function parse(markdown: string, options?: ParserOptions): string {
   }
 
   return createParser(options).parse(markdown)
+}
+
+/** Parse a structured document with the same sanitizer configuration as parse(). */
+export function parseDocument(markdown: string, options?: ParserOptions, documentOptions?: DocumentOptions): DocumentResult {
+  if (options === undefined) {
+    defaultParser ??= createParser()
+    return defaultParser.parseDocument(markdown, documentOptions)
+  }
+  return createParser(options).parseDocument(markdown, documentOptions)
 }

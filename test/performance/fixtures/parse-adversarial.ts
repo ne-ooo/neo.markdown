@@ -29,7 +29,14 @@ function nestedEmphasis(depth: number): string {
   return `${openings.reverse().join('')}x${closings.join('')}`
 }
 
+const gfmHtmlParser = createParser({ gfm: true, allowHtml: true })
+
 const scenarios: Record<string, (size: number) => unknown> = {
+  gfmEmails: (size) => defaultParser.parse('foo+bar@example.com '.repeat(size)),
+  gfmEmailMisses: (size) => defaultParser.parse('a'.repeat(size * 10) + '@invalid_'),
+  gfmTildeRuns: (size) => defaultParser.parse('~a ~~b ~~~c '.repeat(size)),
+  gfmTableRows: (size) => defaultParser.parse('| a | b |\n| - | - |\n' + 'row\n'.repeat(size)),
+  gfmTagFilter: (size) => gfmHtmlParser.parse('<div>\n' + '<script x> </script> <script-like> '.repeat(size)),
   emphasis: (size) => defaultParser.parse('*_~'.repeat(size)),
   unmatchedEmphasis: (size) => defaultParser.parse('**a '.repeat(size)),
   unmatchedDelete: (size) => defaultParser.parse('~~a '.repeat(size)),
@@ -44,6 +51,10 @@ const scenarios: Record<string, (size: number) => unknown> = {
   table: (size) => defaultParser.parse(`|${' cell |'.repeat(size)}`),
   breaks: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 4)),
   embedRestore: (size) => sanitizedEmbedParser.parse('::youtube[x]\n'.repeat(size)),
+  balancedEmphasis: (size) => defaultParser.parse('*a '.repeat(size) + 'center' + ' z*'.repeat(size)),
+  referenceLabels: (size) => defaultParser.parse('[label\\]'.repeat(size)),
+  nestedContainers: (size) => defaultParser.parse('> '.repeat(size) + '- item\n'),
+  entities: (size) => defaultParser.parse('&CounterClockwiseContourIntegral; &#xD800; &unknown; '.repeat(size)),
 } as const
 
 const scenario = process.argv[2] ?? ''

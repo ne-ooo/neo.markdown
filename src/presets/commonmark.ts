@@ -1,8 +1,7 @@
 /**
- * Core Markdown-subset preset - GFM extensions disabled
+ * CommonMark preset - GFM extensions disabled
  *
  * Includes: headings, paragraphs, lists, blockquotes, code blocks, emphasis, links, images
- * Bundle size: ~15-20 KB
  *
  * @example
  * ```typescript
@@ -12,7 +11,7 @@
  * ```
  */
 
-import type { Parser, ParserOptions } from '../core/types.js'
+import type { Parser, ParserOptions, DocumentOptions, DocumentResult } from '../core/types.js'
 import { MarkdownParserBase } from '../core/parser.js'
 import { code } from '../blocks/rules/code.js'
 import { definition } from '../blocks/rules/definition.js'
@@ -52,7 +51,7 @@ export function createParser(options: Partial<ParserOptions> = {}): Parser {
 }
 
 /**
- * Parse markdown using the core Markdown-subset preset
+ * Parse markdown using the CommonMark preset
  *
  * @param markdown - Markdown source string
  * @param options - Additional parser options
@@ -68,4 +67,12 @@ export function parse(markdown: string, options?: Partial<ParserOptions>): strin
 }
 
 // Re-export types
+export function parseDocument(markdown: string, options?: Partial<ParserOptions>, documentOptions?: DocumentOptions): DocumentResult {
+  if (options === undefined) {
+    defaultParser ??= createParser()
+    return defaultParser.parseDocument(markdown, documentOptions)
+  }
+  return createParser(options).parseDocument(markdown, documentOptions)
+}
+
 export type * from '../core/types.js'

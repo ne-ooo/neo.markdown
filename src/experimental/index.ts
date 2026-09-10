@@ -1,0 +1,6 @@
+export { createIncrementalMarkdown } from './incremental.js'
+export type { IncrementalMarkdownOptions } from './incremental.js'
+export { IncrementalMarkdownLimitError } from './limit-error.js'
+export type { IncrementalMarkdownLimit } from './limit-error.js'
+export { defineIncrementalPlugin } from './plugin-contract.js'
+export type { IncrementalPluginContract, InlineDependencies, IncrementalReusePolicy, ReuseBlockerCode } from './plugin-contract.js'

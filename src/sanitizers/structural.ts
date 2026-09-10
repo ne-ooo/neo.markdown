@@ -33,6 +33,10 @@ function hardenSanitizedTag(
   attribs: Record<string, string>
 ): { tagName: string; attribs: Record<string, string> } {
   const filtered = { ...attribs }
+  // Code regions participate in the normal tab order without reordering the page.
+  if (tagName.toLowerCase() === 'pre' && filtered['tabindex'] !== '0' && filtered['tabindex'] !== '-1') {
+    delete filtered['tabindex']
+  }
   for (const name of Object.keys(filtered)) {
     if (RESERVED_EMBED_DATA_ATTRIBUTE.test(name)) delete filtered[name]
   }
@@ -72,7 +76,7 @@ function buildStructuralOptions(config: SanitizerConfig): StructuralSanitizerOpt
     allowedSchemes: ['http', 'https', 'ftp', 'mailto', 'tel'],
     allowProtocolRelative: false,
     disallowedTagsMode: 'discard',
-    nonTextTags: ['script', 'style', 'textarea', 'option'],
+    nonTextTags: ['script', 'style', 'textarea', 'xmp', 'option'],
     allowVulnerableTags: false,
     nestingLimit: 100,
     enforceHtmlBoundary: false,

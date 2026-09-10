@@ -8,3 +8,5 @@ export * from './inline-tokenizer.js'
 export * from './renderer.js'
 export * from './parser.js'
 export * from './plugin-builder.js'
+
+export { createCodeBlockContext, getCodeBlockMetadata, parseCodeMetadata, MAX_CODE_META_LENGTH, MAX_CODE_META_ENTRIES } from './code-block.js'

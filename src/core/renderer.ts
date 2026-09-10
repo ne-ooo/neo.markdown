@@ -7,6 +7,8 @@ import type {
   HeadingToken,
   ParagraphToken,
   CodeToken,
+  CodeBlockContext,
+  CodeBlockRenderHook,
   HrToken,
   BlockquoteToken,
   ListToken,
@@ -26,12 +28,15 @@ import type {
   InlineToken,
   BlockToken,
 } from './types.js'
+import { createCodeBlockContext } from './code-context.js'
 import { escape, sanitizeUrl } from '../utils/escape.js'
 
 /**
  * Options controlling default renderer behavior
  */
 export interface HtmlRendererOptions {
+  /** Optional syntax filter for raw HTML tokens. This is not a sanitizer. */
+  filterHtml?: (html: string) => string
   /** Add loading="lazy" to all images (default: true) */
   lazyImages?: boolean
   /** Safe link handling for user-generated content */
@@ -43,7 +48,7 @@ export interface HtmlRendererOptions {
 }
 
 function isExternalHttpUrl(url: string): boolean {
-  if (/^[\\/]{2}/.test(url)) return true
+  if (/^(?:[\\/]|%5c){2}/i.test(url)) return true
   const scheme = /^([a-z][a-z\d+.-]*):/i.exec(url)
   if (!scheme) return false
   const protocol = scheme[1].toLowerCase()
@@ -51,7 +56,7 @@ function isExternalHttpUrl(url: string): boolean {
 }
 
 function isRelativeUrl(url: string): boolean {
-  return !url.startsWith('#') && !/^[\\/]{2}/.test(url) && !/^[a-z][a-z\d+.-]*:/i.test(url)
+  return !url.startsWith('#') && !/^(?:[\\/]|%5c){2}/i.test(url) && !/^[a-z][a-z\d+.-]*:/i.test(url)
 }
 
 function resolveBaseUrl(baseUrl: string | undefined): URL | null {
@@ -78,6 +83,13 @@ function resolveAgainstBase(url: string, baseUrl: URL): string {
 export class HtmlRenderer implements Renderer {
   private rendererOptions: HtmlRendererOptions
   private baseUrl: URL | null
+  private codeBlockHooks: readonly CodeBlockRenderHook[] = []
+  private documentCodeBlockHook: CodeBlockRenderHook | undefined
+
+  /** @internal Attach a structured-call location scope without changing string rendering. */
+  setDocumentCodeBlockHook(hook: CodeBlockRenderHook | undefined): void {
+    this.documentCodeBlockHook = hook
+  }
 
   constructor(options: HtmlRendererOptions = {}) {
     this.rendererOptions = options
@@ -107,10 +119,34 @@ export class HtmlRenderer implements Renderer {
   /**
    * Render code block
    */
-  code(token: CodeToken): string {
+  code(token: CodeToken, _context?: CodeBlockContext): string {
     const code = escape(token.text)
     const lang = token.lang ? ` class="language-${escape(token.lang)}"` : ''
     return `<pre><code${lang}>${code}</code></pre>\n`
+  }
+
+  /** Configure wrappers around the final code renderer, including plugin overrides. */
+  setCodeBlockHooks(hooks: readonly CodeBlockRenderHook[]): void {
+    this.codeBlockHooks = [...hooks]
+  }
+
+  private renderCodeBlock(token: CodeToken): string {
+    const documentHook = this.documentCodeBlockHook
+    if (!documentHook && !this.codeBlockHooks.length && this.code === HtmlRenderer.prototype.code) return this.code(token)
+    const context = createCodeBlockContext(token)
+    let render = () => this.code(token, context)
+    for (let index = this.codeBlockHooks.length - 1; index >= 0; index--) {
+      const hook = this.codeBlockHooks[index]
+      const inner = render
+      let rendered: string | undefined
+      const next = () => rendered ??= inner()
+      render = () => {
+        const result = hook(context, next)
+        if (typeof result !== 'string') throw new TypeError('Code-block hooks must return HTML synchronously')
+        return result
+      }
+    }
+    return documentHook ? documentHook(context, render) : render()
   }
 
   /**
@@ -175,8 +211,16 @@ export class HtmlRenderer implements Renderer {
         }
       }
       // Loose list item or multiple blocks: keep <p> tags
-      const content = this.renderBlock(token.tokens)
-      return `<li>${checkbox}\n${content}</li>\n`
+      const visible = token.tokens.filter(child => child.type !== 'definition')
+      let content = ''
+      for (const [index, child] of visible.entries()) {
+        if (isTight && child.type === 'paragraph') {
+          content += this.renderInline(child.tokens)
+          if (index < visible.length - 1) content += '\n'
+        } else content += this.renderBlockToken(child)
+      }
+      const leading = visible.length && !(isTight && visible[0].type === 'paragraph') ? '\n' : ''
+      return `<li>${checkbox}${leading}${content}</li>\n`
     }
     // Fallback: render text only
     const text = escape(token.text)
@@ -187,7 +231,7 @@ export class HtmlRenderer implements Renderer {
    * Render HTML (if allowed)
    */
   html(token: HtmlBlockToken | HtmlInlineToken): string {
-    return token.text
+    return this.rendererOptions.filterHtml?.(token.text) ?? token.text
   }
 
   /**
@@ -210,7 +254,7 @@ export class HtmlRenderer implements Renderer {
       )
       .join('')
 
-    return `<table>\n<thead>\n${header}</thead>\n<tbody>\n${body}</tbody>\n</table>\n`
+    return `<table>\n<thead>\n${header}</thead>\n${body ? `<tbody>\n${body}</tbody>\n` : ''}</table>\n`
   }
 
   /**
@@ -292,7 +336,7 @@ export class HtmlRenderer implements Renderer {
    */
   link(token: LinkToken): string {
     let href = sanitizeUrl(token.href)
-    if (!href) {
+    if (!href && token.href !== '') {
       // Dangerous URL, render as text
       return this.renderInline(token.tokens)
     }
@@ -325,7 +369,7 @@ export class HtmlRenderer implements Renderer {
    */
   image(token: ImageToken): string {
     let src = sanitizeUrl(token.href)
-    if (!src) {
+    if (!src && token.href !== '') {
       // Dangerous URL, render as text
       return escape(token.text)
     }
@@ -372,7 +416,7 @@ export class HtmlRenderer implements Renderer {
       case 'paragraph':
         return this.paragraph(token)
       case 'code':
-        return this.code(token)
+        return this.renderCodeBlock(token)
       case 'hr':
         return this.hr(token)
       case 'blockquote':

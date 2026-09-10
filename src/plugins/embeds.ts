@@ -38,7 +38,7 @@
  * Auto-embed: A paragraph containing only a supported URL becomes an embed.
  */
 
-import type { MarkdownPlugin, DirectiveToken } from '../core/types.js'
+import type { MarkdownPlugin, DirectiveToken, DocumentContext } from '../core/types.js'
 import { matchEmbedUrl, type UrlMatch } from '../utils/url-patterns.js'
 import { escape } from '../utils/escape.js'
 
@@ -388,8 +388,14 @@ function isTrustedGistScript(src: string): boolean {
   }
 }
 
+function includingRoot(root: ParentNode, selector: string): HTMLElement[] {
+  const matches = Array.from(root.querySelectorAll<HTMLElement>(selector))
+  if ('matches' in root && (root as Element).matches(selector)) matches.unshift(root as HTMLElement)
+  return matches
+}
+
 function activateGists(root: ParentNode, ownerDocument: Document): void {
-  const gists = root.querySelectorAll<HTMLElement>('[data-embed-gist][data-gist-src]')
+  const gists = includingRoot(root, '[data-embed-gist][data-gist-src]')
   for (const gist of gists) {
     if (gist.getAttribute('data-embed-initialized') === 'true') continue
 
@@ -414,41 +420,36 @@ function activateGists(root: ParentNode, ownerDocument: Document): void {
   }
 }
 
-function activateTweets(root: ParentNode, ownerDocument: Document): void {
-  if (!root.querySelector('.twitter-tweet')) return
+function activateTweets(root: ParentNode, ownerDocument: Document): () => void {
+  if (!includingRoot(root, '.twitter-tweet').length) return () => undefined
 
   const twitter = getTwitterWidgets()
   if (twitter?.widgets?.load) {
     twitter.widgets.load(root as HTMLElement | Document)
-    return
+    return () => undefined
   }
 
   const existingScript = ownerDocument.querySelector<HTMLScriptElement>(
     `script[data-neo-embed-twitter],script[src="${TWITTER_WIDGETS_SRC}"]`
   )
-  if (existingScript) {
-    if (existingScript.hasAttribute('data-neo-embed-twitter-listener')) return
-    existingScript.setAttribute('data-neo-embed-twitter-listener', '')
-    existingScript.addEventListener('load', () => {
-      getTwitterWidgets()?.widgets?.load(root as HTMLElement | Document)
-    }, { once: true })
-    return
-  }
-
-  const script = ownerDocument.createElement('script')
-  script.src = TWITTER_WIDGETS_SRC
-  script.async = true
-  script.setAttribute('data-neo-embed-twitter', '')
-  script.setAttribute('data-neo-embed-twitter-listener', '')
-  script.addEventListener('load', () => {
+  // Each mounted scope needs its own removable listener while sharing the loader script.
+  const script = existingScript ?? ownerDocument.createElement('script')
+  const loaded = () => {
     getTwitterWidgets()?.widgets?.load(root as HTMLElement | Document)
-  }, { once: true })
-  ownerDocument.head.appendChild(script)
+  }
+  script.addEventListener('load', loaded, { once: true })
+  if (!existingScript) {
+    script.src = TWITTER_WIDGETS_SRC
+    script.async = true
+    script.setAttribute('data-neo-embed-twitter', '')
+    ownerDocument.head.appendChild(script)
+  }
+  return () => script.removeEventListener('load', loaded)
 }
 
-function activateEmbedMarkup(root: ParentNode, ownerDocument: Document): void {
+function activateEmbedMarkup(root: ParentNode, ownerDocument: Document): () => void {
   activateGists(root, ownerDocument)
-  activateTweets(root, ownerDocument)
+  return activateTweets(root, ownerDocument)
 }
 
 function decodeBase64Utf8(encoded: string): string | null {
@@ -562,7 +563,7 @@ export function initializeEmbeds(options: EmbedInitializerOptions = {}): () => v
 
   const root = options.root ?? document
   const ownerDocument = 'createElement' in root ? root : root.ownerDocument
-  activateEmbedMarkup(root, ownerDocument)
+  const pending = new Set<() => void>([activateEmbedMarkup(root, ownerDocument)])
 
   const onClick = (event: Event): void => {
     const target = event.target as Element | null
@@ -580,11 +581,15 @@ export function initializeEmbeds(options: EmbedInitializerOptions = {}): () => v
     container.innerHTML = renderConsentPayload(payload)
     container.removeAttribute('data-embed-payload')
     container.removeAttribute('data-embed-consent')
-    activateEmbedMarkup(container, ownerDocument)
+    pending.add(activateEmbedMarkup(container, ownerDocument))
   }
 
   root.addEventListener('click', onClick)
-  return () => root.removeEventListener('click', onClick)
+  return () => {
+    root.removeEventListener('click', onClick)
+    for (const release of pending) release()
+    pending.clear()
+  }
 }
 
 /**
@@ -619,29 +624,39 @@ export function embedPlugin(options: EmbedOptions = {}): MarkdownPlugin {
   return (builder) => {
     const deferTrustedMarkup = builder.options.allowHtml === true
       && builder.options.sanitize === true
-    const deferredMarkup = new Map<string, string>()
+    const legacyState = { markup: new Map<string, string>(), counter: 0 }
+    const documentStates = new WeakMap<DocumentContext, typeof legacyState>()
+    const deferredState = () => {
+      const document = builder.document
+      if (!document) return legacyState
+      let state = documentStates.get(document)
+      if (!state) { state = { markup: new Map(), counter: 0 }; documentStates.set(document, state) }
+      return state
+    }
     const markerPrefix = `NEOMARKDOWNEMBED${createMarkerNonce()}`
     const markerPattern = new RegExp(`${markerPrefix}\\d+END`, 'g')
-    let markerCounter = 0
     const emitTrustedMarkup = (html: string): string => {
       if (!deferTrustedMarkup) return html
-      const marker = `${markerPrefix}${markerCounter++}END`
-      deferredMarkup.set(marker, html)
+      const state = deferredState()
+      const marker = `${markerPrefix}${state.counter++}END`
+      state.markup.set(marker, html)
       return marker
     }
 
     if (deferTrustedMarkup) {
       builder.addTokenTransform((tokens) => {
-        deferredMarkup.clear()
-        markerCounter = 0
+        const state = deferredState()
+        state.markup.clear()
+        state.counter = 0
         return tokens
       })
       builder.addHtmlTransform((html) => {
+        const state = deferredState()
         const result = html.replace(
           markerPattern,
-          (marker) => deferredMarkup.get(marker) ?? marker
+          (marker) => state.markup.get(marker) ?? marker
         )
-        deferredMarkup.clear()
+        state.markup.clear()
         return result
       })
     }

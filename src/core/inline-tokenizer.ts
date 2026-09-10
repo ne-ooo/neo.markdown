@@ -4,6 +4,9 @@
 
 import type { InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
+import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
+import { htmlTagEnd } from '../utils/html-syntax.js'
+import { decodeEntities, decodeMarkdown, normalizeDestination } from '../utils/markdown-text.js'
 import {
   gfmInlineSupport,
   type GfmInlineSupport,
@@ -16,15 +19,6 @@ const PATTERNS = {
   // Escape (backslash)
   escape: /^\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/,
 
-  // Bold/Strong (**text** or __text__)
-  // Note: Must be checked before em pattern to take precedence
-  strong: /^\*\*(?=\S)([\s\S]*?\S)\*\*(?!\*)|^__(?=\S)([\s\S]*?\S)__(?!_)/,
-
-  // Italic/Em (*text* or _text_)
-  // Phase 2: Removed negative lookahead (?!\*) to allow nesting like *italic **bold***
-  // The strong pattern is checked first, so **text** won't be caught by this
-  em: /^\*(?=\S)([\s\S]*?\S)\*|^_(?=\S)([\s\S]*?\S)_/,
-
   // CommonMark angle autolinks: <scheme:destination> and <name@example.com>
   angleUri: /^<([A-Za-z][A-Za-z\d+.-]{1,31}:[^<>\x00-\x20]*)>/,
   angleEmail: /^<([A-Za-z\d.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z\d](?:[A-Za-z\d-]{0,61}[A-Za-z\d])?(?:\.[A-Za-z\d](?:[A-Za-z\d-]{0,61}[A-Za-z\d])?)*)>/,
@@ -35,7 +29,6 @@ const PATTERNS = {
   // Plain text (everything else)
   // Phase 6: Keep negative lookahead for autolinks (necessary for correct parsing)
   text: /^[^*_`[<\n\\!~]+/,
-  gfmText: /^(?:(?!https?:\/\/|ftp:\/\/|www\.)[^*_`[<\n\\!~])+/i,
 }
 
 const INLINE_RULE_PRIORITIES: Readonly<Record<string, number>> = {
@@ -55,7 +48,7 @@ const DEFAULT_CUSTOM_PRIORITY = 750
 const HARD_MAX_INLINE_NESTING_DEPTH = 32
 const MIN_INLINE_WORK_BUDGET = 10_000
 
-type InlineResult = { token: InlineToken; raw: string }
+type InlineResult = { token: InlineToken; raw: string; delimiter?: Omit<EmphasisDelimiter, 'index'> }
 
 interface ParsedLinkDestination {
   end: number
@@ -74,6 +67,7 @@ interface InlineWorkBudget {
 
 interface LinkScan {
   closingBrackets: number[]
+  matchingBrackets: Map<number, number>
   openingAngles: number[]
   closingAngles: number[]
   whitespaces: number[]
@@ -82,16 +76,15 @@ interface LinkScan {
   matchingParentheses: Map<number, number>
   parenthesisBalance: Int32Array
   destinations: Map<number, ParsedLinkDestination | null>
-  asteriskRuns: DelimiterRun[]
-  asteriskEmClosers: DelimiterRun[]
-  asteriskStrongClosers: DelimiterRun[]
-  underscoreRuns: DelimiterRun[]
-  underscoreEmClosers: DelimiterRun[]
-  underscoreStrongClosers: DelimiterRun[]
-  tildeClosers: number[]
+  tildeClosers: number[][]
+  emailLinks: Map<number, InlineResult>
+  emailStarts: number[]
   backtickRuns: DelimiterRun[]
   backtickClosers: Map<number, DelimiterRun[]>
   htmlClosingAngles: number[]
+  htmlComments: number[]
+  htmlInstructions: number[]
+  htmlCdata: number[]
   lineBreaks: number[]
   lastNonWhitespace: number
 }
@@ -179,27 +172,12 @@ export class InlineTokenizerBase {
       }
     }
 
-    // Build text pattern that stops at custom trigger chars
-    if (hasGeneralRules) {
-      // General rules need single-char text matching to get a chance at every position
-      this.textPattern = this.gfmSupport
-        ? /^(?:(?!https?:\/\/|ftp:\/\/|www\.)[^*_`[<\n\\!~])/i
-        : /^[^*_`[<\n\\!~]/
-    } else if (triggerCharSet.size > 0) {
-      // Add trigger chars to the exclusion set so text doesn't consume them
-      const extra = [...triggerCharSet]
-        .map((c) => `\\u${c.toString(16).padStart(4, '0')}`)
-        .join('')
-      const gfmPrefix = this.gfmSupport
-        ? '(?:(?!https?:\\/\\/|ftp:\\/\\/|www\\.)'
-        : '(?:'
-      this.textPattern = new RegExp(
-        `^${gfmPrefix}[^*_\`[<\\n\\\\!~${extra}])+`,
-        this.gfmSupport ? 'i' : undefined
-      )
-    } else {
-      this.textPattern = this.gfmSupport ? PATTERNS.gfmText : PATTERNS.text
-    }
+    const extra = [...triggerCharSet].map(code => `\\u${code.toString(16).padStart(4, '0')}`).join('')
+    this.textPattern = this.gfmSupport
+      ? this.gfmSupport.textPattern(extra, hasGeneralRules)
+      : extra || hasGeneralRules
+        ? new RegExp(`^[^*_\`[<\\n\\\\!~${extra}]${hasGeneralRules ? '' : '+'}`)
+        : PATTERNS.text
   }
 
   /**
@@ -224,7 +202,8 @@ export class InlineTokenizerBase {
     references: ReadonlyMap<string, LinkReference>,
     depth: number,
     workBudget: InlineWorkBudget,
-    tokenBudget?: TokenBudget
+    tokenBudget?: TokenBudget,
+    allowExtendedAutolinks = true
   ): InlineToken[] {
     if (depth >= HARD_MAX_INLINE_NESTING_DEPTH || workBudget.remaining < src.length) {
       if (src) consumeTokenBudget(tokenBudget)
@@ -232,8 +211,19 @@ export class InlineTokenizerBase {
     }
     workBudget.remaining -= src.length
 
+    // A complete plain-text match needs no delimiter or link indexes. Custom
+    // rules still run through normal priority dispatch, even without triggers.
+    if (src && this.customCharMap.size === 0 && this.customGeneralRules.length === 0) {
+      const plain = this.textPattern.exec(src)
+      if (plain?.[0].length === src.length && !(this.gfmSupport && src.includes('@'))) {
+        consumeTokenBudget(tokenBudget)
+        return [{ type: 'text', raw: src, text: decodeEntities(src) }]
+      }
+    }
+
     const tokens: InlineToken[] = []
-    const linkScan = this.createLinkScan(src)
+    const delimiters: EmphasisDelimiter[] = []
+    const linkScan = this.createLinkScan(src, allowExtendedAutolinks)
     let cursor = 0
     let previousChar = ''
     let fallbackTextIndex = -1
@@ -249,12 +239,29 @@ export class InlineTokenizerBase {
         linkScan,
         depth,
         workBudget,
-        tokenBudget
+        tokenBudget,
+        allowExtendedAutolinks
       )
 
+      if (char === 10) {
+        const previous = tokens.at(-1)
+        if (previous?.type === 'text') {
+          const spaces = /[ \t]+$/.exec(previous.raw)?.[0] ?? ''
+          if (spaces) {
+            previous.raw = previous.raw.slice(0, -spaces.length)
+            previous.text = previous.text.slice(0, -spaces.length)
+            if (/^ {2,}$/.test(spaces)) {
+              consumeTokenBudget(tokenBudget)
+              tokens.push({ type: 'br', raw: spaces + '\n' })
+              previousChar = '\n'; cursor++; fallbackTextIndex = -1; continue
+            }
+          }
+        }
+      }
       if (token) {
         this.assertProgress('inline tokenizer', src, cursor, token.raw)
-        consumeTokenBudget(tokenBudget)
+        if (token.token.type !== 'text') consumeTokenBudget(tokenBudget)
+        if (token.delimiter) delimiters.push({ ...token.delimiter, index: tokens.length })
         tokens.push(token.token)
         fallbackTextIndex = -1
         previousChar = token.raw.at(-1) ?? previousChar
@@ -269,7 +276,6 @@ export class InlineTokenizerBase {
           let end = cursor + 1
           while (src.charCodeAt(end) === 91) end++
           const raw = src.slice(cursor, end)
-          consumeTokenBudget(tokenBudget)
           tokens.push({ type: 'text', raw, text: raw })
           fallbackTextIndex = tokens.length - 1
           previousChar = '['
@@ -314,14 +320,14 @@ export class InlineTokenizerBase {
       }
     }
 
-    return tokens
+    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth)
   }
 
   private appendFallbackText(
     tokens: InlineToken[],
     fallbackTextIndex: number,
     raw: string,
-    tokenBudget?: TokenBudget
+    _tokenBudget?: TokenBudget
   ): number {
     const previous = tokens[fallbackTextIndex]
     if (fallbackTextIndex === tokens.length - 1 && previous?.type === 'text') {
@@ -329,7 +335,6 @@ export class InlineTokenizerBase {
       previous.text += raw
       return fallbackTextIndex
     }
-    consumeTokenBudget(tokenBudget)
     tokens.push({ type: 'text', raw, text: raw })
     return tokens.length - 1
   }
@@ -353,11 +358,12 @@ export class InlineTokenizerBase {
     cursor: number,
     char: number,
     references: ReadonlyMap<string, LinkReference>,
-    previousChar: string,
+    _previousChar: string,
     linkScan: LinkScan,
     depth: number,
     workBudget: InlineWorkBudget,
-    tokenBudget?: TokenBudget
+    tokenBudget?: TokenBudget,
+    allowExtendedAutolinks = true
   ): InlineResult | null {
     const customRules = this.getCustomRules(char)
     let customIndex = 0
@@ -382,6 +388,14 @@ export class InlineTokenizerBase {
 
     let result: InlineResult | null = null
 
+    if (allowExtendedAutolinks && linkScan.emailLinks.has(cursor)) {
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['autolink'], () => {
+        consumeTokenBudget(tokenBudget)
+        return linkScan.emailLinks.get(cursor)!
+      })
+      if (result) return result
+    }
+
     if (char === 92) {
       result = tryBuiltin(INLINE_RULE_PRIORITIES['escape'], () => this.tokenizeEscape(src()))
     } else if (char === 96) {
@@ -390,26 +404,19 @@ export class InlineTokenizerBase {
         () => this.tokenizeCode(source, cursor, linkScan)
       )
     } else if (char === 42 || char === 95) {
-      result = tryBuiltin(
-        INLINE_RULE_PRIORITIES['strong'],
-        () => this.tokenizeStrong(
-          source, cursor, references, previousChar, linkScan, depth, workBudget, tokenBudget
-        )
-      )
-      if (!result) {
-        result = tryBuiltin(
-          INLINE_RULE_PRIORITIES['em'],
-          () => this.tokenizeEm(
-            source, cursor, references, previousChar, linkScan, depth, workBudget, tokenBudget
-          )
-        )
-      }
+      let end = cursor + 1
+      while (source.charCodeAt(end) === char) end++
+      const priority = end - cursor >= 2 ? INLINE_RULE_PRIORITIES['strong'] : INLINE_RULE_PRIORITIES['em']
+      result = tryBuiltin(priority, () => {
+        const raw = source.slice(cursor, end)
+        return { token: { type: 'text', raw, text: raw }, raw,
+          delimiter: { start: cursor, length: raw.length, char: raw[0], ...delimiterFlags(source, cursor, raw.length) } }
+      })
     } else if (char === 126 && this.gfmSupport) {
       result = tryBuiltin(
         INLINE_RULE_PRIORITIES['del'],
-        () => this.tokenizeDel(
-          source, cursor, references, linkScan, depth, workBudget, tokenBudget
-        )
+        () => this.gfmSupport!.tokenizeDelete(source, cursor, linkScan.tildeClosers,
+          text => this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget, allowExtendedAutolinks))
       )
     } else if (char === 33 || char === 91) {
       result = tryBuiltin(
@@ -441,8 +448,7 @@ export class InlineTokenizerBase {
     if (result) return result
 
     if (
-      this.gfmSupport
-      && (char === 72 || char === 104 || char === 70 || char === 102 || char === 87 || char === 119)
+      allowExtendedAutolinks && this.gfmSupport?.isAutolinkStart(char)
     ) {
       result = tryBuiltin(
         INLINE_RULE_PRIORITIES['autolink'],
@@ -456,7 +462,10 @@ export class InlineTokenizerBase {
     }
 
     if (!'*_`[<\n\\!~'.includes(source[cursor])) {
-      result = tryBuiltin(INLINE_RULE_PRIORITIES['text'], () => this.tokenizeText(src()))
+      result = tryBuiltin(INLINE_RULE_PRIORITIES['text'], () => {
+        const nextEmail = this.findPosition(linkScan.emailStarts, cursor + 1)
+        return this.tokenizeText(nextEmail < 0 ? src() : source.slice(cursor, nextEmail))
+      })
       if (result) return result
     } else {
       result = tryCustomBefore(INLINE_RULE_PRIORITIES['text'])
@@ -489,8 +498,11 @@ export class InlineTokenizerBase {
     }
   }
 
-  private createLinkScan(src: string): LinkScan {
+  private createLinkScan(src: string, allowExtendedAutolinks: boolean): LinkScan {
     const closingBrackets: number[] = []
+    const matchingBrackets = new Map<number, number>()
+    const bracketStack: number[] = []
+    let protectedUntil = 0
     const openingAngles: number[] = []
     const closingAngles: number[] = []
     const whitespaces: number[] = []
@@ -498,43 +510,41 @@ export class InlineTokenizerBase {
     const singleQuotes: number[] = []
     const matchingParentheses = new Map<number, number>()
     const parenthesisStack: number[] = []
-    const asteriskRuns: DelimiterRun[] = []
-    const asteriskEmClosers: DelimiterRun[] = []
-    const asteriskStrongClosers: DelimiterRun[] = []
-    const underscoreRuns: DelimiterRun[] = []
-    const underscoreEmClosers: DelimiterRun[] = []
-    const underscoreStrongClosers: DelimiterRun[] = []
-    const tildeClosers: number[] = []
+    const tildeClosers: number[][] = [[], [], []]
+    const emailLinks = (allowExtendedAutolinks ? this.gfmSupport?.emailLinks(src) : undefined) ?? new Map<number, InlineResult>()
+    const emailStarts = [...emailLinks.keys()]
     const backtickRuns: DelimiterRun[] = []
     const backtickClosers = new Map<number, DelimiterRun[]>()
     const htmlClosingAngles: number[] = []
+    const htmlComments: number[] = []
+    const htmlInstructions: number[] = []
+    const htmlCdata: number[] = []
+    if (this.inlineOptions.allowHtml) {
+      for (let index = 0; index < src.length; index++) {
+        if (src[index] !== '>') continue
+        htmlClosingAngles.push(index)
+        if (src.slice(index - 2, index) === '--') htmlComments.push(index - 2)
+        if (src[index - 1] === '?') htmlInstructions.push(index - 1)
+        if (src.slice(index - 2, index) === ']]') htmlCdata.push(index - 2)
+      }
+    }
     const lineBreaks: number[] = []
     let lastNonWhitespace = -1
     let parenthesisBalance = new Int32Array(0)
     let trackDirectSyntax = false
     let escaped = false
-    let indexedDelimiterUntil = 0
-    const delimiterIndex = {
-      asteriskRuns,
-      asteriskEmClosers,
-      asteriskStrongClosers,
-      underscoreRuns,
-      underscoreEmClosers,
-      underscoreStrongClosers,
-    }
 
+    for (let index = 0; index < src.length; index++) {
+      if (src[index] === '`') {
+        this.indexBacktickRun(src, index, backtickRuns, backtickClosers)
+        index += backtickRuns.at(-1)!.length - 1
+      }
+    }
     for (let index = 0; index < src.length; index++) {
       const char = src.charCodeAt(index)
       if (this.inlineOptions.breaks && !/\s/.test(src[index])) lastNonWhitespace = index
       if (this.inlineOptions.allowHtml) {
-        if (char === 62) htmlClosingAngles.push(index)
-        else if (char === 10) lineBreaks.push(index)
-      }
-      if (this.gfmSupport?.isTildeCloser(src, index)) {
-        tildeClosers.push(index)
-      }
-      if (char === 96 && src.charCodeAt(index - 1) !== 96) {
-        this.indexBacktickRun(src, index, backtickRuns, backtickClosers)
+        if (char === 10) lineBreaks.push(index)
       }
       if (trackDirectSyntax) {
         parenthesisBalance[index + 1] = parenthesisBalance[index]
@@ -549,8 +559,26 @@ export class InlineTokenizerBase {
       } else if (char === 92) {
         escaped = true
       } else {
+        if (index >= protectedUntil) {
+          const tildeLength = this.gfmSupport?.isTildeCloser(src, index) ?? 0
+          if (tildeLength) tildeClosers[tildeLength].push(index)
+          if (char === 96) {
+            const run = this.findContainingDelimiterRun(backtickRuns, index)!
+            const length = run.start + run.length - index
+            const close = this.findDelimiterRun(backtickClosers.get(length) ?? [], run.start + run.length + 1)
+            protectedUntil = close ? close.start + close.length : run.start + run.length
+          } else if (char === 60) {
+            const angle = PATTERNS.angleUri.exec(src.slice(index)) ?? PATTERNS.angleEmail.exec(src.slice(index))
+            const tag = this.inlineOptions.allowHtml ? this.tokenizeHtml(src, index, { htmlClosingAngles, htmlComments, htmlInstructions, htmlCdata, lineBreaks } as LinkScan) : null
+            protectedUntil = index + (angle?.[0].length ?? tag?.raw.length ?? 0)
+          } else if (char === 91) bracketStack.push(index)
+          else if (char === 93) {
+            const open = bracketStack.pop()
+            if (open !== undefined) matchingBrackets.set(open, index)
+          }
+        }
         if (char === 93) {
-          closingBrackets.push(index)
+          if (index >= protectedUntil) closingBrackets.push(index)
           if (!trackDirectSyntax && src.charCodeAt(index + 1) === 40) {
             trackDirectSyntax = true
             parenthesisBalance = new Int32Array(src.length + 1)
@@ -567,14 +595,12 @@ export class InlineTokenizerBase {
           if (opening !== undefined) matchingParentheses.set(opening, index)
           parenthesisBalance[index + 1]--
         }
-        if ((char === 42 || char === 95) && index >= indexedDelimiterUntil) {
-          indexedDelimiterUntil = this.indexDelimiterRun(src, index, char, delimiterIndex)
-        }
       }
     }
 
     return {
       closingBrackets,
+      matchingBrackets,
       openingAngles,
       closingAngles,
       whitespaces,
@@ -583,16 +609,15 @@ export class InlineTokenizerBase {
       matchingParentheses,
       parenthesisBalance,
       destinations: new Map(),
-      asteriskRuns,
-      asteriskEmClosers,
-      asteriskStrongClosers,
-      underscoreRuns,
-      underscoreEmClosers,
-      underscoreStrongClosers,
       tildeClosers,
+      emailLinks,
+      emailStarts,
       backtickRuns,
       backtickClosers,
       htmlClosingAngles,
+      htmlComments,
+      htmlInstructions,
+      htmlCdata,
       lineBreaks,
       lastNonWhitespace,
     }
@@ -612,50 +637,6 @@ export class InlineTokenizerBase {
     const matchingLength = runsByLength.get(run.length)
     if (matchingLength) matchingLength.push(run)
     else runsByLength.set(run.length, [run])
-  }
-
-  private indexDelimiterRun(
-    src: string,
-    start: number,
-    char: number,
-    closers: Pick<
-      LinkScan,
-      | 'asteriskRuns'
-      | 'asteriskEmClosers'
-      | 'asteriskStrongClosers'
-      | 'underscoreRuns'
-      | 'underscoreEmClosers'
-      | 'underscoreStrongClosers'
-    >
-  ): number {
-    let end = start + 1
-    while (src.charCodeAt(end) === char) end++
-    const length = end - start
-    const previousChar = start > 0 ? src[start - 1] : ' '
-    const nextChar = src[end] ?? ''
-    const run = { start, length }
-
-    if (char === 42) closers.asteriskRuns.push(run)
-    else closers.underscoreRuns.push(run)
-
-    if (
-      /\S/.test(previousChar)
-      && (
-        char !== 95
-        || !InlineTokenizerBase.isUnicodeAlphanumeric(previousChar)
-        || !InlineTokenizerBase.isUnicodeAlphanumeric(nextChar)
-      )
-    ) {
-      if (char === 42) {
-        if (length === 1 || length >= 3) closers.asteriskEmClosers.push(run)
-        if (length >= 2) closers.asteriskStrongClosers.push(run)
-      } else {
-        if (length === 1 || length >= 3) closers.underscoreEmClosers.push(run)
-        if (length >= 2) closers.underscoreStrongClosers.push(run)
-      }
-    }
-
-    return end
   }
 
   private findPosition(positions: number[], minimum: number): number {
@@ -684,25 +665,6 @@ export class InlineTokenizerBase {
     return runs[low] ?? null
   }
 
-  private findEnclosingDelimiterRun(
-    runs: DelimiterRun[],
-    position: number
-  ): DelimiterRun | null {
-    let low = 0
-    let high = runs.length
-
-    while (low < high) {
-      const middle = low + Math.floor((high - low) / 2)
-      if (runs[middle].start <= position) low = middle + 1
-      else high = middle
-    }
-
-    const run = runs[low - 1]
-    return run && run.start < position && run.start + run.length > position
-      ? run
-      : null
-  }
-
   private findContainingDelimiterRun(
     runs: DelimiterRun[],
     position: number
@@ -724,6 +686,7 @@ export class InlineTokenizerBase {
    * Tokenize escape sequence
    */
   private tokenizeEscape(src: string): { token: InlineToken; raw: string } | null {
+    if (src.startsWith('\\\n')) return { token: { type: 'br', raw: '\\\n' }, raw: '\\\n' }
     const match = PATTERNS.escape.exec(src)
     if (!match) return null
 
@@ -757,7 +720,10 @@ export class InlineTokenizerBase {
       matchingRuns,
       openingRun.start + openingRun.length + 1
     )
-    if (!closingRun) return null
+    if (!closingRun) {
+      const raw = source.slice(cursor, openingRun.start + openingRun.length)
+      return { token: { type: 'text', raw, text: raw }, raw }
+    }
 
     const raw = source.slice(cursor, closingRun.start + delimiterLength)
     let text = source
@@ -774,214 +740,6 @@ export class InlineTokenizerBase {
         text,
       },
       raw,
-    }
-  }
-
-  /**
-   * Tokenize strong (bold)
-   */
-  private tokenizeStrong(
-    source: string,
-    cursor: number,
-    references: ReadonlyMap<string, LinkReference>,
-    previousChar: string,
-    linkScan: LinkScan,
-    depth: number,
-    workBudget: InlineWorkBudget,
-    tokenBudget?: TokenBudget
-  ): { token: InlineToken; raw: string } | null {
-    // Try ** or __ delimiters
-    if (source.startsWith('**', cursor)) {
-      const result = this.findClosingDelimiter(source, cursor, '*', 2, linkScan)
-      if (result) {
-        const { content, raw } = result
-        const tokens = this.tokenizeInternal(
-          content, references, depth + 1, workBudget, tokenBudget
-        )
-        return {
-          token: {
-            type: 'strong',
-            raw,
-            text: content,
-            tokens,
-          },
-          raw,
-        }
-      }
-    }
-
-    if (source.startsWith('__', cursor)) {
-      if (
-        InlineTokenizerBase.isUnicodeAlphanumeric(previousChar)
-        && InlineTokenizerBase.isUnicodeAlphanumeric(source[cursor + 2] ?? '')
-      ) {
-        return null
-      }
-      const result = this.findClosingDelimiter(source, cursor, '_', 2, linkScan)
-      if (result) {
-        const { content, raw } = result
-        const tokens = this.tokenizeInternal(
-          content, references, depth + 1, workBudget, tokenBudget
-        )
-        return {
-          token: {
-            type: 'strong',
-            raw,
-            text: content,
-            tokens,
-          },
-          raw,
-        }
-      }
-    }
-
-    return null
-  }
-
-  /**
-   * Tokenize emphasis (italic)
-   */
-  private tokenizeEm(
-    source: string,
-    cursor: number,
-    references: ReadonlyMap<string, LinkReference>,
-    previousChar: string,
-    linkScan: LinkScan,
-    depth: number,
-    workBudget: InlineWorkBudget,
-    tokenBudget?: TokenBudget
-  ): { token: InlineToken; raw: string } | null {
-    // Try * or _ delimiters (but not ** or __)
-    if (source.startsWith('*', cursor) && !source.startsWith('**', cursor)) {
-      const result = this.findClosingDelimiter(source, cursor, '*', 1, linkScan)
-      if (result) {
-        const { content, raw } = result
-        const tokens = this.tokenizeInternal(
-          content, references, depth + 1, workBudget, tokenBudget
-        )
-        return {
-          token: {
-            type: 'em',
-            raw,
-            text: content,
-            tokens,
-          },
-          raw,
-        }
-      }
-    }
-
-    if (source.startsWith('_', cursor) && !source.startsWith('__', cursor)) {
-      if (
-        InlineTokenizerBase.isUnicodeAlphanumeric(previousChar)
-        && InlineTokenizerBase.isUnicodeAlphanumeric(source[cursor + 1] ?? '')
-      ) {
-        return null
-      }
-      const result = this.findClosingDelimiter(source, cursor, '_', 1, linkScan)
-      if (result) {
-        const { content, raw } = result
-        const tokens = this.tokenizeInternal(
-          content, references, depth + 1, workBudget, tokenBudget
-        )
-        return {
-          token: {
-            type: 'em',
-            raw,
-            text: content,
-            tokens,
-          },
-          raw,
-        }
-      }
-    }
-
-    return null
-  }
-
-  /**
-   * Tokenize strikethrough (del)
-   * Phase 4: GFM extension for ~~strikethrough~~
-   */
-  private tokenizeDel(
-    source: string,
-    cursor: number,
-    references: ReadonlyMap<string, LinkReference>,
-    linkScan: LinkScan,
-    depth: number,
-    workBudget: InlineWorkBudget,
-    tokenBudget?: TokenBudget
-  ): { token: InlineToken; raw: string } | null {
-    const match = this.gfmSupport?.tokenizeDelete(
-      source,
-      cursor,
-      linkScan.tildeClosers
-    )
-    if (!match) return null
-    const { raw, text } = match
-
-    // Recursively tokenize content
-    const tokens = this.tokenizeInternal(
-      text, references, depth + 1, workBudget, tokenBudget
-    )
-
-    return {
-      token: {
-        type: 'del',
-        raw,
-        text,
-        tokens,
-      },
-      raw,
-    }
-  }
-
-  /**
-   * Find closing delimiter for emphasis/strong
-   * using the one-pass delimiter index built for this inline source.
-   */
-  private findClosingDelimiter(
-    source: string,
-    cursor: number,
-    delimiter: '*' | '_',
-    delimiterLength: 1 | 2,
-    linkScan: LinkScan
-  ): { content: string; raw: string } | null {
-    // Content must start with non-whitespace
-    const contentStart = cursor + delimiterLength
-    if (contentStart >= source.length || /^\s/.test(source[contentStart])) {
-      return null
-    }
-
-    const allRuns = delimiter === '*' ? linkScan.asteriskRuns : linkScan.underscoreRuns
-    const indexedClosers = delimiter === '*'
-      ? delimiterLength === 1
-        ? linkScan.asteriskEmClosers
-        : linkScan.asteriskStrongClosers
-      : delimiterLength === 1
-        ? linkScan.underscoreEmClosers
-        : linkScan.underscoreStrongClosers
-    const enclosingRun = this.findEnclosingDelimiterRun(allRuns, contentStart)
-    const suffixLength = enclosingRun
-      ? enclosingRun.start + enclosingRun.length - contentStart
-      : 0
-    const suffixCanClose = delimiterLength === 1
-      ? suffixLength === 1 || suffixLength >= 3
-      : suffixLength >= 2
-    const run = suffixCanClose
-      ? { start: contentStart, length: suffixLength }
-      : this.findDelimiterRun(indexedClosers, contentStart)
-    if (!run) return null
-
-    // Triple-or-longer runs are fully consumed. Extra delimiter characters
-    // stay inside the recursively parsed content, preserving existing output.
-    const contentEnd = run.length === delimiterLength
-      ? run.start
-      : run.start + run.length - delimiterLength
-    const rawEnd = run.start + run.length
-    return {
-      content: source.slice(contentStart, contentEnd),
-      raw: source.slice(cursor, rawEnd),
     }
   }
 
@@ -1035,10 +793,7 @@ export class InlineTokenizerBase {
     const openBracket = cursor + (isImage ? 1 : 0)
     if (src.charCodeAt(openBracket) !== 91) return null
 
-    const closingBracket = this.findPosition(
-      linkScan.closingBrackets,
-      openBracket + 1
-    )
+    const closingBracket = linkScan.matchingBrackets.get(openBracket) ?? -1
     if (closingBracket === -1) return null
 
     const text = src.slice(openBracket + 1, closingBracket)
@@ -1062,19 +817,22 @@ export class InlineTokenizerBase {
       destination = this.parseLinkDestination(src, closingBracket + 2, linkScan)
       linkScan.destinations.set(closingBracket, destination)
     }
-    if (!destination) return null
+    if (!destination) return this.tokenizeReferenceLink(
+      src, cursor, closingBracket, text, isImage, references, linkScan, depth, workBudget, tokenBudget
+    )
 
     const raw = src.slice(cursor, destination.end)
     const { href, title } = destination
 
     if (isImage) {
+      const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
       return {
         token: {
           type: 'image',
           raw,
           href,
           title,
-          text,
+          text: this.inlineText(children),
         },
         raw,
       }
@@ -1082,9 +840,10 @@ export class InlineTokenizerBase {
 
     // Recursively tokenize link text
     const tokens = this.tokenizeInternal(
-      text, references, depth + 1, workBudget, tokenBudget
+      text, references, depth + 1, workBudget, tokenBudget, false
     )
 
+    if (this.containsLink(tokens)) return null
     return {
       token: {
         type: 'link',
@@ -1110,19 +869,16 @@ export class InlineTokenizerBase {
     workBudget: InlineWorkBudget,
     tokenBudget?: TokenBudget
   ): { token: InlineToken; raw: string } | null {
-    if (!text || text.length > 999 || text.includes('\n')) return null
+    if (!text || text.length > 999) return null
 
     let end = closingBracket + 1
     let label = text
     if (src.charCodeAt(end) === 91) {
-      const explicitClosingBracket = this.findPosition(
-        linkScan.closingBrackets,
-        end + 1
-      )
+      const explicitClosingBracket = linkScan.matchingBrackets.get(end) ?? -1
       if (explicitClosingBracket === -1) return null
 
       const explicitLabel = src.slice(end + 1, explicitClosingBracket)
-      if (explicitLabel.length > 999 || explicitLabel.includes('\n')) return null
+      if (explicitLabel.length > 999 || /(^|[^\\])\[/.test(explicitLabel)) return null
       if (explicitLabel) label = explicitLabel
       end = explicitClosingBracket + 1
     }
@@ -1133,11 +889,13 @@ export class InlineTokenizerBase {
     const raw = src.slice(cursor, end)
     if (isImage) {
       return {
-        token: { type: 'image', raw, text, href: reference.href, title: reference.title },
+        token: { type: 'image', raw, text: this.inlineText(this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)), href: reference.href, title: reference.title },
         raw,
       }
     }
 
+    const tokens = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget, false)
+    if (this.containsLink(tokens)) return null
     return {
       token: {
         type: 'link',
@@ -1145,12 +903,18 @@ export class InlineTokenizerBase {
         text,
         href: reference.href,
         title: reference.title,
-        tokens: this.tokenizeInternal(
-          text, references, depth + 1, workBudget, tokenBudget
-        ),
+        tokens,
       },
       raw,
     }
+  }
+
+  private containsLink(tokens: InlineToken[]): boolean {
+    return tokens.some(token => token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens)))
+  }
+
+  private inlineText(tokens: InlineToken[]): string {
+    return tokens.map(token => 'tokens' in token ? this.inlineText(token.tokens) : token.type === 'br' ? '\n' : token.text).join('')
   }
 
   private parseLinkDestination(
@@ -1159,6 +923,8 @@ export class InlineTokenizerBase {
     linkScan: LinkScan
   ): ParsedLinkDestination | null {
     let cursor = start
+    while (InlineTokenizerBase.isWhitespace(src.charCodeAt(cursor))) cursor++
+    const destinationStart = cursor
     let href = ''
 
     if (src.charCodeAt(cursor) === 60) {
@@ -1169,36 +935,35 @@ export class InlineTokenizerBase {
       const nestedOpening = this.findPosition(linkScan.openingAngles, hrefStart)
       if (nestedOpening !== -1 && nestedOpening < hrefEnd) return null
 
-      const lineBreak = this.findPosition(linkScan.whitespaces, hrefStart)
-      if (lineBreak !== -1 && lineBreak < hrefEnd) return null
+      if (src.slice(hrefStart, hrefEnd).includes('\n')) return null
 
       href = src.slice(hrefStart, hrefEnd)
       cursor = hrefEnd + 1
     } else {
       const outerOpening = start - 1
       const outerClosing = linkScan.matchingParentheses.get(outerOpening)
-      const whitespace = this.findPosition(linkScan.whitespaces, start)
+      const whitespace = this.findPosition(linkScan.whitespaces, destinationStart)
 
       if (
         outerClosing !== undefined
         && (whitespace === -1 || outerClosing < whitespace)
       ) {
-        href = InlineTokenizerBase.unescapePunctuation(src.slice(start, outerClosing))
+        href = normalizeDestination(src.slice(destinationStart, outerClosing))
         return { end: outerClosing + 1, href }
       }
 
       if (whitespace === -1) return null
       const balance = (
         linkScan.parenthesisBalance[whitespace]
-        - linkScan.parenthesisBalance[start]
+        - linkScan.parenthesisBalance[destinationStart]
       )
       if (balance !== 0) return null
 
-      href = src.slice(start, whitespace)
+      href = src.slice(destinationStart, whitespace)
       cursor = whitespace
     }
 
-    href = InlineTokenizerBase.unescapePunctuation(href)
+    href = normalizeDestination(href)
     if (src.charCodeAt(cursor) === 41) return { end: cursor + 1, href }
     if (!InlineTokenizerBase.isWhitespace(src.charCodeAt(cursor))) return null
 
@@ -1216,7 +981,7 @@ export class InlineTokenizerBase {
         : linkScan.matchingParentheses.get(titleStart - 1) ?? -1
     if (titleEnd === -1) return null
 
-    const title = InlineTokenizerBase.unescapePunctuation(src.slice(titleStart, titleEnd))
+    const title = decodeMarkdown(src.slice(titleStart, titleEnd))
     cursor = titleEnd + 1
     while (InlineTokenizerBase.isWhitespace(src.charCodeAt(cursor))) cursor++
     if (src.charCodeAt(cursor) !== 41) return null
@@ -1228,53 +993,37 @@ export class InlineTokenizerBase {
     return char === 32 || char === 9 || char === 10 || char === 13
   }
 
-  private static isUnicodeAlphanumeric(char: string): boolean {
-    return /[\p{L}\p{N}]/u.test(char)
-  }
-
-  private static unescapePunctuation(value: string): string {
-    return value.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, '$1')
-  }
-
   private tokenizeHtml(
     source: string,
     cursor: number,
     linkScan: LinkScan
   ): { token: InlineToken; raw: string } | null {
     let end = -1
-
     if (source.startsWith('<!--', cursor)) {
-      const closing = source.indexOf('-->', cursor + 4)
-      end = closing === -1 ? source.length : closing + 3
+      if (source.startsWith('<!-->', cursor)) end = cursor + 5
+      else if (source.startsWith('<!--->', cursor)) end = cursor + 6
+      else {
+        const closing = this.findPosition(linkScan.htmlComments, cursor + 4)
+        if (closing >= 0) end = closing + 3
+      }
     } else if (source.startsWith('<?', cursor)) {
-      const closing = source.indexOf('?>', cursor + 2)
-      end = closing === -1 ? source.length : closing + 2
+      const closing = this.findPosition(linkScan.htmlInstructions, cursor + 2)
+      if (closing >= 0) end = closing + 2
     } else if (source.startsWith('<![CDATA[', cursor)) {
-      const closing = source.indexOf(']]>', cursor + 9)
-      end = closing === -1 ? source.length : closing + 3
-    } else {
-      const declaration = source.charCodeAt(cursor + 1) === 33
-        && source.charCodeAt(cursor + 2) >= 65
-        && source.charCodeAt(cursor + 2) <= 90
-      const tagName = source.charCodeAt(cursor + 1) === 47
-        ? source.charCodeAt(cursor + 2)
-        : source.charCodeAt(cursor + 1)
-      const tag = (tagName >= 65 && tagName <= 90) || (tagName >= 97 && tagName <= 122)
-      if (!declaration && !tag) return null
-
+      const closing = this.findPosition(linkScan.htmlCdata, cursor + 9)
+      if (closing >= 0) end = closing + 3
+    } else if (/^<![A-Z]+[ \t\n]/.test(source.slice(cursor))) {
       const closing = this.findPosition(linkScan.htmlClosingAngles, cursor + 2)
-      if (closing === -1) return null
-      const lineBreak = this.findPosition(linkScan.lineBreaks, cursor + 2)
-      if (lineBreak !== -1 && lineBreak < closing) return null
-      end = closing + 1
-    }
+      if (closing >= 0) end = closing + 1
+    } else end = htmlTagEnd(source, cursor)
+    if (end < 0) return null
 
     const raw = source.slice(cursor, end)
     return { token: { type: 'html', raw, text: raw }, raw }
   }
 
   static normalizeReferenceLabel(label: string): string {
-    return label.trim().replace(/\s+/g, ' ').toLowerCase()
+    return label.trim().replace(/\s+/g, ' ').toLowerCase().toUpperCase().toLowerCase()
   }
 
   /**
@@ -1319,7 +1068,7 @@ export class InlineTokenizerBase {
     if (!match) return null
 
     const raw = match[0]
-    const text = raw
+    const text = decodeEntities(raw)
 
     return {
       token: {

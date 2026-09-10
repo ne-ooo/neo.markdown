@@ -1,9 +1,14 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  resolve: { alias: [
+    ['incremental', 'experimental/index'], ['experimental', 'experimental/index'],
+    ['worker-client', 'experimental/worker-client'], ['application', 'application/index'],
+  ].map(([name, path]) => ({ find: new RegExp('^@lpm\\.dev/neo\\.markdown/' + name + '$'), replacement: new URL('./src/' + path + '.ts', import.meta.url).pathname })) },
   test: {
     globals: true,
     environment: 'node',
+    exclude: [...configDefaults.exclude, '.integration/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -12,6 +17,7 @@ export default defineConfig({
         'dist/',
         'test/',
         'scripts/**',
+        '.integration/**',
         '*.config.ts',
       ],
       thresholds: {

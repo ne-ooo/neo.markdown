@@ -10,7 +10,7 @@
  * ```
  */
 
-import type { Parser, ParserOptions } from './core/types.js'
+import type { Parser, ParserOptions, DocumentOptions, DocumentResult } from './core/types.js'
 import { createParser } from './create-parser.js'
 
 let defaultParser: Parser | undefined
@@ -51,3 +51,14 @@ export function parse(markdown: string, options?: ParserOptions): string {
   const parser = createParser(options)
   return parser.parse(markdown)
 }
+
+/** Parse markdown with separate stylesheet assets, diagnostics, and TOC data. */
+export function parseDocument(markdown: string, options?: ParserOptions, documentOptions?: DocumentOptions): DocumentResult {
+  if (options === undefined) {
+    defaultParser ??= createParser()
+    return defaultParser.parseDocument(markdown, documentOptions)
+  }
+  return createParser(options).parseDocument(markdown, documentOptions)
+}
+
+export { createCodeBlockContext, getCodeBlockMetadata, parseCodeMetadata, MAX_CODE_META_LENGTH, MAX_CODE_META_ENTRIES } from './core/code-block.js'

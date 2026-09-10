@@ -77,6 +77,8 @@ function decodeProtocolEntities(value: string): string {
 export function isSafeUrl(url: string): boolean {
   const normalized = decodeProtocolEntities(url)
     .replace(/[\u0000-\u0020\u007F]/g, '')
+    // CommonMark replaces NUL with U+FFFD before URL encoding.
+    .replace(/\ufffd|%ef%bf%bd/gi, '')
   const scheme = SCHEME_RE.exec(normalized)
   return !scheme || SAFE_PROTOCOLS.has(`${scheme[1].toLowerCase()}:`)
 }

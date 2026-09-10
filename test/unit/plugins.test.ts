@@ -82,7 +82,7 @@ describe('Plugin System - setRenderer', () => {
     }
 
     const result = parse('```js\nfoo()\n```', { plugins: [plugin] })
-    expect(result).toBe('<custom-code lang="js">foo()</custom-code>\n')
+    expect(result).toBe('<custom-code lang="js">foo()\n</custom-code>\n')
   })
 
   it('should override the heading renderer', () => {
@@ -119,7 +119,7 @@ describe('Plugin System - setRenderer', () => {
 
     const result = parse('# Heading\n\n```\ncode\n```', { plugins: [plugin] })
     expect(result).toContain('<h1>Heading</h1>')
-    expect(result).toContain('<custom>code</custom>')
+    expect(result).toContain('<custom>code\n</custom>')
   })
 
   it('should let last plugin win on conflicting overrides', () => {

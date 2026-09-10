@@ -16,6 +16,11 @@ import {
 import { initializeEmbeds } from '@lpm.dev/neo.markdown/plugins/embeds'
 
 const options: ParserOptions = { gfm: true }
+import { IncrementalMarkdownLimitError, type IncrementalMarkdownLimit } from '@lpm.dev/neo.markdown/experimental'
+const limitError = new IncrementalMarkdownLimitError('maxWorkCodeUnits')
+const limit: IncrementalMarkdownLimit = limitError.limit
+const compatible: RangeError = limitError
+void [limit, compatible]
 const parser: Parser = createParser({
   ...options,
   plugins: [copyCodePlugin({ injectStyles: false })],
@@ -42,3 +47,12 @@ void [
   cleanup,
   cleanupEmbeds,
 ]
+
+
+import { useMarkdownDocument, type MarkdownDocumentPreview } from '@lpm.dev/neo.markdown/application/react'
+import { createMarkdownApplication, type MarkdownApplicationOptions } from '@lpm.dev/neo.markdown/application'
+import { createMarkdownSynchronousSession } from '@lpm.dev/neo.markdown/application/sync'
+const applicationOptions: MarkdownApplicationOptions = { createFallback: () => createMarkdownSynchronousSession() }
+const reactHook: (source: string, options: MarkdownApplicationOptions) => MarkdownDocumentPreview = useMarkdownDocument
+const applicationOwner = createMarkdownApplication(applicationOptions)
+void reactHook; applicationOwner.reset(); applicationOwner.dispose()

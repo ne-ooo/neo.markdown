@@ -1,12 +1,12 @@
 # @lpm.dev/neo.markdown
 
-`@lpm.dev/neo.markdown` converts a Markdown subset to HTML and supports GFM
+`@lpm.dev/neo.markdown` converts Markdown to HTML and supports GFM
 features, sanitization, and plugins.
 
 ## Features
 
-- **Markdown subset:** The conformance suite measures behavior against
-  CommonMark 0.31.2 fixtures.
+- **Markdown compatibility:** The [compatibility suite](./docs/compatibility.md)
+  covers all 652 CommonMark 0.31.2 examples.
 - **GFM features:** Supports tables, task lists, strikethrough, and autolinks.
 - **HTML controls:** Escapes raw HTML by default and provides a structural
   sanitizer entry point.
@@ -224,6 +224,9 @@ const html = parse(markdown, {
       getThemeStylesheet,
       theme: githubDark,
       lineNumbers: true,
+      errorPolicy: "plain",
+      maxInputLength: 100_000,
+      onError: (error, context) => console.error(context.language, error),
     }),
   ],
 });
@@ -241,6 +244,79 @@ const c = 3;
 
 The package separates the language and metadata before it calls the plugin.
 Expanded highlight metadata has a hard limit of 10,000 lines.
+
+Language names and aliases ignore case and surrounding whitespace. For example,
+`js`, `JS`, and `JavaScript` select the same registered JavaScript grammar.
+Unknown languages and fences without a language render as escaped plain text.
+
+Direct `highlightPlugin()` calls infer callback types. For an explicitly typed
+options object, use `HighlightOptions<Grammar, Token, Theme>` with the types
+exported by `neo.highlight`.
+
+| Option | Default | Behavior |
+| --- | --- | --- |
+| `errorPolicy` | `"throw"` | Throw highlighting errors, or use `"plain"` to preserve the failed block as escaped source. |
+| `onError` | None | Receive the error and `{ stage, code, language, meta }` before the error policy applies. |
+| `injectStyles` | `true` | Include theme CSS when `theme` and `getThemeStylesheet` are supplied. |
+| `diffHighlight` | None | Supply `{ added, removed, modified }` line arrays, or a function that returns them for each code token. |
+| `maxInputLength` | 250,000 | Limit source characters per highlighted block. |
+| `maxMatchCount` | 100,000 | Limit tokenizer matches per block. |
+| `maxTokenCount` | 100,000 | Limit created and rendered token nodes. |
+| `maxTokenDepth` | 100 | Limit grammar and token nesting. |
+| `maxRenderedLength` | 10,000,000 | Limit highlighted HTML characters per block. |
+| `maxLines` | 10,000 | Limit rendered source lines per block. |
+
+The resource defaults come from `neo.highlight`. Each limit accepts a
+non-negative integer or `Infinity`. The plugin rejects invalid limits during
+setup. Finite limits are appropriate for user-controlled source.
+
+With `errorPolicy: "plain"`, the fallback preserves the complete code token.
+Highlighting limits do not truncate this fallback. Set the parser's
+`maxInputLength`, or use `ugc: true`, to limit the whole document.
+An error from `onError` itself propagates to the caller.
+
+For per-block diff lines, the callback receives the original code token:
+
+```typescript
+const plugin = highlightPlugin({
+  grammars: [javascript],
+  tokenize,
+  renderToHTML,
+  diffHighlight: (token) => token.meta === "added" ? { added: [1] } : undefined,
+});
+```
+
+#### Theme CSS with sanitization and React
+
+The structural sanitizer removes inline theme styles from highlighted HTML.
+Token classes remain. Include the theme stylesheet to preserve colors, line
+numbers, and diff styles. Keep the sanitizer's CSS restrictions active.
+
+For React or server layouts, disable stylesheet insertion in the HTML fragment:
+
+```typescript
+import { createParser } from "@lpm.dev/neo.markdown/sanitized";
+
+const themeCSS = getThemeStylesheet(githubDark);
+const parser = createParser({
+  allowHtml: true,
+  sanitize: true,
+  maxInputLength: 1_000_000,
+  plugins: [highlightPlugin({
+    grammars: [javascript],
+    tokenize,
+    renderToHTML,
+    theme: githubDark,
+    injectStyles: false,
+    errorPolicy: "plain",
+  })],
+});
+```
+
+Serve `themeCSS` as an application stylesheet, or render it once through the
+layout's `<style>` element. Do not place that element inside the Markdown
+`dangerouslySetInnerHTML` fragment. `injectStyles: false` controls stylesheet
+insertion. It does not remove the highlighter's inline style attributes.
 
 ### Embed plugin
 
@@ -362,10 +438,19 @@ const html = parse(markdown, {
   ],
 });
 
-const cleanup = initializeCopyCode();
+const cleanup = initializeCopyCode({
+  root: document.getElementById("preview")!,
+  onError: (error) => console.error("Copy failed", error),
+});
 ```
 
-Call the delegated initializer after the rendered HTML mounts.
+Call the delegated initializer after the rendered HTML mounts. Call `cleanup()`
+before unmounting or replacing the preview. Cleanup removes the listener and
+label timers. Pending clipboard results cannot update the UI after cleanup.
+
+The initializer copies source text without Neo line numbers or diff markers.
+Line breaks use LF after Markdown normalization. Clipboard failures call
+`onError` and leave the label unchanged.
 
 ## Custom plugins
 
@@ -492,15 +577,18 @@ task lists, strikethrough, and autolinks.
 
 ## Conformance and limits
 
-The package implements a Markdown subset. It does not claim complete CommonMark
-or GFM compliance.
+The mandatory CommonMark 0.31.2 suite matches 648 of 652 official examples.
+The other four examples use autolink protocols that the URL policy blocks.
+Every example has an explicit expected result in both the main and CommonMark entries.
+The suite expands visible tab markers and normalizes void-tag style and quote entities.
 
-The mandatory CommonMark 0.31.2 test records 313 passing examples from 652
-official examples. It normalizes void-tag style and quote entities.
+The parser supports nested containers, delimiter runs, reference definitions,
+character references, and the seven CommonMark HTML block forms.
+Code tokens retain their trailing newline. Renderer and highlighting callbacks receive that newline.
 
-Selected official GFM 0.29 extension fixtures are also mandatory. Structural
-containers and complete delimiter-stack parsing remain outside the current
-subset.
+The separate GFM suite covers selected official extension fixtures. It does not establish complete GFM conformance.
+Resource limits and the default HTML and URL policies also apply.
+See [compatibility and limits](./docs/compatibility.md) for the method, commands, and observable behavior changes.
 
 ## Security
 
@@ -516,10 +604,15 @@ It does not make trusted plugins or renderer overrides safe.
 Embed plugins load content from external services. Use consent mode and
 application policy where privacy or external requests require user approval.
 
+## Migration from version 2
+
+Upgrade Node.js to 22.12 or later before installing version 3.
+The existing string API remains available. Review changed code-token newlines and corrected Markdown output in [the migration guide](./docs/migration-v3.md).
+
 ## Migration from `marked`
 
-The parser uses a `parse()` function, but it implements a Markdown subset.
-Compare the supported syntax before migration.
+The parser provides a `parse()` function. HTML defaults, URL restrictions, plugins,
+and renderer options can differ from `marked`.
 
 ```diff
 - import { marked } from "marked";
@@ -579,7 +672,7 @@ data.
 
 ## Runtime support
 
-- **Node.js:** 18 or later
+- **Node.js:** 22.12 or later
 - **Browsers:** Modern browsers
 - **Module formats:** ESM and CommonJS
 - **TypeScript:** Declaration files for all entry points
@@ -587,20 +680,42 @@ data.
 
 ## Package entry points
 
+The optional [experimental incremental session](./docs/incremental.md) resumes built-in block parsing and reuses inline tokens across document updates.
+It continues open fences, tables, lists, and blockquotes when their saved dependencies remain unchanged.
+Each update renders the complete document.
+Declared highlight, presentation, copy-code, and TOC plugins can opt into reuse with `pluginReuse: "declared"`.
+[Pure inline plugins](./docs/incremental.md#pure-inline-rules) can also declare static dependencies or a revision getter for cache invalidation.
+The [incremental guide](./docs/incremental.md#declared-render-plugins) covers declarations, token isolation, registration checks, and fallback behavior.
+
 | Import                                       | Purpose                                             |
 | -------------------------------------------- | --------------------------------------------------- |
 | `@lpm.dev/neo.markdown`                      | Main parser, complete rules, utilities, and types.  |
 | `@lpm.dev/neo.markdown/sanitized`            | Main parser with the built-in structural sanitizer. |
 | `@lpm.dev/neo.markdown/core`                 | Parser classes and an explicit-rules factory.       |
+| `@lpm.dev/neo.markdown/experimental`         | Experimental reuse across structured document updates. |
 | `@lpm.dev/neo.markdown/blocks`               | Individual block rules.                             |
 | `@lpm.dev/neo.markdown/inline`               | Inline tokenizer exports.                           |
-| `@lpm.dev/neo.markdown/commonmark`           | Markdown-subset preset without GFM extensions.      |
+| `@lpm.dev/neo.markdown/commonmark`           | CommonMark preset without GFM extensions.           |
 | `@lpm.dev/neo.markdown/gfm`                  | Preset with GFM extensions.                         |
 | `@lpm.dev/neo.markdown/plugins/highlight`    | Syntax-highlighting plugin.                         |
 | `@lpm.dev/neo.markdown/plugins/embeds`       | Embed plugin and client initializer.                |
 | `@lpm.dev/neo.markdown/plugins/embeds/react` | React embed components.                             |
 | `@lpm.dev/neo.markdown/plugins/toc`          | Table-of-contents plugin.                           |
 | `@lpm.dev/neo.markdown/plugins/copy-code`    | Copy-button plugin and client initializer.          |
+
+## Development
+
+Install dependencies with `lpm install`. Build a sibling `neo.highlight` checkout
+with `lpm install` and `lpm run build`. The integration suite tests its built
+exports against this package. Set `NEO_HIGHLIGHT_DIR` to use another checkout.
+The integration contract selects highlighter 1.4.0. See [CONTRIBUTING.md](./CONTRIBUTING.md) for release checks.
+
+```bash
+lpm run release:check
+```
+
+The release gate includes unit tests, coverage, package exports, strict TypeScript
+consumers, ESM and CommonJS integration tests, tree shaking, dependency audits, and registry-signature audits.
 
 ## License
 

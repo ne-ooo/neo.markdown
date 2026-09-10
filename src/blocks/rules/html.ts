@@ -1,17 +1,26 @@
 import type { BlockRule } from '../../core/types.js'
+import { htmlBlockStart } from '../../utils/html-syntax.js'
+import { dependOnLine } from '../dependencies.js'
 
-const HTML = /^ {0,3}(?:<(?:script|pre|style|textarea)[>\s][\s\S]*?(?:<\/(?:script|pre|style|textarea)>|$)|<!--[\s\S]*?(?:-->|$)|<\?[\s\S]*?\?>|<![A-Z][\s\S]*?>|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<\/?(address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|\/>|$)[\s\S]*?(?:\n{2,}|$))/i
-
-/** Raw HTML block rule, active only when allowHtml is true. */
 export const html: BlockRule = {
   name: 'html',
   priority: 550,
-  starts: (src, options) => options.allowHtml === true && HTML.test(src),
-  tokenize(src, options) {
+  starts: (src, options) => options.allowHtml === true && htmlBlockStart(src.split('\n', 1)[0])?.interrupts === true,
+  tokenize(src, options, context) {
     if (!options.allowHtml) return null
-    const match = HTML.exec(src)
-    if (!match) return null
-    const raw = match[0]
-    return { token: { type: 'html', raw, text: raw.trim() }, raw }
+    const start = htmlBlockStart(src.split('\n', 1)[0])
+    if (!start) return null
+    let cursor = 0
+    while (cursor < src.length) {
+      dependOnLine(src, cursor, context)
+      const newline = src.indexOf('\n', cursor)
+      const next = newline < 0 ? src.length : newline + 1
+      const line = src.slice(cursor, newline < 0 ? next : newline)
+      if (!start.close && /^[ \t]*$/.test(line)) break
+      cursor = next
+      if (start.close?.test(line)) break
+    }
+    const raw = src.slice(0, cursor)
+    return { token: { type: 'html', raw, text: raw }, raw }
   },
 }

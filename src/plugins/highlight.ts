@@ -24,62 +24,158 @@
  * ```
  */
 
-import type { MarkdownPlugin, CodeToken } from '../core/types.js'
-import { escape } from '../utils/escape.js'
+import type { MarkdownPlugin, CodeToken, CodeBlockContext, CodeBlockMetadata } from '../core/types.js'
+import { createHighlightRenderer } from './highlight-renderer.js'
 
 /**
  * Grammar interface (matches @lpm.dev/neo.highlight Grammar)
  */
-interface Grammar {
+export interface HighlightGrammar {
   name: string
   aliases?: string[]
   tokens: Record<string, unknown>
 }
 
 /**
- * Theme type — pass-through to @lpm.dev/neo.highlight, accepts any theme object or name
+ * Resource limits passed to the tokenizer.
  */
-type Theme = unknown
+export type HighlightTokenizeOptions = {
+  maxInputLength?: number
+  maxMatchCount?: number
+  maxTokenCount?: number
+  maxTokenDepth?: number
+}
+
+export type HighlightDiff = {
+  added?: number[]
+  removed?: number[]
+  modified?: number[]
+}
+
+/** Half-open UTF-16 offsets in the code passed to the syntax renderer. */
+export type HighlightRange = { readonly start: number; readonly end: number }
+
+/** Structural equivalents of neo.highlight hooks, with no runtime dependency. */
+export type HighlightRenderAttributes = {
+  class?: string | readonly string[]
+  attributes?: Readonly<Record<string, string | number | boolean | undefined>>
+}
+export type HighlightRenderContext = {
+  readonly source: string
+  readonly language: string | undefined
+  readonly classPrefix: string
+  readonly styleMode: 'inline' | 'class'
+}
+export type HighlightTokenRenderContext = HighlightRenderContext & {
+  readonly type: string; readonly aliases: readonly string[]; readonly depth: number
+  readonly start: number; readonly end: number
+}
+export type HighlightLineRenderContext = HighlightRenderContext & {
+  readonly line: number; readonly displayLine: number; readonly start: number; readonly end: number
+  readonly highlighted: boolean; readonly added: boolean; readonly removed: boolean; readonly modified: boolean
+}
+export type HighlightRenderHooks = {
+  token?: (context: HighlightTokenRenderContext) => HighlightRenderAttributes | void
+  line?: (context: HighlightLineRenderContext) => HighlightRenderAttributes | void
+  code?: (context: HighlightRenderContext) => HighlightRenderAttributes | void
+  pre?: (context: HighlightRenderContext) => HighlightRenderAttributes | void
+}
+
+export type HighlightCodeBlockContext<TGrammar extends HighlightGrammar = HighlightGrammar> = CodeBlockContext & {
+  readonly metadata: CodeBlockMetadata
+  readonly grammar: TGrammar
+  /** Canonical name of the selected grammar. The output language keeps the normalized input spelling. */
+  readonly resolvedLanguage: string
+}
+
+/** Renderer options shared with neo.highlight, without a runtime dependency. */
+export type HighlightRenderOptions<TTheme = unknown> = {
+  theme?: TTheme
+  styleMode?: 'inline' | 'class'
+  language?: string
+  lineNumbers?: boolean
+  /** Per-line spans; "source" retains line endings as text. */
+  wrapLines?: boolean | 'source'
+  startLine?: number
+  hooks?: HighlightRenderHooks
+  highlightLines?: number[]
+  highlightRanges?: readonly HighlightRange[]
+  diffHighlight?: HighlightDiff
+  classPrefix?: string
+  maxTokenCount?: number
+  maxTokenDepth?: number
+  maxRenderedLength?: number
+  maxLines?: number
+}
+
+export type HighlightErrorContext = {
+  /** Stage that failed. */
+  stage: 'configure' | 'tokenize' | 'render'
+  /** Source and metadata from the Markdown code token. */
+  code: string
+  language: string | undefined
+  meta: string | undefined
+}
 
 /**
  * Highlight plugin options
  *
  * Pass `tokenize` and `renderToHTML` from @lpm.dev/neo.highlight directly.
- * Method syntax is used for the function signatures to enable bivariant
- * type checking — this allows neo.highlight's specific types to be passed
- * without explicit casts.
+ * Grammar, token, and theme types are inferred from the supplied functions.
  */
-export interface HighlightOptions {
+export interface HighlightOptions<
+  TGrammar extends HighlightGrammar = HighlightGrammar,
+  TToken = unknown,
+  TTheme = unknown,
+> extends HighlightTokenizeOptions {
   /** Grammars to register for language detection */
-  grammars: Grammar[]
+  grammars: readonly TGrammar[]
   /** Tokenize function from @lpm.dev/neo.highlight */
-  tokenize(code: string, grammar: Grammar): unknown[]
+  tokenize: (code: string, grammar: TGrammar, options?: HighlightTokenizeOptions) => TToken[]
   /** Render function from @lpm.dev/neo.highlight */
-  renderToHTML(tokens: unknown[], options?: Record<string, unknown>): string
+  renderToHTML: (tokens: TToken[], options: HighlightRenderOptions<TTheme>) => string
   /** getThemeStylesheet function from @lpm.dev/neo.highlight (generates CSS for token colors) */
-  getThemeStylesheet?(theme: Theme, classPrefix?: string): string
+  getThemeStylesheet?: (theme: TTheme, classPrefix?: string) => string
   /** validateThemeContrast function from @lpm.dev/neo.highlight (WCAG AA validation) */
-  validateThemeContrast?(theme: Theme): { passed: boolean; results: Array<{ token: string; color: string; ratio: number; pass: boolean }> }
+  validateThemeContrast?: (theme: TTheme) => { passed: boolean; results: Array<{ token: string; color: string; ratio: number; pass: boolean }> }
   /** Theme for syntax coloring (pass a theme object or name from @lpm.dev/neo.highlight) */
-  theme?: Theme
+  theme?: TTheme
+  /** Inline styles (default), or classes with a separately supplied theme stylesheet. */
+  styleMode?: 'inline' | 'class'
   /** Show line numbers (default: false) */
   lineNumbers?: boolean
+  /** Per-line spans; "source" retains line endings as text. */
+  wrapLines?: boolean | 'source'
+  /** First displayed line number (default: 1). Line selections remain source-relative. */
+  startLine?: number
+  /** Decorators for highlighted tokens, lines, and wrappers. */
+  hooks?: HighlightRenderHooks
+  /** Select rendering options per matched block. Resource limits remain fixed by plugin configuration. */
+  renderOptions?: (context: HighlightCodeBlockContext<TGrammar>) => HighlightBlockRenderOptions<TTheme> | void
   /** CSS class prefix (default: "neo-hl") */
   classPrefix?: string
+  /** Selected source ranges, counted in UTF-16 code units. */
+  highlightRanges?: readonly HighlightRange[]
+  /** Diff lines for every block, or a function that selects them per block. */
+  diffHighlight?: HighlightDiff | ((token: Readonly<CodeToken>) => HighlightDiff | undefined)
+  /** Maximum generated HTML length per highlighted block. */
+  maxRenderedLength?: number
+  /** Maximum source lines per highlighted block. */
+  maxLines?: number
+  /** On highlighting failure: throw (default), or render escaped source. */
+  errorPolicy?: 'throw' | 'plain'
+  /** Receives highlighting failures before the selected error policy applies. */
+  onError?: (error: unknown, context: HighlightErrorContext) => void
+  /** Include theme CSS in each document (default: true when a stylesheet function is supplied). */
+  injectStyles?: boolean
 }
+
+/** Per-block visual options cannot replace resource limits or the output language. */
+export type HighlightBlockRenderOptions<TTheme = unknown> = Pick<HighlightRenderOptions<TTheme>,
+  'lineNumbers' | 'wrapLines' | 'startLine' | 'highlightLines' | 'highlightRanges' | 'diffHighlight' | 'hooks'>
 
 /** Hard limit for expanded highlight metadata. */
 export const MAX_HIGHLIGHT_LINES = 10_000
-
-function countHighlightableLines(code: string): number {
-  if (code.length === 0) return 0
-
-  let lines = 1
-  for (let i = 0; i < code.length && lines < MAX_HIGHLIGHT_LINES; i++) {
-    if (code.charCodeAt(i) === 10) lines++
-  }
-  return lines
-}
 
 /**
  * Parse highlight line ranges from meta string
@@ -152,83 +248,14 @@ export function parseHighlightLines(
  * @param options - Highlight options (grammars, tokenize, renderToHTML, theme, lineNumbers)
  * @returns Markdown plugin
  */
-export function highlightPlugin(options: HighlightOptions): MarkdownPlugin {
-  const {
-    grammars,
-    tokenize: tokenizeFn,
-    renderToHTML: renderFn,
-    getThemeStylesheet: getStylesheetFn,
-    validateThemeContrast: validateContrastFn,
-    theme,
-    lineNumbers = false,
-    classPrefix = 'neo-hl',
-  } = options
-
-  // Build grammar registry: name/alias → Grammar
-  const registry = new Map<string, Grammar>()
-  for (const grammar of grammars) {
-    registry.set(grammar.name, grammar)
-    if (grammar.aliases) {
-      for (const alias of grammar.aliases) {
-        registry.set(alias, grammar)
-      }
-    }
-  }
-
-  // Dev-mode: validate theme contrast (WCAG AA)
-  if (validateContrastFn && theme && typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-    const report = validateContrastFn(theme)
-    if (!report.passed) {
-      for (const result of report.results) {
-        if (!result.pass) {
-          console.warn(
-            `neo.highlight: theme "${(theme as { name?: string }).name ?? 'unknown'}" ${result.token} color ${result.color} ` +
-            `has contrast ratio ${result.ratio}:1 against background (needs 4.5:1 for WCAG AA)`
-          )
-        }
-      }
-    }
-  }
-
-  // Pre-generate the theme stylesheet (CSS for token color classes)
-  const themeCSS = getStylesheetFn && theme
-    ? `<style>${getStylesheetFn(theme, classPrefix)}</style>`
-    : ''
-
-  return (builder) => {
-    // Inject theme CSS into the output once (at the beginning)
-    if (themeCSS) {
-      builder.addHtmlTransform((html) => themeCSS + html)
-    }
-
-    builder.setRenderer('code', (token: CodeToken) => {
-      const grammar = token.lang ? registry.get(token.lang) : undefined
-
-      // No grammar match — fallback to default rendering (plain <code>)
-      if (!grammar) {
-        // Dev-mode: warn about unknown language strings (catch typos)
-        if (token.lang && typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-          console.warn(`neo.highlight: no grammar found for language "${token.lang}". Code block rendered as plain text.`)
-        }
-
-        const code = escape(token.text)
-        const langClass = token.lang ? ` class="language-${escape(token.lang)}"` : ''
-        return `<pre><code${langClass}>${code}</code></pre>\n`
-      }
-
-      // Parse highlight lines from meta
-      const lineCount = countHighlightableLines(token.text)
-      const highlightLines = parseHighlightLines(token.meta, lineCount)
-
-      // Tokenize and render with neo.highlight
-      const tokens = tokenizeFn(token.text, grammar)
-      return renderFn(tokens, {
-        theme,
-        language: token.lang,
-        lineNumbers,
-        highlightLines,
-        classPrefix,
-      }) + '\n'
-    })
+export function highlightPlugin<
+  TGrammar extends HighlightGrammar,
+  TToken,
+  TTheme = unknown,
+>(options: HighlightOptions<TGrammar, TToken, TTheme>): MarkdownPlugin {
+  const { code, styles } = createHighlightRenderer(options)
+  return builder => {
+    if (styles) builder.addHtmlTransform(html => builder.document ? html : styles + html)
+    builder.setRenderer('code', (token, context) => code(token, context, builder.document))
   }
 }

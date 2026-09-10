@@ -1,7 +1,7 @@
 ---
 name: best-practices
 description: Performance, security, tree-shaking, ugc, safeLinks, selective blocks, and token pipeline patterns for @lpm.dev/neo.markdown
-version: "2.0.0"
+version: "3.0.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -231,3 +231,11 @@ test('blocks javascript: protocol in links', () => {
   expect(html).not.toContain('javascript:')
 })
 ```
+
+## GFM compatibility
+
+Set `gfm: true` to enable tables, task lists, strikethrough, extended autolinks, and the raw HTML tag filter.
+The extension suite covers all 28 normative GFM examples. Three XMPP examples retain text under the URL policy.
+This corpus does not establish complete GFM conformance.
+The tag filter does not remove unsafe attributes. Use the sanitized entry for untrusted HTML.
+See `docs/compatibility.md` for exact coverage and limits.

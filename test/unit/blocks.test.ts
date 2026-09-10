@@ -44,7 +44,7 @@ describe('Block Elements', () => {
       const result = parse('> Line 1\nLine 2')
       // TODO: Add lazy continuation support in Phase 2
       // Current: treats continuation as separate paragraph
-      expect(result).toBe('<blockquote>\n<p>Line 1</p>\n</blockquote>\n<p>Line 2</p>\n')
+      expect(result).toBe('<blockquote>\n<p>Line 1\nLine 2</p>\n</blockquote>\n')
     })
 
     it('should parse nested blockquotes', () => {

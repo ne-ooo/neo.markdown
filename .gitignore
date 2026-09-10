@@ -3,6 +3,7 @@ dist
 .build
 *.tsbuildinfo
 coverage
+.integration/
 
 # LPM wrapper tree (auto-generated)
 .lpm/wrappers/
@@ -19,3 +20,6 @@ coverage
 .lpm/overrides-state.json
 .lpm/patch-state.json
 .lpm/trust-snapshot.json
+
+# Local research and roadmap documents
+research/
