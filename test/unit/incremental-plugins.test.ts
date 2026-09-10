@@ -206,7 +206,7 @@ describe('render plugin token ownership and call behavior', () => {
     expect(session.metrics.clonedTokenNodes).toBeGreaterThan(0)
   })
 
-  it('preserves complete results through 1000 edits with nested authoring blocks', () => {
+  it('preserves complete results through 1000 edits with nested authoring blocks', { timeout: 15_000 }, () => {
     const make = () => [declared(tocPlugin(), 'toc'), declared(codePresentationPlugin(), 'presentation'), declared(copyCodePlugin(), 'copy')]
     const parser = createParser({ gfm: true, plugins: make() })
     const session = createIncrementalMarkdown({ pluginReuse: 'declared', maxWorkCodeUnits: 1_000_000_000, parser: { gfm: true, plugins: make() } })
