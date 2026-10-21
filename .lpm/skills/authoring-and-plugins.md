@@ -1,7 +1,7 @@
 ---
 name: authoring-and-plugins
 description: Custom Markdown plugins, token APIs, code presentation, word selections, and structured document results
-version: "3.0.0"
+version: "3.0.1"
 globs:
   - "**/*.ts"
   - "**/*.tsx"

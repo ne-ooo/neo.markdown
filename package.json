@@ -1,6 +1,6 @@
 {
   "name": "@lpm.dev/neo.markdown",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Modern, tree-shakeable markdown parser with TypeScript support",
   "keywords": [
     "markdown",
@@ -304,6 +304,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "bench": "vitest bench",
+    "bench:inline-indexes": "node test/benchmarks/compare-inline-indexes.mjs",
     "check:tree-shaking": "node scripts/verify-tree-shaking.mjs",
     "release:check": "lpm run check:release-metadata && lpm run typecheck && lpm run test:coverage && lpm run build && lpm run test:package && lpm run test:integration && lpm run check:tree-shaking && lpm run security:audit && lpm run security:signatures",
     "prepublishOnly": "lpm run release:check",
@@ -314,14 +315,14 @@
     "test:incremental": "vitest run test/unit/incremental"
   },
   "dependencies": {
-    "sanitize-html": "2.17.7"
+    "sanitize-html": "2.18.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/react": "^19.2.14",
     "@types/react-test-renderer": "19.1.0",
     "@types/sanitize-html": "^2.16.1",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "commonmark-spec": "0.31.2",
     "esbuild": "0.28.2",
     "markdown-it": "^14.1.0",
@@ -331,8 +332,8 @@
     "react-test-renderer": "19.2.8",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vite": "^6.4.3",
-    "vitest": "4.1.11"
+    "vite": "^6.4.5",
+    "vitest": "4.1.12"
   },
   "peerDependencies": {
     "react": ">=18.0.0"
@@ -343,7 +344,14 @@
     }
   },
   "overrides": {
-    "tsup>esbuild": "0.28.2"
+    "tsup": {
+      "esbuild": "0.28.2"
+    }
+  },
+  "lpm": {
+    "overrides": {
+      "tsup>esbuild": "0.28.2"
+    }
   },
   "engines": {
     "node": ">=22.12.0"
