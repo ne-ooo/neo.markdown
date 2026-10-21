@@ -1,6 +1,6 @@
 {
   "name": "@lpm.dev/neo.markdown",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Modern, tree-shakeable markdown parser with TypeScript support",
   "keywords": [
     "markdown",
@@ -304,6 +304,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "bench": "vitest bench",
+    "bench:inline-indexes": "node test/benchmarks/compare-inline-indexes.mjs",
     "check:tree-shaking": "node scripts/verify-tree-shaking.mjs",
     "release:check": "lpm run check:release-metadata && lpm run typecheck && lpm run test:coverage && lpm run build && lpm run test:package && lpm run test:integration && lpm run check:tree-shaking && lpm run security:audit && lpm run security:signatures",
     "prepublishOnly": "lpm run release:check",
@@ -314,7 +315,7 @@
     "test:incremental": "vitest run test/unit/incremental"
   },
   "dependencies": {
-    "sanitize-html": "2.17.7"
+    "sanitize-html": "2.18.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -343,7 +344,9 @@
     }
   },
   "overrides": {
-    "tsup>esbuild": "0.28.2"
+    "tsup": {
+      "esbuild": "0.28.2"
+    }
   },
   "engines": {
     "node": ">=22.12.0"

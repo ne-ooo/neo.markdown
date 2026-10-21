@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.0.1] - 2026-10-21
+
+- Update sanitize-html to 2.18.1 to correct HTML sanitization vulnerabilities.
+
 ## [3.0.0] - Unreleased
 
 - Update Vitest to 4.1.11 for GHSA-82fw-gwwq-j7x9. Adversarial subprocess checks retain their two-second limit.

@@ -1,7 +1,7 @@
 ---
 name: getting-started
 description: How to use @lpm.dev/neo.markdown — parse(), createParser(), plugin system (highlight, embeds, TOC, copy-code), PluginBuilder API, custom block/inline rules, renderer overrides, token transforms, CodeToken.meta, directive syntax, sub-path exports, sanitization, ugc, safeLinks, blocks
-version: "3.0.0"
+version: "3.0.1"
 globs:
   - "**/*.ts"
   - "**/*.tsx"

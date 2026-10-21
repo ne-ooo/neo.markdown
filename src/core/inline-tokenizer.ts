@@ -89,6 +89,35 @@ interface LinkScan {
   lastNonWhitespace: number
 }
 
+// Inputs without indexed syntax only read these empty indexes. No source text
+// or returned tokens are retained here. Destination caching requires a matched
+// bracket, which always selects a fresh scan instead.
+const EMPTY_LINK_SCAN: LinkScan = {
+  closingBrackets: [],
+  matchingBrackets: new Map(),
+  openingAngles: [],
+  closingAngles: [],
+  whitespaces: [],
+  doubleQuotes: [],
+  singleQuotes: [],
+  matchingParentheses: new Map(),
+  parenthesisBalance: new Int32Array(0),
+  destinations: new Map(),
+  tildeClosers: [[], [], []],
+  emailLinks: new Map(),
+  emailStarts: [],
+  backtickRuns: [],
+  backtickClosers: new Map(),
+  htmlClosingAngles: [],
+  htmlComments: [],
+  htmlInstructions: [],
+  htmlCdata: [],
+  lineBreaks: [],
+  lastNonWhitespace: -1,
+}
+
+const INDEXED_INLINE_SYNTAX = /[`\[\]<~\n]/
+
 interface ResolvedInlineRule {
   rule: InlineRule
   priority: number
@@ -499,6 +528,13 @@ export class InlineTokenizerBase {
   }
 
   private createLinkScan(src: string, allowExtendedAutolinks: boolean): LinkScan {
+    if (
+      !INDEXED_INLINE_SYNTAX.test(src)
+      && !(allowExtendedAutolinks && this.gfmSupport && src.includes('@'))
+    ) {
+      return EMPTY_LINK_SCAN
+    }
+
     const closingBrackets: number[] = []
     const matchingBrackets = new Map<number, number>()
     const bracketStack: number[] = []

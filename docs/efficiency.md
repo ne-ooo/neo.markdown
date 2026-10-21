@@ -2,7 +2,12 @@
 
 Reuse a parser instance for multiple documents. This avoids repeated rule and plugin initialization.
 Plain text that requires no inline syntax uses a direct path without link or delimiter indexes.
+Emphasis and escaped punctuation also skip syntax indexes when the source contains no indexed syntax.
+Links, code spans, HTML, strikethrough, newlines, and GFM email addresses keep their existing index scans.
+Eligible calls share empty indexes. Each call still creates its own output tokens and runs custom rules.
 Custom inline rules retain their priority. Entity decoding, token budgets, and compatibility expectations remain unchanged.
+
+See [the inline index measurements](../BENCHMARKS.md#inline-indexes-september-22-2026) for timings and the comparison command.
 
 The named-entity table loads on the first named-entity lookup. Documents without named entities do not expand this table.
 A first entity lookup can cost more than later lookups. The benchmark measures these cases in separate processes.
