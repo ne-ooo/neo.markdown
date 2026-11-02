@@ -4,15 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [3.0.1] - 2026-10-21
+## [3.0.1] - 2026-11-02
+
+This release includes the changes developed for 3.0.0, which was not published.
+For upgrades from 2.0.0, see [migration to version 3](./docs/migration-v3.md).
+
+### Security and tooling
 
 - Update sanitize-html to 2.18.1 to correct HTML sanitization vulnerabilities.
+- Update Vitest and its coverage provider to 4.1.12. Adversarial subprocess checks retain their two-second limit.
+- Enforce the esbuild 0.28.2 override through LPM and retain registry signatures and publication timestamps in the lockfile.
 
-## [3.0.0] - Unreleased
+### Inline parsing
 
-- Update Vitest to 4.1.11 for GHSA-82fw-gwwq-j7x9. Adversarial subprocess checks retain their two-second limit.
-
-- Pass source-preserving line layout through highlight options and retain exact copy output for source-line spans.
+- Skip syntax indexes for inline input that needs none, including emphasis and escaped punctuation.
+- Share empty indexes while retaining independent output tokens and custom rule calls.
 
 ### Application adapter and stable document APIs
 
@@ -84,7 +90,7 @@ See [DOM patches](./docs/dom-patches.md) for ownership, limits, and application 
 ### Breaking changes
 
 - Require Node.js 22.12 or later, including CommonJS consumers.
-- Upgrade sanitize-html to 2.17.7, which fixes GHSA-jxwj-j7wr-gfrw and GHSA-g8qq-57p8-ggw5.
+- Upgrade sanitize-html to 2.18.1, including fixes for GHSA-jxwj-j7wr-gfrw and GHSA-g8qq-57p8-ggw5.
 - Keep the string-returning API and all existing package entry points.
 
 See [migration to version 3](./docs/migration-v3.md) before upgrading.
@@ -99,6 +105,8 @@ See [migration to version 3](./docs/migration-v3.md) before upgrading.
 See [document results](./docs/document-results.md) for entry points, asset handling, diagnostics, and limits.
 
 ### Code blocks
+
+- Pass source-preserving line layout through highlight options and retain exact copy output for source-line spans.
 
 - Added `mark` metadata for word selections with one-based lines and Unicode code-point columns.
 - Added plain, highlighted, sanitized, and fallback selections that preserve focus, diff notation, and clean copy output.

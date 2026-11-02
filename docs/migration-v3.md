@@ -1,7 +1,7 @@
 # Migration to version 3
 
 Upgrade Node.js to 22.12 or later before installing this version.
-The package requires this runtime for sanitize-html 2.17.7 and its HTML parser dependency.
+The package requires this runtime for sanitize-html 2.18.1 and its HTML parser dependency.
 The runtime requirement applies to ESM and CommonJS consumers of the package.
 Browser builds still support selective parser imports and the separate sanitizer entry.
 

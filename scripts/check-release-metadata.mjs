@@ -12,7 +12,12 @@ assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--tag'), 'Usag
 if (args.length) assert.equal(args[1], `v${manifest.version}`, 'Release tag must match package version')
 
 const changelog = await readFile(resolve(root, 'CHANGELOG.md'), 'utf8')
-assert.ok(changelog.split('\n').some(line => line.startsWith(`## [${manifest.version}] - `)), 'Changelog must describe this package version')
+const releaseHeadings = changelog.split('\n').filter(line => line.startsWith(`## [${manifest.version}] - `))
+assert.equal(releaseHeadings.length, 1, 'Changelog must describe this package version exactly once')
+const releaseDate = releaseHeadings[0].slice(`## [${manifest.version}] - `.length)
+assert.match(releaseDate, /^\d{4}-\d{2}-\d{2}$/, 'Changelog release must have a date, not an Unreleased label')
+const parsedReleaseDate = new Date(`${releaseDate}T00:00:00Z`)
+assert.ok(Number.isFinite(parsedReleaseDate.getTime()) && parsedReleaseDate.toISOString().slice(0, 10) === releaseDate, 'Changelog release date must be a valid calendar date')
 
 const skills = (await readdir(resolve(root, '.lpm/skills'))).filter(name => name.endsWith('.md'))
 assert.ok(skills.length, 'Package must contain LPM skills')
