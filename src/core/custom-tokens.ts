@@ -108,7 +108,8 @@ function leavesMeasure(children: InlineToken[]): InlineTokenMeasure {
 function onlyLeaves(children: InlineToken[], measures: WeakMap<object, InlineTokenMeasure>): boolean {
   const long = children.length >= SHARED_CHILDREN_LENGTH
   const held = long ? measures.get(children) : undefined
-  if (held) return held.depth <= 1
+  // Tokens with no children of their own, `tokens: []`, still have children.
+  if (held) return held.containers === 0
   for (const child of children) {
     checkChild(child)
     if ('tokens' in child) return false
@@ -161,7 +162,7 @@ function measureWithin(
   local.set(token, measure)
   // A token whose children are all text is charged and released as a
   // built-in one, wherever it is, so it isn't kept.
-  if (measure.text === 0 && measure.depth > 1) measures.set(token, measure)
+  if (measure.text === 0 && measure.containers > 0) measures.set(token, measure)
   return measure
 }
 

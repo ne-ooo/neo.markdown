@@ -233,6 +233,28 @@ describe('custom inline rules and the token budget', () => {
     expect(() => parser.tokenize('@ '.repeat(1_000))).not.toThrow()
   })
 
+  // A long array of children measured once was taken as all text when its
+  // tokens had empty children, so warming it let them go uncounted.
+  it('counts tokens with empty children in a remembered array', () => {
+    const empty = Array.from({ length: 16 }, () => ({ type: 'em', raw: '', text: '', tokens: [] }) as InlineToken)
+    const a: InlineToken = { type: 'strong', raw: 'A', text: '', tokens: empty }
+    const b: InlineToken = { type: 'strong', raw: 'B', text: '', tokens: empty }
+    const s: InlineToken = { type: 'strong', raw: 'S', text: '', tokens: [a] }
+    const parser = createParser({
+      maxOutputLength: 40,
+      renderer: { strong: () => '', em: () => '' },
+      plugins: [builder => {
+        for (const [char, token] of Object.entries({ A: a, B: b, S: s })) {
+          builder.addInlineRule({ name: char, priority: 1, triggerChars: [char.charCodeAt(0)], tokenize: (src) => (src.startsWith(char) ? { raw: char, token } : null) })
+        }
+      }],
+    })
+    const refusal = new RangeError("Custom inline tokens' descendants with children exceed maxOutputLength 40")
+
+    expect(() => parser.tokenize('B B B')).toThrow(refusal)
+    expect(() => parser.tokenize('![S](u) B B B B B B B B')).toThrow(refusal)
+  })
+
   // Alt text from the Markdown itself counted against the output limit,
   // though a renderer or a transform may drop images, and tokenizing renders
   // nothing.
