@@ -1,7 +1,7 @@
 ---
 name: best-practices
 description: Performance, security, tree-shaking, ugc, safeLinks, selective blocks, and token pipeline patterns for @lpm.dev/neo.markdown
-version: "3.0.1"
+version: "3.1.0"
 globs:
   - "**/*.ts"
   - "**/*.tsx"
@@ -93,7 +93,7 @@ For user-generated content, use the `ugc` shorthand. It enables safe links, disa
 const html = parse(userComment, { ugc: true })
 ```
 
-UGC mode limits input to 1,000,000 UTF-16 code units. A larger `maxInputLength` value cannot increase this limit.
+UGC mode limits input to 1,000,000 UTF-16 code units and rendered HTML to 20,000,000. Larger `maxInputLength` and `maxOutputLength` values cannot increase these limits. Outside UGC mode, set both for untrusted Markdown: reference links repeat their destination at each use, so a short document can render to hundreds of times its length.
 
 ### Use `safeLinks: true` for README rendering
 

@@ -391,6 +391,17 @@ export interface ParserOptions {
   maxInputLength?: number
 
   /**
+   * Maximum rendered HTML length in UTF-16 code units, before sanitizing and
+   * HTML transforms. Rendering stops with a RangeError once the output passes
+   * it. Reference links repeat their destination at each use, so a short
+   * document can render to hundreds of times its length.
+   * HTML is counted as it renders, so a custom renderer that renders a
+   * token's children and then discards them still has them counted.
+   * UGC mode uses a hard maximum of 20,000,000.
+   */
+  maxOutputLength?: number
+
+  /**
    * Custom set of block rules.
    * The `/core` parser contains only the rules explicitly imported by a consumer.
    * The main entry still includes its complete default rule set.

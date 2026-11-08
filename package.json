@@ -1,6 +1,6 @@
 {
   "name": "@lpm.dev/neo.markdown",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "description": "Modern, tree-shakeable markdown parser with TypeScript support",
   "keywords": [
     "markdown",

@@ -26,6 +26,7 @@ import type {
   ImageToken,
   BrToken,
   InlineToken,
+  TableCell,
   BlockToken,
 } from './types.js'
 import { createCodeBlockContext } from './code-context.js'
@@ -83,6 +84,8 @@ function resolveAgainstBase(url: string, baseUrl: URL): string {
 export class HtmlRenderer implements Renderer {
   private rendererOptions: HtmlRendererOptions
   private baseUrl: URL | null
+  private outputLimit = Infinity
+  private outputLength = 0
   private codeBlockHooks: readonly CodeBlockRenderHook[] = []
   private documentCodeBlockHook: CodeBlockRenderHook | undefined
 
@@ -179,7 +182,15 @@ export class HtmlRenderer implements Renderer {
     const start = token.ordered && token.start !== undefined && token.start !== 1
       ? ` start="${token.start}"`
       : ''
-    const body = token.items.map((item) => this.listitem(item)).join('')
+    // Each item is counted as it finishes, so a long list stops at the item
+    // that passes the limit.
+    const bodyAt = this.outputLength + `<${tag}${start}>\n`.length
+    this.reach(bodyAt)
+    let body = ''
+    for (const item of token.items) {
+      body += this.listitem(item)
+      this.reach(bodyAt + body.length)
+    }
     return `<${tag}${start}>\n${body}</${tag}>\n`
   }
 
@@ -212,14 +223,18 @@ export class HtmlRenderer implements Renderer {
       }
       // Loose list item or multiple blocks: keep <p> tags
       const visible = token.tokens.filter(child => child.type !== 'definition')
+      const leading = visible.length && !(isTight && visible[0].type === 'paragraph') ? '\n' : ''
+      // Each child is counted as it finishes, as `renderBlock` does.
+      const contentAt = this.outputLength + `<li>${checkbox}${leading}`.length
+      this.reach(contentAt)
       let content = ''
       for (const [index, child] of visible.entries()) {
         if (isTight && child.type === 'paragraph') {
           content += this.renderInline(child.tokens)
           if (index < visible.length - 1) content += '\n'
         } else content += this.renderBlockToken(child)
+        this.reach(contentAt + content.length)
       }
-      const leading = visible.length && !(isTight && visible[0].type === 'paragraph') ? '\n' : ''
       return `<li>${checkbox}${leading}${content}</li>\n`
     }
     // Fallback: render text only
@@ -238,23 +253,39 @@ export class HtmlRenderer implements Renderer {
    * Render table
    */
   table(token: TableToken): string {
-    const header = this.tablerow(
-      token.header.map((cell, i) =>
-        this.tablecell(this.renderInline(cell.tokens), token.align[i], true)
-      )
-    )
-
-    const body = token.rows
-      .map((row) =>
-        this.tablerow(
-          row.map((cell, i) =>
-            this.tablecell(this.renderInline(cell.tokens), token.align[i], false)
-          )
-        )
-      )
-      .join('')
+    // A short row is padded to the header's width, so a table of one-character
+    // rows can render to many times its length: each cell and row is counted
+    // as it finishes. The count leaves out `<tbody>` and a row's own markup
+    // until the row finishes, since an override decides them.
+    const headerAt = this.outputLength + '<table>\n<thead>\n'.length
+    this.reach(headerAt)
+    const header = this.renderTableRow(token.header, token.align, true, headerAt)
+    const bodyAt = headerAt + header.length + '</thead>\n'.length
+    let body = ''
+    for (const row of token.rows) {
+      body += this.renderTableRow(row, token.align, false, bodyAt + body.length)
+      this.reach(bodyAt + body.length)
+    }
 
     return `<table>\n<thead>\n${header}</thead>\n${body ? `<tbody>\n${body}</tbody>\n` : ''}</table>\n`
+  }
+
+  private renderTableRow(
+    row: TableCell[],
+    align: TableToken['align'],
+    header: boolean,
+    rowAt: number,
+  ): string {
+    const cells: string[] = []
+    let length = 0
+    this.reach(rowAt)
+    for (const [i, cell] of row.entries()) {
+      const html = this.tablecell(this.renderInline(cell.tokens), align[i], header)
+      cells.push(html)
+      length += html.length
+      this.reach(rowAt + length)
+    }
+    return this.tablerow(cells)
   }
 
   /**
@@ -402,8 +433,48 @@ export class HtmlRenderer implements Renderer {
    */
   renderBlock(tokens: BlockToken[]): string {
     let html = ''
-    for (const token of tokens) html += this.renderBlockToken(token)
+    for (const token of tokens) {
+      const start = this.outputLength
+      html += this.counted(start, this.renderBlockToken(token))
+    }
     return html
+  }
+
+  /**
+   * @internal Render `render` with at most `limit` code units of output.
+   * `outputLength` tracks the document rendered so far: a token's HTML holds
+   * its children's, so when a token finishes, the length becomes where it
+   * started plus its own length, and its children are counted once. Each
+   * child, list item, and table cell checks the limit as it finishes, so an
+   * expanding token stops before its HTML is built. The count may trail the
+   * output by a tag's length while a token renders, and never runs ahead of
+   * HTML that a renderer keeps.
+   */
+  withOutputLimit<T>(limit: number, render: () => T): T {
+    const previousLimit = this.outputLimit
+    const previousLength = this.outputLength
+    this.outputLimit = limit
+    this.outputLength = 0
+    try {
+      return render()
+    } finally {
+      this.outputLimit = previousLimit
+      this.outputLength = previousLength
+    }
+  }
+
+  private counted(start: number, html: string): string {
+    this.reach(start + html.length)
+    return html
+  }
+
+  /** Record that the document rendered so far is `length` long. */
+  private reach(length: number): void {
+    if (this.outputLimit === Infinity) return
+    this.outputLength = length
+    if (length > this.outputLimit) {
+      throw new RangeError(`Rendered HTML exceeds maxOutputLength ${this.outputLimit}`)
+    }
   }
 
   /**
@@ -441,7 +512,10 @@ export class HtmlRenderer implements Renderer {
    */
   renderInline(tokens: InlineToken[]): string {
     let html = ''
-    for (const token of tokens) html += this.renderInlineToken(token)
+    for (const token of tokens) {
+      const start = this.outputLength
+      html += this.counted(start, this.renderInlineToken(token))
+    }
     return html
   }
 

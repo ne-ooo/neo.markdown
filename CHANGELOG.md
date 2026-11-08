@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.1.0] - 2026-11-08
+
+### Added
+
+- `maxOutputLength` stops rendering with a `RangeError` once the HTML passes a length, before sanitizing and HTML transforms. Reference links repeat their destination at each use, so a short document can render to hundreds of times its length: 471 KB of references rendered to 250 million characters. Each block, list item, and table cell is counted as it finishes, nested blocks once, and the parser stays usable after it stops. HTML a custom renderer renders and then discards still counts.
+
+### Changed
+
+- UGC mode stops rendering HTML longer than 20,000,000 code units with a `RangeError`, even when a larger `maxOutputLength` is given.
+
+### Fixed
+
+- ATX headings and GFM autolinks trim their trailing runs by scanning from the end. The trailing-run patterns retried the run at every offset, so a heading ending in a long run of spaces or tabs before a final character, or an autolink ending in a long run of punctuation, took quadratic time: 64,000 characters took 12.6 seconds for a heading and 1.6 seconds for an autolink. Output is unchanged.
+- Add both inputs, and a heading of only spaces and tabs, to the adversarial scaling tests.
+
 ## [3.0.1] - 2026-11-02
 
 This release includes the changes developed for 3.0.0, which was not published.

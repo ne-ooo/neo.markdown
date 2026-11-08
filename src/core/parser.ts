@@ -31,6 +31,7 @@ import {
 import { gfmInlineSupport, type GfmInlineSupport } from '../inline/gfm-support.js'
 
 const MAX_UGC_INPUT_LENGTH = 1_000_000
+const MAX_UGC_OUTPUT_LENGTH = 20_000_000
 const RAW_HTML_ERROR = 'Raw HTML tokens require allowHtml: true'
 const HARD_MAX_RENDER_DEPTH = 256
 
@@ -62,6 +63,12 @@ export class MarkdownParserBase implements Parser {
     ) {
       throw new TypeError('maxInputLength must be a non-negative safe integer')
     }
+    if (
+      supplied.maxOutputLength !== undefined
+      && (!Number.isSafeInteger(supplied.maxOutputLength) || supplied.maxOutputLength < 0)
+    ) {
+      throw new TypeError('maxOutputLength must be a non-negative safe integer')
+    }
 
     const resolved = supplied.ugc
       ? {
@@ -73,6 +80,10 @@ export class MarkdownParserBase implements Parser {
           maxInputLength: Math.min(
             supplied.maxInputLength ?? MAX_UGC_INPUT_LENGTH,
             MAX_UGC_INPUT_LENGTH
+          ),
+          maxOutputLength: Math.min(
+            supplied.maxOutputLength ?? MAX_UGC_OUTPUT_LENGTH,
+            MAX_UGC_OUTPUT_LENGTH
           ),
         }
       : supplied
@@ -216,7 +227,10 @@ export class MarkdownParserBase implements Parser {
       this.assertNoRawHtmlBlocks(transformedTokens)
     }
 
-    let html = this.renderer.renderBlock(transformedTokens)
+    const outputLimit = this.options.maxOutputLength
+    let html = outputLimit === undefined
+      ? this.renderer.renderBlock(transformedTokens)
+      : this.renderer.withOutputLimit(outputLimit, () => this.renderer.renderBlock(transformedTokens))
 
     // Sanitize user-provided HTML before plugin transforms.
     // Plugins inject trusted HTML (buttons, scripts, wrappers) that must

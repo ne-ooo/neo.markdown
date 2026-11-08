@@ -54,6 +54,9 @@ const adversarialInputs = [
   'gfmTildeRuns',
   'gfmTableRows',
   'gfmTagFilter',
+  'headingTrailingSpace',
+  'headingOnlySpace',
+  'autolinkTrailingPunctuation',
 ] as const
 
 describe('adversarial input scaling', () => {
