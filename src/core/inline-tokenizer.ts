@@ -537,15 +537,8 @@ export class InlineTokenizerBase {
       if (result) return result
     }
 
-    while (customIndex < customRules.length) {
-      const candidate = customRules[customIndex++]
-      result = candidate.rule.tokenize(src())
-      if (result) {
-        this.assertProgress(candidate.rule.name, source, cursor, result.raw)
-        return result
-      }
-    }
-    return null
+    // Rules ranked after text, charged and marked as the others are.
+    return tryCustomBefore(-Infinity)
   }
 
   private getCustomRules(char: number): ResolvedInlineRule[] {

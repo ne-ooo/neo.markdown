@@ -38,8 +38,8 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
     for (const token of tokens) {
       const previous = result.at(-1)
       if (previous?.type === 'text' && token.type === 'text') {
-        previous.raw += token.raw
-        previous.text += token.text
+        // A custom rule's token may be shared, so merging builds a new one.
+        result[result.length - 1] = { ...previous, raw: previous.raw + token.raw, text: previous.text + token.text }
         releaseTokenBudget(budget)
       } else {
         result.push(token)
@@ -137,7 +137,7 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
     const token = node.token
     const previous = result.at(-1)
     if (previous?.type === 'text' && token.type === 'text') {
-      previous.raw += token.raw; previous.text += token.text
+      result[result.length - 1] = { ...previous, raw: previous.raw + token.raw, text: previous.text + token.text }
       releaseTokenBudget(budget)
     } else {
       result.push(token)
