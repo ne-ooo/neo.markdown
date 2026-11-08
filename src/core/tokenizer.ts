@@ -9,6 +9,7 @@ import type {
   BlockRule,
   BlockRuleContext,
   BlockToken,
+  LazyLineSet,
   ParserOptions,
 } from './types.js'
 import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
@@ -25,16 +26,36 @@ export interface BlockCheckpoint {
   end: number
   dependencyEnd: number
   budgetCost: number
+  /** Nested content the block tokenized, which a reuse spends again. */
+  nestedCost: number
+  /** Whether the nested-work bound flattened part of the block. */
+  nestedRefused: boolean
   token?: BlockToken
   continuation?: unknown
 }
 
+/**
+ * Nested content a document may still tokenize. A reused block spends what
+ * it spent when it was tokenized, so each block sees what a fresh parse
+ * would leave it.
+ */
+export interface NestedWork {
+  remaining: number
+  refusals: number
+}
+
+/** The nested work a document of `length` code units may do. */
+export function createNestedWork(length: number): NestedWork {
+  return { remaining: Math.max(NESTED_WORK_FACTOR * length, MIN_NESTED_WORK), refusals: 0 }
+}
+
 export type BlockResume = (src: string, start: number, budget: TokenBudget | undefined,
-  checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory) => BlockToken[]
+  checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory,
+  work?: NestedWork) => BlockToken[]
 export interface BlockContinuationScope {
   context: NonNullable<BlockRuleContext['continuation']>
   finish(): unknown
-  tokenize(src: string, depth: number, lazy: ReadonlySet<number> | undefined, key: number, resume: BlockResume): BlockToken[]
+  tokenize(src: string, depth: number, lazy: LazyLineSet | undefined, key: number, resume: BlockResume): BlockToken[]
 }
 export type BlockContinuationFactory = (cursor: number, readThrough: () => number) => BlockContinuationScope | undefined
 
@@ -46,12 +67,19 @@ export function normalizeMarkdown(src: string): string {
 const DEFAULT_MAX_NESTING_DEPTH = 100
 const HARD_MAX_NESTING_DEPTH = 100
 const DEFAULT_CUSTOM_PRIORITY = 150
+/**
+ * How much nested content a document may tokenize: 8 times its length, and
+ * at least 4,000,000 code units, which covers 100 levels of 40,000.
+ */
+export const NESTED_WORK_FACTOR = 8
+export const MIN_NESTED_WORK = 4_000_000
 
 /** Parse Markdown into block tokens using only the supplied rules. */
 export class Tokenizer {
   private readonly options: Readonly<ParserOptions>
   private readonly rules: InternalBlockRule[]
   private readonly maxNestingDepth: number
+  private nestedWork: NestedWork | undefined
 
   constructor(
     options: ParserOptions = {},
@@ -109,20 +137,42 @@ export class Tokenizer {
 
   /** Tokenize a complete Markdown document. */
   tokenize(src: string, tokenBudget?: TokenBudget): BlockToken[] {
-    return this.tokenizeInternal(src, 0, tokenBudget)
+    return this.withNestedWork(src, () => this.tokenizeInternal(src, 0, tokenBudget))
   }
 
-  /** Internal experimental entry. Resume at a previously observed top-level boundary. */
+  /**
+   * Internal experimental entry. Resume at a previously observed top-level
+   * boundary, with the nested work blocks reused before it left.
+   */
   resume(src: string, start: number, tokenBudget: TokenBudget | undefined,
-    checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory): BlockToken[] {
-    return this.tokenizeInternal(src, 0, tokenBudget, undefined, start, checkpoint, continuations)
+    checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory,
+    work?: NestedWork): BlockToken[] {
+    return this.withNestedWork(src, () =>
+      this.tokenizeInternal(src, 0, tokenBudget, undefined, start, checkpoint, continuations), work)
+  }
+
+  /**
+   * Containers tokenize their content again at each level, so a document
+   * nested deep around a long body did that much work, and held each level's
+   * content at once: 256 KB under 99 blockquotes took 680 MB. A document may
+   * tokenize at most NESTED_WORK_FACTOR times its length, or MIN_NESTED_WORK,
+   * as nested content.
+   */
+  private withNestedWork<T>(src: string, tokenize: () => T, work = createNestedWork(src.length)): T {
+    const previous = this.nestedWork
+    this.nestedWork = work
+    try {
+      return tokenize()
+    } finally {
+      this.nestedWork = previous
+    }
   }
 
   private tokenizeInternal(
     src: string,
     depth: number,
     tokenBudget?: TokenBudget,
-    lazyLines?: ReadonlySet<number>,
+    lazyLines?: LazyLineSet,
     start = 0,
     checkpoint?: (point: BlockCheckpoint) => boolean,
     continuations?: BlockContinuationFactory
@@ -133,7 +183,13 @@ export class Tokenizer {
     let cursor = start
     let checkpointStart = start
     let previousBudget = tokenBudget?.remaining ?? 0
+    let previousNested = this.nestedWork?.remaining ?? 0
+    let previousRefusals = this.nestedWork?.refusals ?? 0
     let dependencyEnd = start
+    const nestedSpent = () => ({
+      nestedCost: previousNested - (this.nestedWork?.remaining ?? 0),
+      nestedRefused: (this.nestedWork?.refusals ?? 0) !== previousRefusals,
+    })
 
     while (cursor < markdown.length) {
       if (markdown.charCodeAt(cursor) === 10) {
@@ -171,21 +227,24 @@ export class Tokenizer {
       cursor += consumed || 1
       if (checkpoint && token) {
         const point = { start: checkpointStart, end: cursor, dependencyEnd: Math.max(dependencyEnd, cursor + 1),
-          budgetCost: previousBudget - (tokenBudget?.remaining ?? 0), token, ...(scope ? { continuation: scope.finish() } : {}) }
+          budgetCost: previousBudget - (tokenBudget?.remaining ?? 0), ...nestedSpent(), token,
+          ...(scope ? { continuation: scope.finish() } : {}) }
         if (checkpoint(point)) return tokens
         checkpointStart = cursor
         previousBudget = tokenBudget?.remaining ?? 0
+        previousNested = this.nestedWork?.remaining ?? 0
+        previousRefusals = this.nestedWork?.refusals ?? 0
         dependencyEnd = cursor
       }
     }
 
     if (checkpoint && checkpointStart < cursor) checkpoint({ start: checkpointStart, end: cursor,
-      dependencyEnd: markdown.length + 1, budgetCost: previousBudget - (tokenBudget?.remaining ?? 0) })
+      dependencyEnd: markdown.length + 1, budgetCost: previousBudget - (tokenBudget?.remaining ?? 0), ...nestedSpent() })
 
     return tokens
   }
 
-  private createContext(depth: number, tokenBudget?: TokenBudget, cursor = 0, lazyLines?: ReadonlySet<number>,
+  private createContext(depth: number, tokenBudget?: TokenBudget, cursor = 0, lazyLines?: LazyLineSet,
     observe?: (end: number) => void, length = 0, scope?: BlockContinuationScope): BlockRuleContext {
     return {
       depth,
@@ -195,6 +254,16 @@ export class Tokenizer {
           this.tokenizeInternal(source, nestedDepth, budget, lazy, start, checkpoint, continuations))
         : this.tokenizeInternal(src, nestedDepth, tokenBudget, lazy),
       isLazyLine: (offset) => lazyLines?.has(cursor + offset) ?? false,
+      reserveNested: (length) => {
+        const work = this.nestedWork
+        if (!work) return true
+        if (work.remaining < length) {
+          work.refusals++
+          return false
+        }
+        work.remaining -= length
+        return true
+      },
       interruptsParagraph: (src, paragraphPriority, excludedRule) => {
         if (observe) {
           const first = src.indexOf('\n')
