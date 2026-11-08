@@ -25,7 +25,7 @@ const isSpaceOrTab = (char: string | undefined): boolean => char === ' ' || char
  * Scanned from the end: trailing-run patterns retried the run at every offset,
  * so a long run of spaces before a final character took quadratic time.
  */
-function headingText(value: string): string {
+export function headingText(value: string): string {
   let end = value.length
   while (end > 0 && isSpaceOrTab(value[end - 1])) end--
   let hashes = end

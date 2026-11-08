@@ -5,6 +5,17 @@ import type { InlineToken } from '../core/types.js'
 const AUTOLINK = /^((?:https?:\/\/|ftp:\/\/|www\.)[^\s<]+)/i
 const AUTOLINK_TRAILING_PUNCTUATION = new Set(['?', '!', '.', ',', ':', '*', '_', '~'])
 
+/**
+ * An autolink without its trailing punctuation, scanned from the end: a
+ * trailing-run pattern retried the run at every offset, which was quadratic
+ * on a long run.
+ */
+export function trimAutolinkPunctuation(text: string): string {
+  let end = text.length
+  while (end > 0 && AUTOLINK_TRAILING_PUNCTUATION.has(text[end - 1]!)) end--
+  return text.slice(0, end)
+}
+
 type AutolinkResult = { token: InlineToken; raw: string }
 
 export interface GfmInlineSupport {
@@ -102,11 +113,7 @@ export const gfmInlineSupport: GfmInlineSupport = {
     const match = AUTOLINK.exec(source)
     if (!match) return null
 
-    // Trailing punctuation is scanned from the end; a trailing-run pattern
-    // retried the run at every offset, which was quadratic on a long run.
-    let end = match[0].length
-    while (end > 0 && AUTOLINK_TRAILING_PUNCTUATION.has(match[0][end - 1]!)) end--
-    let raw = match[0].slice(0, end)
+    let raw = trimAutolinkPunctuation(match[0])
 
     if (raw.endsWith(')')) {
       let open = 0

@@ -55,6 +55,7 @@ const adversarialInputs = [
   'gfmTableRows',
   'gfmTagFilter',
   'headingTrailingSpace',
+  'headingOnlySpace',
   'autolinkTrailingPunctuation',
 ] as const
 

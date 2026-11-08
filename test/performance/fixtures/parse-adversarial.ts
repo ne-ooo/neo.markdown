@@ -41,6 +41,7 @@ const scenarios: Record<string, (size: number) => unknown> = {
   // character, and an autolink ending in a long run of trailing punctuation.
   // Trimming them with a trailing-run pattern retried the run at every offset.
   headingTrailingSpace: (size) => defaultParser.parse(`# x${' \t'.repeat(size * 2)}y`),
+  headingOnlySpace: (size) => defaultParser.parse(`#${' \t'.repeat(size * 2)}`),
   autolinkTrailingPunctuation: (size) =>
     defaultParser.parse(`http://a.b/${'?!.,:*_~'.repeat(size)}z`),
   emphasis: (size) => defaultParser.parse('*_~'.repeat(size)),
