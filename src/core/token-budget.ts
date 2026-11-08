@@ -35,5 +35,6 @@ export function releaseTokenBudget(
   budget: TokenBudget | undefined,
   count = 1
 ): void {
-  if (budget) budget.remaining += count
+  // Only charged tokens return, so the budget never passes its limit.
+  if (budget) budget.remaining = Math.min(budget.limit, budget.remaining + count)
 }

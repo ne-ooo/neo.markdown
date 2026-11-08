@@ -651,6 +651,12 @@ export interface InlineRule {
   priority?: number | `before:${string}` | `after:${string}`
   /** Character codes that trigger this rule (preserves fast-path optimization) */
   triggerChars?: number[]
-  /** Tokenize function — returns token + consumed raw string, or null */
+  /**
+   * Tokenize function — returns token + consumed raw string, or null.
+   *
+   * The token may be the same object every time, and may share children,
+   * but must not hold itself. It is measured the first time it is returned
+   * in a document, so it must not change while the document is parsed.
+   */
   tokenize(src: string): { token: InlineToken; raw: string } | null
 }

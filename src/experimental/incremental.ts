@@ -1,6 +1,7 @@
 import { MarkdownParser } from '../core/parser.js'
 import { allBlockRules } from '../blocks/rules.js'
 import { consumeTokenBudget, type TokenBudget } from '../core/token-budget.js'
+import type { InlineDocumentSpent } from '../core/custom-tokens.js'
 import { BlockCache } from './block-cache.js'
 import { preparePluginReuse, type IncrementalReusePolicy } from './plugin-contract.js'
 import { isolateTokens } from './isolate-tokens.js'
@@ -27,6 +28,8 @@ export interface IncrementalMarkdownOptions {
 }
 interface Cached {
   tokens: InlineToken[]; budgetCost: number; count: number; units: number
+  /** What its custom tokens and images spent of the document's allowances, spent again when reused. */
+  documentCost: InlineDocumentSpent
   references: ReadonlyMap<string, LinkReference | undefined>; wholeMapRead: boolean
 }
 function bounded(value: number, name: string): number {
@@ -129,6 +132,7 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
       const previous = cache.get(text)
       if (previous) {
         consumeTokenBudget(budget, previous.budgetCost)
+        this.respendInlineDocument(previous.documentCost)
         charge(text.length + previous.units + previous.count)
         reusedInlineCodeUnits += text.length
         cache.delete(text); cache.set(text, previous)
@@ -136,6 +140,7 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
         return isolated ? isolateTokens(previous.tokens, charge, cloneMetrics) : previous.tokens
       }
       const remaining = budget?.remaining ?? 0
+      const spent = this.inlineDocumentSpent()
       const tracked = new ReferenceTracker(references, maxReferences, maxTokenUnits, charge)
       runtime!.cacheableInline = true
       const tokens = runtime!.hasInlineRules
@@ -160,7 +165,9 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
         const removed = cache.get(first)!
         remove(first, removed)
       }
+      const spentAfter = this.inlineDocumentSpent()
       cache.set(text, { tokens: snapshot?.tokens ?? tokens, budgetCost: remaining - (budget?.remaining ?? 0), count, units,
+        documentCost: { nodes: spentAfter.nodes - spent.nodes, altText: spentAfter.altText - spent.altText },
         references: tracked.dependencies, wholeMapRead: tracked.wholeMapRead })
       cachedCodeUnits += text.length; cachedTokens += count; cachedTokenCodeUnits += units
       cachedReferenceDependencies += tracked.dependencies.size

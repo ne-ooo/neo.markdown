@@ -2,8 +2,12 @@
  * Inline tokenizer for parsing inline markdown elements
  */
 
-import type { InlineRule, InlineToken, LinkReference } from './types.js'
+import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
+import {
+  chargeCustomToken, createInlineDocument, editableText, keepAltText, leafText, rendersChildren, SHARED_PIECE_LENGTH,
+  type InlineDocument,
+} from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
 import { decodeEntities, decodeMarkdown, normalizeDestination } from '../utils/markdown-text.js'
@@ -47,7 +51,6 @@ const INLINE_RULE_PRIORITIES: Readonly<Record<string, number>> = {
 const DEFAULT_CUSTOM_PRIORITY = 750
 const HARD_MAX_INLINE_NESTING_DEPTH = 32
 const MIN_INLINE_WORK_BUDGET = 10_000
-
 type InlineResult = {
   token: InlineToken
   raw: string
@@ -140,6 +143,12 @@ export interface InlineTokenizerOptions {
   gfm?: boolean
   /** When true, preserve raw inline HTML tokens. */
   allowHtml?: boolean
+  /**
+   * The rendered HTML's limit, which bounds the text custom rules' tokens
+   * give, and their descendants without a token budget. A parser sets the
+   * allowances for all of a document's calls with `withDocument`.
+   */
+  maxOutputLength?: number
 }
 
 /**
@@ -155,6 +164,7 @@ export class InlineTokenizerBase {
   private textPattern: RegExp
   /** Inline tokenizer options */
   private inlineOptions: InlineTokenizerOptions
+  private document: InlineDocument | undefined
   /** Optional GFM-only tokenizer implementation. */
   private gfmSupport?: GfmInlineSupport
 
@@ -227,9 +237,29 @@ export class InlineTokenizerBase {
     references: ReadonlyMap<string, LinkReference> = new Map(),
     tokenBudget?: TokenBudget
   ): InlineToken[] {
-    return this.tokenizeInternal(src, references, 0, {
-      remaining: Math.max(MIN_INLINE_WORK_BUDGET, src.length * 2),
-    }, tokenBudget)
+    const outer = this.document
+    this.document = outer ?? createInlineDocument(tokenBudget, this.inlineOptions.maxOutputLength)
+    try {
+      return this.tokenizeInternal(src, references, 0, {
+        remaining: Math.max(MIN_INLINE_WORK_BUDGET, src.length * 2),
+      }, tokenBudget)
+    } finally {
+      this.document = outer
+    }
+  }
+
+  /**
+   * Runs the `tokenize` calls for one document against one set of
+   * allowances for custom rules' tokens. A call outside this has its own.
+   */
+  withDocument<T>(document: InlineDocument, tokenize: () => T): T {
+    const outer = this.document
+    this.document = document
+    try {
+      return tokenize()
+    } finally {
+      this.document = outer
+    }
   }
 
   private tokenizeInternal(
@@ -265,6 +295,34 @@ export class InlineTokenizerBase {
 
     while (cursor < src.length) {
       const char = src.charCodeAt(cursor)
+
+      // Before tokenizing at a line break, which a hard break would discard
+      // without returning what the token was charged.
+      if (char === 10) {
+        const previous = tokens.at(-1)
+        if (previous?.type === 'text') {
+          // Scanned from the end, so a long piece of text costs only its
+          // trailing spaces.
+          let start = previous.raw.length
+          while (start > 0 && (previous.raw.charCodeAt(start - 1) === 32 || previous.raw.charCodeAt(start - 1) === 9)) start--
+          const spaces = previous.raw.slice(start)
+          if (spaces) {
+            // A copy: the token may be one a custom rule returns every time.
+            const trimmed = editableText(previous)
+            trimmed.raw = previous.raw.slice(0, -spaces.length)
+            trimmed.text = previous.text.slice(0, -spaces.length)
+            // A rule's token with children is released by its measure.
+            const measure = 'tokens' in previous ? this.document!.measures.get(previous) : undefined
+            if (measure) this.document!.measures.set(trimmed, measure)
+            tokens[tokens.length - 1] = trimmed
+            if (/^ {2,}$/.test(spaces)) {
+              consumeTokenBudget(tokenBudget)
+              tokens.push({ type: 'br', raw: spaces + '\n' })
+              previousChar = '\n'; cursor++; fallbackTextIndex = -1; continue
+            }
+          }
+        }
+      }
       const token = this.tokenizeAt(
         src,
         cursor,
@@ -277,26 +335,6 @@ export class InlineTokenizerBase {
         tokenBudget,
         allowExtendedAutolinks
       )
-
-      if (char === 10) {
-        const previous = tokens.at(-1)
-        if (previous?.type === 'text') {
-          // Scanned from the end, so a long piece of text costs only its
-          // trailing spaces.
-          let start = previous.raw.length
-          while (start > 0 && (previous.raw.charCodeAt(start - 1) === 32 || previous.raw.charCodeAt(start - 1) === 9)) start--
-          const spaces = previous.raw.slice(start)
-          if (spaces) {
-            previous.raw = previous.raw.slice(0, -spaces.length)
-            previous.text = previous.text.slice(0, -spaces.length)
-            if (/^ {2,}$/.test(spaces)) {
-              consumeTokenBudget(tokenBudget)
-              tokens.push({ type: 'br', raw: spaces + '\n' })
-              previousChar = '\n'; cursor++; fallbackTextIndex = -1; continue
-            }
-          }
-        }
-      }
       if (token) {
         this.assertProgress('inline tokenizer', src, cursor, token.raw)
         // Plain text, such as an escape, joins the text before it now rather
@@ -379,7 +417,7 @@ export class InlineTokenizerBase {
       }
     }
 
-    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth)
+    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth, this.document?.custom ? this.document.measures : undefined)
   }
 
   private appendFallbackText(
@@ -438,9 +476,7 @@ export class InlineTokenizerBase {
           this.assertProgress(candidate.rule.name, source, cursor, result.raw)
           // The caller charges the token itself; its children count too, so
           // discarding it releases what was charged.
-          if ('tokens' in result.token) {
-            consumeTokenBudget(tokenBudget, this.countTokens(result.token.tokens))
-          }
+          chargeCustomToken(result.token, this.document!, tokenBudget)
           return { ...result, custom: true }
         }
       }
@@ -537,15 +573,8 @@ export class InlineTokenizerBase {
       if (result) return result
     }
 
-    while (customIndex < customRules.length) {
-      const candidate = customRules[customIndex++]
-      result = candidate.rule.tokenize(src())
-      if (result) {
-        this.assertProgress(candidate.rule.name, source, cursor, result.raw)
-        return result
-      }
-    }
-    return null
+    // Rules ranked after text, charged and marked as the others are.
+    return tryCustomBefore(-Infinity)
   }
 
   private getCustomRules(char: number): ResolvedInlineRule[] {
@@ -898,17 +927,7 @@ export class InlineTokenizerBase {
 
     if (isImage) {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
-      this.release(children, tokenBudget)
-      return {
-        token: {
-          type: 'image',
-          raw,
-          href,
-          title,
-          text: this.inlineText(children),
-        },
-        raw,
-      }
+      return { token: this.withAltText({ type: 'image', raw, href, title, text: '' }, children, tokenBudget), raw }
     }
 
     // Recursively tokenize link text
@@ -965,9 +984,8 @@ export class InlineTokenizerBase {
     const raw = src.slice(cursor, end)
     if (isImage) {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
-      this.release(children, tokenBudget)
       return {
-        token: { type: 'image', raw, text: this.inlineText(children), href: reference.href, title: reference.title },
+        token: this.withAltText({ type: 'image', raw, text: '', href: reference.href, title: reference.title }, children, tokenBudget),
         raw,
       }
     }
@@ -991,28 +1009,106 @@ export class InlineTokenizerBase {
   }
 
   /**
-   * Returns to the budget the tokens of text the result doesn't keep: an
+   * Returns what the tokens of text the result doesn't keep were charged: an
    * image's alt text becomes a string, and link text holding a link isn't a
-   * link.
+   * link. A custom rule's token returns the descendants its measure gives,
+   * and an image built here its alt text.
    */
   private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
-    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens))
-  }
-
-  private countTokens(tokens: InlineToken[]): number {
-    let count = tokens.length
-    for (const token of tokens) {
-      if ('tokens' in token) count += this.countTokens(token.tokens)
+    const document = this.document!
+    // Nothing to return without a budget or measured rule tokens.
+    if (!tokenBudget && !document.custom) return
+    let count = 0
+    let custom = 0
+    let altText = 0
+    const pending = [tokens]
+    while (pending.length > 0) {
+      const level = pending.pop()!
+      count += level.length
+      for (const token of level) {
+        const measure = document.custom ? document.measures.get(token) : undefined
+        if (measure) {
+          count += measure.nodes
+          if (rendersChildren(token)) custom += measure.containers
+          continue
+        }
+        const image = document.custom ? document.images.get(token) : undefined
+        if (image !== undefined) {
+          altText += image
+          document.images.delete(token)
+        }
+        if ('tokens' in token) pending.push(token.tokens)
+      }
     }
-    return count
+    releaseTokenBudget(tokenBudget, count)
+    releaseTokenBudget(document.nodes, custom)
+    document.altText -= altText
   }
 
   private containsLink(tokens: InlineToken[]): boolean {
-    return tokens.some(token => token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens)))
+    return tokens.some(token => {
+      const measure = this.document!.custom ? this.document!.measures.get(token) : undefined
+      if (measure) return measure.link
+      return token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens))
+    })
   }
 
-  private inlineText(tokens: InlineToken[]): string {
-    return tokens.map(token => 'tokens' in token ? this.inlineText(token.tokens) : token.type === 'br' ? '\n' : token.text).join('')
+  /**
+   * Gives an image the text of its children as alt text, and returns the
+   * children's charge. Custom text in it counts against the output limit
+   * while the image is kept, known from the measures of rule tokens, and of
+   * inner images before they are released, before any of it is built. Alt
+   * text from the Markdown itself is bounded by the Markdown.
+   */
+  private withAltText(image: ImageToken, children: InlineToken[], tokenBudget?: TokenBudget): ImageToken {
+    const document = this.document!
+    const customLength = (tokens: InlineToken[]): number => {
+      let length = 0
+      for (const token of tokens) {
+        if (!('tokens' in token)) {
+          length += document.images.get(token) ?? 0
+          continue
+        }
+        const measure = document.measures.get(token)
+        length += measure ? measure.text : customLength(token.tokens)
+      }
+      return length
+    }
+    const custom = document.custom ? customLength(children) : 0
+    this.release(children, tokenBudget)
+    keepAltText(document, custom)
+    // Link text tokenized again builds this again, so long pieces, such as a
+    // rule token's text, are shared by concatenation rather than copied each
+    // time, and runs of short ones are joined.
+    const pieces: string[] = []
+    let count = 0
+    let shared = ''
+    const collect = (tokens: InlineToken[]): void => {
+      for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index]!
+        if ('tokens' in token) {
+          if (!document.custom || document.measures.get(token)?.text !== 0) collect(token.tokens)
+          continue
+        }
+        const value: unknown = token.type === 'br' ? '\n' : (token as { text?: unknown }).text
+        const piece = typeof value === 'string' ? value : leafText(token)
+        if (piece.length < SHARED_PIECE_LENGTH) {
+          pieces[count++] = piece
+        } else {
+          if (count > 0) {
+            pieces.length = count
+            shared += pieces.join('')
+            count = 0
+          }
+          shared += piece
+        }
+      }
+    }
+    collect(children)
+    pieces.length = count
+    image.text = count > 0 ? shared + pieces.join('') : shared
+    if (custom > 0) document.images.set(image, custom)
+    return image
   }
 
   private parseLinkDestination(

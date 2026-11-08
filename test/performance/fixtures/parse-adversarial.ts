@@ -1,4 +1,5 @@
 import { createParser } from '../../../src/index.js'
+import type { InlineToken } from '../../../src/core/types.js'
 import { createParser as createSanitizedParser } from '../../../src/sanitized.js'
 import { InlineTokenizer } from '../../../src/core/inline-tokenizer.js'
 import { copyCodePlugin } from '../../../src/plugins/copy-code.js'
@@ -19,6 +20,31 @@ const sanitizedEmbedParser = createSanitizedParser({
   sanitize: true,
   plugins: [embedPlugin({ youtube: true })],
 })
+
+/** A UGC parser whose rule on `@` returns what `make` gives. */
+function customParser(make: () => InlineToken) {
+  return createParser({
+    ugc: true,
+    plugins: [builder => builder.addInlineRule({
+      name: 'at', priority: 1, triggerChars: [64], tokenize: (src) => (src.startsWith('@') ? { raw: '@', token: make() } : null),
+    })],
+  })
+}
+
+// 2,000,000 characters under 200 levels, each adding a character.
+let deepCustomToken: InlineToken = { type: 'text', raw: '@', text: 'y'.repeat(2_000_000) }
+for (let level = 0; level < 200; level++) {
+  deepCustomToken = { type: 'strong', raw: '@', text: '@', tokens: [deepCustomToken, { type: 'text', raw: 'x', text: 'x' }] }
+}
+const deepCustomParser = customParser(() => deepCustomToken)
+// Each level of the deep token as a token of its own, returned in turn.
+const overlappingRoots: InlineToken[] = []
+for (let token = deepCustomToken; 'tokens' in token; token = token.tokens[0]!) overlappingRoots.push(token)
+let overlappingCalls = 0
+const overlappingParser = customParser(() => overlappingRoots[overlappingCalls++ % overlappingRoots.length]!)
+const freshCustomParser = customParser(() => ({
+  type: 'strong', raw: '@', text: '@', tokens: Array.from({ length: 100 }, () => ({ type: 'text' as const, raw: '', text: '' })),
+}))
 
 function tokenLimited(parse: () => string): string {
   try {
@@ -77,6 +103,14 @@ const scenarios: Record<string, (size: number) => unknown> = {
   ugcEmphasis: () => tokenLimited(() => ugcParser.parse('*a* '.repeat(250_000))),
   // The largest UGC input, all email addresses: 166,666 links.
   ugcEmails: () => tokenLimited(() => ugcParser.parse('a@b.c '.repeat(166_666))),
+  // Alt text was built for every token in a custom token, each holding all
+  // the text under it: about 400 MB here.
+  customDeepAlt: () => deepCustomParser.parse('![@](u)'),
+  // Every token a rule returned was kept with its measure for the document.
+  customFreshImages: () => freshCustomParser.parse('![@](u) '.repeat(10_000)),
+  // Each token's alt text was kept for the document: 200 tokens holding the
+  // same 2,000,000 characters, from a 57-character document.
+  customOverlappingRoots: () => overlappingParser.parse(`${'['.repeat(10)}![@](i)${'](u)'.repeat(10)}`),
   // A long body under containers nested to the limit.
   deepQuotes: () => defaultParser.parse(`${'> '.repeat(99)}x\n${'y\n'.repeat(131_072)}`),
   deepLists: () => defaultParser.parse(

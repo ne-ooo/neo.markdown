@@ -20,6 +20,9 @@ import type {
 import { DocumentCollector } from './document-result.js'
 import { Tokenizer } from './tokenizer.js'
 import { InlineTokenizerBase } from './inline-tokenizer.js'
+import {
+  createInlineDocument, inlineDocumentSpent, respendInlineDocument, type InlineDocument, type InlineDocumentSpent,
+} from './custom-tokens.js'
 import { HtmlRenderer } from './renderer.js'
 import { PluginBuilderImpl } from './plugin-builder.js'
 import { buildSanitizerConfig, markSanitizerConfigStable } from './sanitizer.js'
@@ -44,6 +47,7 @@ export class MarkdownParserBase implements Parser {
   private options: ParserOptions
   private blockTokenizer: Tokenizer
   private inlineTokenizer: InlineTokenizerBase
+  private inlineDocument: InlineDocument | undefined
   private renderer: HtmlRenderer
   private tokenTransforms: Array<(tokens: BlockToken[]) => BlockToken[]>
   private htmlTransforms: Array<(html: string) => string>
@@ -180,6 +184,7 @@ export class MarkdownParserBase implements Parser {
       breaks: this.options.breaks,
       gfm: this.options.gfm,
       allowHtml: this.options.allowHtml,
+      maxOutputLength: this.options.maxOutputLength,
     }, inlineSupport)
   }
 
@@ -274,8 +279,17 @@ export class MarkdownParserBase implements Parser {
     const references = new Map<string, LinkReference>()
     this.collectReferenceDefinitions(blockTokens, references)
 
-    // Parse inline content recursively
-    const tokens = this.processInlineTokens(blockTokens, references, tokenBudget)
+    // Parse inline content recursively, with one set of allowances for the
+    // document's custom inline tokens.
+    const document = createInlineDocument(tokenBudget, this.options.maxOutputLength)
+    const outerDocument = this.inlineDocument
+    this.inlineDocument = document
+    let tokens: BlockToken[]
+    try {
+      tokens = this.inlineTokenizer.withDocument(document, () => this.processInlineTokens(blockTokens, references, tokenBudget))
+    } finally {
+      this.inlineDocument = outerDocument
+    }
 
     // Enforce the documented limit against the complete returned graph too.
     // This catches nested tokens synthesized directly by custom rules.
@@ -385,6 +399,16 @@ export class MarkdownParserBase implements Parser {
 
       return token
     })
+  }
+
+  /** Internal extension point: what the document's custom inline tokens and images have spent so far. */
+  protected inlineDocumentSpent(): InlineDocumentSpent {
+    return inlineDocumentSpent(this.inlineDocument)
+  }
+
+  /** Internal extension point: spends again what reused inline tokens spent. */
+  protected respendInlineDocument(spent: InlineDocumentSpent): void {
+    respendInlineDocument(this.inlineDocument, spent)
   }
 
   /** Internal extension point for bounded, per-parser inline reuse experiments. */
