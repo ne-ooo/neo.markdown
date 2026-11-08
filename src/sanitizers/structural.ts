@@ -70,6 +70,9 @@ function CountingTokenizer(options: object, parser: object): HtmlTokenizer {
   tokenizer.end = () => {
     try {
       end.call(tokenizer)
+      // The parser closes what is still open as its tokenizer ends. Any
+      // left open would be closed later, against the parser around it.
+      if (openElements[outer]! > 0) throw new Error('sanitize-html closed elements after its tokenizer ended')
     } finally {
       openElements.length = outer
     }
