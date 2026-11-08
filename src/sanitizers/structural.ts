@@ -7,7 +7,6 @@ import {
   isSanitizerConfigStable,
 } from '../core/sanitizer.js'
 import type { SanitizerConfig } from '../core/types.js'
-import { assertHtmlNesting } from './nesting.js'
 
 const SAFE_COLOR_VALUES = [
   /^#[\da-f]{3,8}$/i,
@@ -28,6 +27,29 @@ const SAFE_INLINE_STYLES: Record<string, RegExp[]> = {
 const RESERVED_EMBED_DATA_ATTRIBUTE = /^data-(?:embed(?:-|$)|gist-(?:src|height)$|neo-embed(?:-|$))/i
 type StructuralSanitizerOptions = NonNullable<Parameters<typeof structuralSanitizeHtml>[1]>
 const stableOptions = new WeakMap<SanitizerConfig, StructuralSanitizerOptions>()
+
+/**
+ * The deepest HTML the structural sanitizer accepts. Nothing past depth 100
+ * reaches its output, and its parser, htmlparser2, keeps open elements
+ * innermost first: each element it opens moves every open one, and each end
+ * tag searches them all, so 1 MB of nested tags took 2 to 14 seconds.
+ */
+export const MAX_HTML_NESTING_DEPTH = 256
+
+// Elements the parser holds open in the current sanitize call, counted from
+// its own open and close events, which include implied end tags and void
+// elements, so the count is its stack's depth.
+let openElements = 0
+
+function openElement(): void {
+  if (++openElements > MAX_HTML_NESTING_DEPTH) {
+    throw new RangeError(`HTML nesting exceeds ${MAX_HTML_NESTING_DEPTH} elements`)
+  }
+}
+
+function closeElement(): void {
+  openElements--
+}
 
 function hardenSanitizedTag(
   tagName: string,
@@ -80,6 +102,8 @@ function buildStructuralOptions(config: SanitizerConfig): StructuralSanitizerOpt
     nonTextTags: ['script', 'style', 'textarea', 'xmp', 'option'],
     allowVulnerableTags: false,
     nestingLimit: 100,
+    onOpenTag: openElement,
+    onCloseTag: closeElement,
     enforceHtmlBoundary: false,
     parseStyleAttributes: config.allowStyle,
     allowedStyles: config.allowStyle ? { '*': SAFE_INLINE_STYLES } : undefined,
@@ -96,15 +120,20 @@ function buildStructuralOptions(config: SanitizerConfig): StructuralSanitizerOpt
 
 /**
  * Sanitize an HTML fragment with structural parsing and a strict allowlist.
- * Throws a RangeError when the HTML nests deeper than MAX_HTML_NESTING_DEPTH
- * elements: the parser's work grows with the square of the depth.
+ * Throws a RangeError, stopping the parse, once the HTML nests deeper than
+ * MAX_HTML_NESTING_DEPTH elements.
  */
 export function sanitizeHtml(html: string, config: SanitizerConfig): string {
-  assertHtmlNesting(html)
   let options = stableOptions.get(config)
   if (!options) {
     options = buildStructuralOptions(config)
     if (isSanitizerConfigStable(config)) stableOptions.set(config, options)
   }
-  return structuralSanitizeHtml(html, options)
+  const outer = openElements
+  openElements = 0
+  try {
+    return structuralSanitizeHtml(html, options)
+  } finally {
+    openElements = outer
+  }
 }

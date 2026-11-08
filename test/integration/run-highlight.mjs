@@ -41,8 +41,7 @@ try {
     await cp(join(packageRoot, 'package.json'), join(target, 'package.json'))
     await cp(join(packageRoot, 'dist'), join(target, 'dist'), { recursive: true })
   }
-  const markdownManifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  for (const name of Object.keys(markdownManifest.dependencies ?? {})) await linkDependency(name, root)
+  await linkDependency('sanitize-html', root)
   await linkDependency('jsdom', highlightRoot)
   await writeFile(join(consumer, 'package.json'), '{"private":true,"type":"module"}\n')
   await writeFile(join(consumer, 'tsconfig.json'), JSON.stringify({
