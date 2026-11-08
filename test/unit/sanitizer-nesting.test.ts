@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module'
+import { dirname } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { MAX_HTML_NESTING_DEPTH } from '../../src/sanitizers/structural.js'
 import { createParser } from '../../src/sanitized.js'
@@ -117,5 +119,69 @@ describe('inputs in the structural sanitizer', () => {
     expect(performance.now() - started).toBeLessThan(2_000)
     expect(gfm().parse(`${'x'.repeat(10_000)}<input>\n\n`.repeat(50))).not.toContain('<input')
     expect(gfm().parse(`${'x'.repeat(1 << 20)}${'<input>'.repeat(500)}`)).not.toContain('<input')
+  })
+})
+
+// sanitize-html allows any htmlparser2 12.x. The count relies on a parser
+// running its closing events as its tokenizer ends; these change that in
+// memory, as a later release could, and the sanitizer must refuse.
+describe('htmlparser2 ending a parse differently', () => {
+  const require = createRequire(import.meta.url)
+  const htmlparser2 = require(require.resolve('htmlparser2', { paths: [dirname(require.resolve('sanitize-html'))] })) as {
+    Parser: { prototype: Record<string, unknown> }
+    Tokenizer: { prototype: Record<string, unknown> }
+  }
+  type Patched = { cbs: { onend?: () => void; onclosetag?: (name: string, implied: boolean) => void }; tokenizer: { end(): void }; onend(): void; ended: boolean }
+  const patched = (patches: { finish?: unknown; end?: unknown }, run: () => void) => {
+    const finish = htmlparser2.Tokenizer.prototype['finish']
+    const end = htmlparser2.Parser.prototype['end']
+    if (patches.finish) htmlparser2.Tokenizer.prototype['finish'] = patches.finish
+    if (patches.end) htmlparser2.Parser.prototype['end'] = patches.end
+    try {
+      run()
+    } finally {
+      htmlparser2.Tokenizer.prototype['finish'] = finish
+      htmlparser2.Parser.prototype['end'] = end
+    }
+  }
+
+  it('refuses closing events after the tokenizer ends', () => {
+    const finish = htmlparser2.Tokenizer.prototype['finish'] as (this: Patched) => void
+    patched({
+      finish(this: Patched) {
+        const onend = this.cbs.onend
+        this.cbs.onend = () => {}
+        try { finish.call(this) } finally { this.cbs.onend = onend }
+      },
+      end(this: Patched) {
+        this.ended = true
+        this.tokenizer.end()
+        this.onend()
+      },
+    }, () => {
+      expect(() => parser().parse('<div><b>x')).toThrow(new Error('sanitize-html closed elements after its tokenizer ended'))
+    })
+  })
+
+  it('refuses a close after the outermost parse ended', () => {
+    const end = htmlparser2.Parser.prototype['end'] as (this: Patched) => void
+    patched({
+      end(this: Patched) {
+        end.call(this)
+        this.cbs.onclosetag?.('div', true)
+      },
+    }, () => {
+      expect(() => parser().parse('<div>x</div>')).toThrow(new Error('sanitize-html closed an element after its parse ended'))
+    })
+  })
+
+  it('refuses a parse whose tokenizer never ends', () => {
+    patched({
+      end(this: Patched) {
+        this.ended = true
+      },
+    }, () => {
+      expect(() => parser().parse('<div>x</div>')).toThrow(new Error('sanitize-html ended a parse its tokenizer did not'))
+    })
   })
 })
