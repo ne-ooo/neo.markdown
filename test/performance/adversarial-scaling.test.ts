@@ -44,6 +44,8 @@ const adversarialInputs = [
   'copyHtml',
   'table',
   'breaks',
+  'lineBreakRuns',
+  'escapedLines',
   'embedRestore',
   'balancedEmphasis',
   'referenceLabels',

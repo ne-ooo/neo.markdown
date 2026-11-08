@@ -12,6 +12,7 @@ const htmlParser = createParser({ allowHtml: true })
 const tocParser = createParser({ allowHtml: true, plugins: [tocPlugin()] })
 const copyParser = createParser({ allowHtml: true, plugins: [copyCodePlugin()] })
 const breaksTokenizer = new InlineTokenizer([], { breaks: true })
+const plainTokenizer = new InlineTokenizer()
 const sanitizedEmbedParser = createSanitizedParser({
   allowHtml: true,
   sanitize: true,
@@ -74,6 +75,10 @@ const scenarios: Record<string, (size: number) => unknown> = {
   copyHtml: (size) => copyParser.parse('<pre '.repeat(size * 2)),
   table: (size) => defaultParser.parse(`|${' cell |'.repeat(size)}`),
   breaks: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 4)),
+  // Each line's trailing spaces are trimmed at its break. Text that joined
+  // across lines was copied at every one.
+  lineBreakRuns: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 20)),
+  escapedLines: (size) => plainTokenizer.tokenize('a\\_ \n'.repeat(size * 20)),
   embedRestore: (size) => sanitizedEmbedParser.parse('::youtube[x]\n'.repeat(size)),
   balancedEmphasis: (size) => defaultParser.parse('*a '.repeat(size) + 'center' + ' z*'.repeat(size)),
   referenceLabels: (size) => defaultParser.parse('[label\\]'.repeat(size)),

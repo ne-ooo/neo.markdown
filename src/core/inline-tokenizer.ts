@@ -281,7 +281,11 @@ export class InlineTokenizerBase {
       if (char === 10) {
         const previous = tokens.at(-1)
         if (previous?.type === 'text') {
-          const spaces = /[ \t]+$/.exec(previous.raw)?.[0] ?? ''
+          // Scanned from the end, so a long piece of text costs only its
+          // trailing spaces.
+          let start = previous.raw.length
+          while (start > 0 && (previous.raw.charCodeAt(start - 1) === 32 || previous.raw.charCodeAt(start - 1) === 9)) start--
+          const spaces = previous.raw.slice(start)
           if (spaces) {
             previous.raw = previous.raw.slice(0, -spaces.length)
             previous.text = previous.text.slice(0, -spaces.length)
@@ -297,7 +301,10 @@ export class InlineTokenizerBase {
         this.assertProgress('inline tokenizer', src, cursor, token.raw)
         // Plain text, such as an escape, joins the text before it now rather
         // than when the paragraph ends, so a run of escapes holds one piece.
+        // Text holding a line break stays apart, for the same reason as the
+        // line break below.
         const plain = token.token.type === 'text' && !token.delimiter && !token.custom
+          && !token.raw.includes('\n')
         const previous = tokens[fallbackTextIndex]
         if (
           plain && token.token.type === 'text'
@@ -363,6 +370,10 @@ export class InlineTokenizerBase {
           src[cursor],
           tokenBudget
         )
+        // Each line's text starts a piece: its trailing spaces are trimmed
+        // at the next break, and trimming a piece that grew across lines
+        // would copy it at every line.
+        if (char === 10) fallbackTextIndex = -1
         previousChar = src[cursor]
         cursor++
       }
