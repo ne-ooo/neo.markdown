@@ -1,5 +1,6 @@
 import type { InlineToken } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
+import { customTokenMeasure } from './custom-tokens.js'
 
 export interface EmphasisDelimiter {
   index: number
@@ -55,9 +56,15 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
     let depth = 0
     while (pending.length) {
       const current = pending.pop()!
+      // A custom rule's token was measured as it was built: walking it would
+      // go over a shared token once per path to it.
+      const measure = customTokenMeasure(current.token)
+      if (measure) {
+        depth = Math.max(depth, current.depth + measure.depth)
+        continue
+      }
       depth = Math.max(depth, current.depth)
-      // Only whether the depth passes maxDepth matters, and a custom rule's
-      // token may hold itself.
+      // Only whether the depth passes maxDepth matters.
       if ('tokens' in current.token && current.depth <= maxDepth) {
         for (const child of current.token.tokens) pending.push({ token: child, depth: current.depth + 1 })
       }

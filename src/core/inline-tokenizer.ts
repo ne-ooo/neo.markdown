@@ -2,8 +2,11 @@
  * Inline tokenizer for parsing inline markdown elements
  */
 
-import type { InlineRule, InlineToken, LinkReference } from './types.js'
+import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
+import {
+  chargeCustomToken, createInlineDocument, customTokenMeasure, leafText, spendInlineDocument, type InlineDocument,
+} from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
 import { decodeEntities, decodeMarkdown, normalizeDestination } from '../utils/markdown-text.js'
@@ -48,20 +51,10 @@ const DEFAULT_CUSTOM_PRIORITY = 750
 const HARD_MAX_INLINE_NESTING_DEPTH = 32
 const MIN_INLINE_WORK_BUDGET = 10_000
 /**
- * How many children of custom tokens a document may count, in all, as a
- * multiple of its token limit. Alt text and rejected link text return their
- * tokens to the budget, so a custom rule returning a large token could
- * otherwise have it counted, read and released again for every image:
- * 10,000 images took four seconds.
+ * The custom text each image's alt text holds, for images built here. An
+ * image holding another copies its alt text, and that copy counts again.
  */
-const CUSTOM_CHILDREN_WORK_FACTOR = 4
-const customChildrenWork = new WeakMap<TokenBudget, { remaining: number }>()
-/**
- * The alt text each document may still build. A custom rule's token may
- * repeat long text, which each image's alt text copied, so 10,000 images ran
- * out of memory before the rendered HTML met its limit.
- */
-const altTextAllowance = new WeakMap<ReadonlyMap<string, LinkReference>, { remaining: number }>()
+const customAltText = new WeakMap<object, number>()
 
 type InlineResult = {
   token: InlineToken
@@ -156,9 +149,9 @@ export interface InlineTokenizerOptions {
   /** When true, preserve raw inline HTML tokens. */
   allowHtml?: boolean
   /**
-   * The rendered HTML's limit. Image alt text, all of which is rendered,
-   * counts against it as it is built, across the tokenize calls that share
-   * a references map, as a parser's calls for one document do.
+   * The rendered HTML's limit, which bounds the text custom rules' tokens
+   * give, and their descendants without a token budget. A parser sets the
+   * allowances for all of a document's calls with `withDocument`.
    */
   maxOutputLength?: number
 }
@@ -176,6 +169,7 @@ export class InlineTokenizerBase {
   private textPattern: RegExp
   /** Inline tokenizer options */
   private inlineOptions: InlineTokenizerOptions
+  private document: InlineDocument | undefined
   /** Optional GFM-only tokenizer implementation. */
   private gfmSupport?: GfmInlineSupport
 
@@ -248,9 +242,29 @@ export class InlineTokenizerBase {
     references: ReadonlyMap<string, LinkReference> = new Map(),
     tokenBudget?: TokenBudget
   ): InlineToken[] {
-    return this.tokenizeInternal(src, references, 0, {
-      remaining: Math.max(MIN_INLINE_WORK_BUDGET, src.length * 2),
-    }, tokenBudget)
+    const outer = this.document
+    this.document = outer ?? createInlineDocument(tokenBudget, this.inlineOptions.maxOutputLength)
+    try {
+      return this.tokenizeInternal(src, references, 0, {
+        remaining: Math.max(MIN_INLINE_WORK_BUDGET, src.length * 2),
+      }, tokenBudget)
+    } finally {
+      this.document = outer
+    }
+  }
+
+  /**
+   * Runs the `tokenize` calls for one document against one set of
+   * allowances for custom rules' tokens. A call outside this has its own.
+   */
+  withDocument<T>(document: InlineDocument, tokenize: () => T): T {
+    const outer = this.document
+    this.document = document
+    try {
+      return tokenize()
+    } finally {
+      this.document = outer
+    }
   }
 
   private tokenizeInternal(
@@ -463,7 +477,7 @@ export class InlineTokenizerBase {
           this.assertProgress(candidate.rule.name, source, cursor, result.raw)
           // The caller charges the token itself; its children count too, so
           // discarding it releases what was charged.
-          if (tokenBudget && 'tokens' in result.token) this.chargeCustomChildren(result.token.tokens, tokenBudget)
+          chargeCustomToken(result.token, this.document!, tokenBudget)
           return { ...result, custom: true }
         }
       }
@@ -915,16 +929,7 @@ export class InlineTokenizerBase {
     if (isImage) {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
       this.release(children, tokenBudget)
-      return {
-        token: {
-          type: 'image',
-          raw,
-          href,
-          title,
-          text: this.inlineText(children, references),
-        },
-        raw,
-      }
+      return { token: this.withAltText({ type: 'image', raw, href, title, text: '' }, children), raw }
     }
 
     // Recursively tokenize link text
@@ -983,7 +988,7 @@ export class InlineTokenizerBase {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
       this.release(children, tokenBudget)
       return {
-        token: { type: 'image', raw, text: this.inlineText(children, references), href: reference.href, title: reference.title },
+        token: this.withAltText({ type: 'image', raw, text: '', href: reference.href, title: reference.title }, children),
         raw,
       }
     }
@@ -1011,88 +1016,70 @@ export class InlineTokenizerBase {
    * image's alt text becomes a string, and link text holding a link isn't a
    * link.
    */
-  /**
-   * Charges a custom token's children to the budget, which they return if
-   * the token is discarded, and to the document's custom work, which they
-   * don't.
-   */
-  private chargeCustomChildren(tokens: InlineToken[], tokenBudget: TokenBudget): void {
-    let work = customChildrenWork.get(tokenBudget)
-    if (!work) {
-      work = { remaining: CUSTOM_CHILDREN_WORK_FACTOR * tokenBudget.limit }
-      customChildrenWork.set(tokenBudget, work)
-    }
-    const count = this.countTokens(tokens, Math.min(tokenBudget.remaining, work.remaining))
-    consumeTokenBudget(tokenBudget, count)
-    if (count > work.remaining) {
-      throw new RangeError(
-        `Custom inline tokens' children exceed ${CUSTOM_CHILDREN_WORK_FACTOR} times ${tokenBudget.name} ${tokenBudget.limit}`
-      )
-    }
-    work.remaining -= count
-  }
-
   private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
-    // Everything released was charged, so its count is within the limit.
-    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens, tokenBudget.limit))
+    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens))
   }
 
   /**
-   * Counts tokens and their descendants, stopping once the count passes
-   * `limit`. A custom rule's token may share its children or hold itself: a
-   * recursive count went over each shared child once per path to it, which
-   * doubles with each level of sharing, and overflowed the stack on a cycle.
+   * Counts tokens and their descendants as they were charged. A custom
+   * rule's token counts the descendants its measure gives: walking them would
+   * go over a shared token once per path to it.
    */
-  private countTokens(tokens: InlineToken[], limit: number): number {
+  private countTokens(tokens: InlineToken[]): number {
     let count = 0
     const pending = [tokens]
     while (pending.length > 0) {
       const level = pending.pop()!
-      // A length that isn't a number would make the count never pass the limit.
-      if (!Array.isArray(level)) throw new TypeError('Inline token children must be an array')
       count += level.length
-      if (count > limit) return count
-      for (const token of level) if ('tokens' in token) pending.push(token.tokens)
+      for (const token of level) {
+        const measure = customTokenMeasure(token)
+        if (measure) count += measure.nodes
+        else if ('tokens' in token) pending.push(token.tokens)
+      }
     }
     return count
   }
 
   private containsLink(tokens: InlineToken[]): boolean {
-    return tokens.some(token => token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens)))
+    return tokens.some(token => {
+      const measure = customTokenMeasure(token)
+      if (measure) return measure.link
+      return token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens))
+    })
   }
 
-  private inlineText(tokens: InlineToken[], references: ReadonlyMap<string, LinkReference>): string {
-    const limit = this.inlineOptions.maxOutputLength
-    let allowance: { remaining: number } | undefined
-    if (limit !== undefined) {
-      allowance = altTextAllowance.get(references)
-      if (!allowance) {
-        allowance = { remaining: limit }
-        altTextAllowance.set(references, allowance)
-      }
-    }
+  /**
+   * Gives an image the text of its children as alt text. Text a custom rule's
+   * token gives was charged to the document as the token was built, and a
+   * walk skips what gives none. An image holding another copies its alt
+   * text, so the custom text in that copy counts again.
+   */
+  private withAltText(image: ImageToken, children: InlineToken[]): ImageToken {
     const pieces: string[] = []
-    const collect = (tokens: InlineToken[]): void => {
+    let custom = 0
+    let copied = 0
+    const collect = (tokens: InlineToken[], inCustom: boolean): void => {
       for (const token of tokens) {
+        const measure = customTokenMeasure(token)
+        if (measure && !inCustom) custom += measure.text
+        if (measure?.text === 0) continue
         if ('tokens' in token) {
-          collect(token.tokens)
+          collect(token.tokens, inCustom || measure !== undefined)
           continue
         }
-        // As join would, which built alt text before: a plugin's token may
-        // have no text, or text that isn't a string.
-        const value: unknown = token.type === 'br' ? '\n' : (token as { text?: unknown }).text
-        const text = value == null ? '' : String(value)
-        if (allowance) {
-          if (text.length > allowance.remaining) {
-            throw new RangeError(`Image alt text exceeds maxOutputLength ${limit}`)
-          }
-          allowance.remaining -= text.length
+        if (!measure) {
+          const inner = customAltText.get(token) ?? 0
+          custom += inner
+          copied += inner
         }
-        pieces.push(text)
+        pieces.push(leafText(token))
       }
     }
-    collect(tokens)
-    return pieces.join('')
+    collect(children, false)
+    spendInlineDocument(this.document!, 0, copied)
+    image.text = pieces.join('')
+    if (custom > 0) customAltText.set(image, custom)
+    return image
   }
 
   private parseLinkDestination(

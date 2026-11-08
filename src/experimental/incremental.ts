@@ -27,6 +27,8 @@ export interface IncrementalMarkdownOptions {
 }
 interface Cached {
   tokens: InlineToken[]; budgetCost: number; count: number; units: number
+  /** What its custom tokens spent of the document's allowances, spent again when reused. */
+  customNodes: number; customText: number
   references: ReadonlyMap<string, LinkReference | undefined>; wholeMapRead: boolean
 }
 function bounded(value: number, name: string): number {
@@ -128,6 +130,7 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
       const previous = cache.get(text)
       if (previous) {
         consumeTokenBudget(budget, previous.budgetCost)
+        this.respendInlineDocument(previous.customNodes, previous.customText)
         charge(text.length + previous.units + previous.count)
         reusedInlineCodeUnits += text.length
         cache.delete(text); cache.set(text, previous)
@@ -135,6 +138,7 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
         return isolated ? isolateTokens(previous.tokens, charge, cloneMetrics) : previous.tokens
       }
       const remaining = budget?.remaining ?? 0
+      const spent = this.inlineDocumentSpent()
       const tracked = new ReferenceTracker(references, maxReferences, maxTokenUnits, charge)
       runtime!.cacheableInline = true
       const tokens = runtime!.hasInlineRules
@@ -159,7 +163,9 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
         const removed = cache.get(first)!
         remove(first, removed)
       }
+      const spentAfter = this.inlineDocumentSpent()
       cache.set(text, { tokens: snapshot?.tokens ?? tokens, budgetCost: remaining - (budget?.remaining ?? 0), count, units,
+        customNodes: spentAfter.nodes - spent.nodes, customText: spentAfter.text - spent.text,
         references: tracked.dependencies, wholeMapRead: tracked.wholeMapRead })
       cachedCodeUnits += text.length; cachedTokens += count; cachedTokenCodeUnits += units
       cachedReferenceDependencies += tracked.dependencies.size
