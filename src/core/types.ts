@@ -616,9 +616,9 @@ export interface BlockRuleContext {
   /**
    * Reserves `length` code units of nested content for a container to
    * tokenize. Nested content is tokenized again at each level, so the
-   * document caps the total; once it is spent this returns false, and the
-   * container tokenizes its content at `maxNestingDepth`, where no container
-   * nests.
+   * document caps the total. When `length` doesn't fit what is left, this
+   * returns false and reserves nothing, and the container tokenizes its
+   * content at `maxNestingDepth`, where no container nests.
    */
   reserveNested?(length: number): boolean
   /** Container continuation lines cannot introduce setext underlines. */

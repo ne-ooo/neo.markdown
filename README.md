@@ -107,8 +107,9 @@ The `safeLinks` object accepts `externalRel`, `externalTarget`, and `baseUrl`.
 
 Containers tokenize their content again at each nesting level. A document
 tokenizes at most 8 times its length, or 4,000,000 code units, as nested
-content; once that is spent, the content of each later blockquote and list
-is tokenized flat, as at `maxNestingDepth`, so containers in it don't nest.
+content. A blockquote or list whose content doesn't fit what is left is
+tokenized flat, as at `maxNestingDepth`, so containers in it don't nest; later
+containers that fit still nest.
 
 ### HTML sanitization
 
