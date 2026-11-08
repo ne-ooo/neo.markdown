@@ -191,7 +191,11 @@ export function sanitizeHtml(html: string, config: SanitizerConfig): string {
   openElements = []
   removalCopy = 0
   try {
-    return structuralSanitizeHtml(html, options)
+    const sanitized = structuralSanitizeHtml(html, options)
+    // Every parser's count ends with its tokenizer. One still open means
+    // htmlparser2 no longer ends a parse as this relies on.
+    if (openElements.length !== 0) throw new Error('sanitize-html ended a parse its tokenizer did not')
+    return sanitized
   } finally {
     openElements = outerElements
     removalCopy = outerCopy
