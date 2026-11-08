@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - A custom inline rule's token counts with its children whatever the rule's priority. Rules ranked after text were charged for their token alone, and alt text the result discards released their children too, so a document could pass `maxTokens`.
-- Merging adjacent text builds a new token instead of appending to the one before, which could be a token a custom rule returns every time, so a later parse rendered what an earlier one had merged into it.
+- Merging adjacent text, and trimming a line's trailing spaces at its break, build a new token instead of changing the one before, which could be a token a custom rule returns every time, so a later parse rendered what an earlier one had merged into it or trimmed from it.
 - ATX headings and GFM autolinks trim their trailing runs by scanning from the end. The trailing-run patterns retried the run at every offset, so a heading ending in a long run of spaces or tabs before a final character, or an autolink ending in a long run of punctuation, took quadratic time: 64,000 characters took 12.6 seconds for a heading and 1.6 seconds for an autolink. Output is unchanged.
 - Add both inputs, and a heading of only spaces and tabs, to the adversarial scaling tests.
 

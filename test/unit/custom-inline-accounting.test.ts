@@ -39,4 +39,19 @@ describe('custom inline rules and the token budget', () => {
     expect(parser.parse('!')).toBe('<p>(bang)</p>\n')
     expect(shared).toEqual({ type: 'text', raw: '!', text: '(bang)' })
   })
+
+  // A line's trailing spaces were trimmed from the token before its break in
+  // place, which could be a token a custom rule returns every time.
+  it('leaves a shared token from a custom rule as it was when its line breaks', () => {
+    const shared: TextToken = { type: 'text', raw: '!  ', text: 'bang  ' }
+    const parser = createParser({
+      plugins: [builder => builder.addInlineRule({
+        name: 'bang', priority: 1, triggerChars: [33], tokenize: (src) => (src.startsWith('!  ') ? { raw: '!  ', token: shared } : null),
+      })],
+    })
+
+    expect(parser.parse('!  \nx')).toBe('<p>bang<br>\nx</p>\n')
+    expect(parser.parse('!  z')).toBe('<p>bang  z</p>\n')
+    expect(shared).toEqual({ type: 'text', raw: '!  ', text: 'bang  ' })
+  })
 })

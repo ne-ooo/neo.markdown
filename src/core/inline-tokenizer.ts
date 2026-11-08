@@ -287,8 +287,12 @@ export class InlineTokenizerBase {
           while (start > 0 && (previous.raw.charCodeAt(start - 1) === 32 || previous.raw.charCodeAt(start - 1) === 9)) start--
           const spaces = previous.raw.slice(start)
           if (spaces) {
-            previous.raw = previous.raw.slice(0, -spaces.length)
-            previous.text = previous.text.slice(0, -spaces.length)
+            // A copy: the token may be one a custom rule returns every time.
+            tokens[tokens.length - 1] = {
+              ...previous,
+              raw: previous.raw.slice(0, -spaces.length),
+              text: previous.text.slice(0, -spaces.length),
+            }
             if (/^ {2,}$/.test(spaces)) {
               consumeTokenBudget(tokenBudget)
               tokens.push({ type: 'br', raw: spaces + '\n' })
