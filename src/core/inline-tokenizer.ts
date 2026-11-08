@@ -5,7 +5,8 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, createInlineDocument, editableText, keepAltText, leafText, SHARED_PIECE_LENGTH, type InlineDocument,
+  chargeCustomToken, createInlineDocument, editableText, keepAltText, leafText, rendersChildren, SHARED_PIECE_LENGTH,
+  type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -1028,7 +1029,7 @@ export class InlineTokenizerBase {
         const measure = document.custom ? document.measures.get(token) : undefined
         if (measure) {
           count += measure.nodes
-          custom += measure.containers
+          if (rendersChildren(token)) custom += measure.containers
           continue
         }
         const image = document.custom ? document.images.get(token) : undefined

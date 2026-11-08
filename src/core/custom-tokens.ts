@@ -42,10 +42,11 @@ export interface InlineDocument {
   /** The custom text in the alt text of each image built here and still kept. */
   readonly images: WeakMap<object, number>
   /**
-   * Without a token budget, the descendants of kept custom tokens that have
-   * children, up to the output limit. Only they multiply the renderer's walk
-   * through a shared token; a token's text is bounded by the output it
-   * renders.
+   * Without a token budget, the descendants of kept custom tokens whose
+   * children the renderer walks, up to the output limit. Only they multiply
+   * its walk through a shared token, which is bounded by them times the
+   * widest array of children, a width the plugin sets; a token's text is
+   * bounded by the output it renders.
    */
   readonly nodes: TokenBudget | undefined
   /**
@@ -91,13 +92,29 @@ const TOO_DEEP = Symbol('too deep')
 const SHARED_CHILDREN_LENGTH = 16
 
 /** The measure of an array of tokens without children. */
+/** Token types the renderer renders the children of. */
+const RENDERED_CHILDREN = new Set(['strong', 'em', 'del', 'link'])
+
+/** Whether the renderer walks a token's children. */
+export function rendersChildren(token: InlineToken): boolean {
+  return RENDERED_CHILDREN.has((token as { type: string }).type)
+}
+
+/**
+ * The measure of an array of tokens without children, or with empty ones,
+ * which a walk ends at as at a token without children.
+ */
 function leavesMeasure(children: InlineToken[]): InlineTokenMeasure {
-  let text = 0, link = false
+  let text = 0, containers = 0, link = false
   for (const child of children) {
-    text += leafText(child).length
+    if ('tokens' in child) {
+      if (rendersChildren(child)) containers++
+    } else {
+      text += leafText(child).length
+    }
     link ||= (child as { type: string }).type === 'link'
   }
-  return { nodes: children.length, containers: 0, text, depth: children.length > 0 ? 1 : 0, link }
+  return { nodes: children.length, containers, text, depth: children.length > 0 ? 1 : 0, link }
 }
 
 /**
@@ -108,11 +125,10 @@ function leavesMeasure(children: InlineToken[]): InlineTokenMeasure {
 function onlyLeaves(children: InlineToken[], measures: WeakMap<object, InlineTokenMeasure>): boolean {
   const long = children.length >= SHARED_CHILDREN_LENGTH
   const held = long ? measures.get(children) : undefined
-  // Tokens with no children of their own, `tokens: []`, still have children.
-  if (held) return held.containers === 0
+  if (held) return held.depth <= 1
   for (const child of children) {
     checkChild(child)
-    if ('tokens' in child) return false
+    if ('tokens' in child && childrenOf(child)!.length > 0) return false
   }
   if (long) measures.set(children, leavesMeasure(children))
   return true
@@ -150,7 +166,8 @@ function measureWithin(
       const childMeasure = measures.get(child) ?? local.get(child)
         ?? measureWithin(child, childrenOf(child)!, measures, local, depth + 1)
       nodes += childMeasure.nodes
-      containers += 1 + childMeasure.containers
+      // The renderer walks only some tokens' children.
+      if (rendersChildren(child)) containers += 1 + childMeasure.containers
       text += childMeasure.text
       deepest = Math.max(deepest, childMeasure.depth + 1)
       link ||= childMeasure.link
@@ -160,9 +177,9 @@ function measureWithin(
   }
   const measure = token.type === 'link' && !held.link ? { ...held, link: true } : held
   local.set(token, measure)
-  // A token whose children are all text is charged and released as a
-  // built-in one, wherever it is, so it isn't kept.
-  if (measure.text === 0 && measure.containers > 0) measures.set(token, measure)
+  // A token whose children are all text, or empty, is charged and released
+  // as a built-in one, wherever it is, so it isn't kept.
+  if (measure.text === 0 && measure.depth > 1) measures.set(token, measure)
   return measure
 }
 
@@ -256,7 +273,7 @@ export function chargeCustomToken(token: InlineToken, document: InlineDocument, 
   const measure = known ?? measureCustomToken(token, document.measures)
   document.custom = true
   if (budget) consumeTokenBudget(budget, measure.nodes)
-  else keepNodes(document, measure.containers)
+  else keepNodes(document, rendersChildren(token) ? measure.containers : 0)
 }
 
 /** Counts custom text an image's alt text keeps, refusing past the output limit. */

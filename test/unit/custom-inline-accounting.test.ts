@@ -233,26 +233,56 @@ describe('custom inline rules and the token budget', () => {
     expect(() => parser.tokenize('@ '.repeat(1_000))).not.toThrow()
   })
 
-  // A long array of children measured once was taken as all text when its
-  // tokens had empty children, so warming it let them go uncounted.
-  it('counts tokens with empty children in a remembered array', () => {
-    const empty = Array.from({ length: 16 }, () => ({ type: 'em', raw: '', text: '', tokens: [] }) as InlineToken)
-    const a: InlineToken = { type: 'strong', raw: 'A', text: '', tokens: empty }
-    const b: InlineToken = { type: 'strong', raw: 'B', text: '', tokens: empty }
-    const s: InlineToken = { type: 'strong', raw: 'S', text: '', tokens: [a] }
-    const parser = createParser({
-      maxOutputLength: 40,
-      renderer: { strong: () => '', em: () => '' },
-      plugins: [builder => {
-        for (const [char, token] of Object.entries({ A: a, B: b, S: s })) {
-          builder.addInlineRule({ name: char, priority: 1, triggerChars: [char.charCodeAt(0)], tokenize: (src) => (src.startsWith(char) ? { raw: char, token } : null) })
-        }
-      }],
-    })
+  // Whether a token counted as one of text alone depended on whether its
+  // array of children had been measured before, so a document's count
+  // depended on what came first, and a session could accept what a fresh
+  // parse refuses. A token whose children are text or have no children
+  // counts as built-in tokens do, remembered or not; children with children
+  // count, remembered or not.
+  it('counts a token the same way whether its children were measured before', () => {
+    const parserFor = (array: InlineToken[]) => {
+      const a: InlineToken = { type: 'strong', raw: 'A', text: '', tokens: array }
+      const b: InlineToken = { type: 'strong', raw: 'B', text: '', tokens: array }
+      const s: InlineToken = { type: 'strong', raw: 'S', text: '', tokens: [a] }
+      return createParser({
+        maxOutputLength: 40,
+        renderer: { strong: () => '', em: () => '' },
+        plugins: [builder => {
+          for (const [char, token] of Object.entries({ A: a, B: b, S: s })) {
+            builder.addInlineRule({ name: char, priority: 1, triggerChars: [char.charCodeAt(0)], tokenize: (src) => (src.startsWith(char) ? { raw: char, token } : null) })
+          }
+        }],
+      })
+    }
+    const empty = parserFor(Array.from({ length: 16 }, () => ({ type: 'em', raw: '', text: '', tokens: [] }) as InlineToken))
+    const nested = parserFor(Array.from({ length: 16 }, () => ({ type: 'em', raw: '', text: '', tokens: [{ type: 'text', raw: '', text: '' }] }) as InlineToken))
     const refusal = new RangeError("Custom inline tokens' descendants with children exceed maxOutputLength 40")
 
-    expect(() => parser.tokenize('B B B')).toThrow(refusal)
-    expect(() => parser.tokenize('![S](u) B B B B B B B B')).toThrow(refusal)
+    expect(() => empty.tokenize('B B B')).not.toThrow()
+    expect(() => empty.tokenize('![S](u) B B B B B B B B')).not.toThrow()
+    expect(() => nested.tokenize('B B B')).toThrow(refusal)
+    expect(() => nested.tokenize('![S](u) B B B B B B B B')).toThrow(refusal)
+
+    // The same in an incremental session as in a fresh parse.
+    const children = Array.from({ length: 16 }, () => ({ type: 'text', raw: '', text: '', tokens: [] }) as unknown as InlineToken)
+    const plugins = [builder => {
+      for (const [char, token] of Object.entries({ '@': { type: 'strong', raw: '@', text: '', tokens: children }, '%': { type: 'em', raw: '%', text: '', tokens: children } })) {
+        builder.addInlineRule({ name: char, priority: 1, triggerChars: [char.charCodeAt(0)], tokenize: (src: string) => (src.startsWith(char) ? { raw: char, token: token as InlineToken } : null) })
+      }
+    }] satisfies MarkdownPlugin[]
+    const options = { maxOutputLength: 250, plugins: [defineIncrementalPlugin(plugins[0]!, { protocol: 1, id: 'p', profile: 'inline', effects: 'none', dependencies: { kind: 'static' } })] }
+    const session = createIncrementalMarkdown({ pluginReuse: 'declared', parser: options })
+    session.update(`@\n\n${'%'.repeat(20)}`)
+    expect(session.update(`x\n\n${'%'.repeat(20)}`).html).toBe(createParser(options).parse(`x\n\n${'%'.repeat(20)}`))
+  })
+
+  // The renderer walks only the children of strong, em, del and links, so
+  // tokens below a text token aren't counted against the output limit.
+  it('counts only children the renderer walks', () => {
+    const text = { type: 'text', raw: '', text: '', tokens: Array.from({ length: 100 }, () => ({ type: 'em', raw: '', text: '', tokens: [] })) } as unknown as InlineToken
+    const plugin = at({ type: 'em', raw: '@', text: '', tokens: [text] })
+
+    expect(createParser({ maxOutputLength: 50, plugins: [plugin] }).parse('@')).toBe('<p><em></em></p>\n')
   })
 
   // Alt text from the Markdown itself counted against the output limit,
