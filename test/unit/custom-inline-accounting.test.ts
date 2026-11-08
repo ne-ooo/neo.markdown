@@ -140,6 +140,33 @@ describe('custom inline rules and the token budget', () => {
     expect(createParser({ ...options, plugins: [at(token)] }).parse(markdown)).toBe(createParser({ plugins: [at(token)] }).parse(markdown))
   })
 
+  // A rule's token at a line break was charged, then dropped for the hard
+  // break without returning its charge.
+  it('returns nothing it never charged at a hard break', () => {
+    const em = (): InlineToken => ({ type: 'em', raw: '\n', text: '', tokens: Array.from({ length: 100 }, () => ({ type: 'text' as const, raw: 'y', text: 'y' })) })
+    const plugins: MarkdownPlugin[] = [
+      builder => builder.addInlineRule({ name: 'at', priority: 1, triggerChars: [64], tokenize: (src) => (src.startsWith('@  ') ? { raw: '@  ', token: { type: 'text', raw: '@  ', text: 'a  ' } } : null) }),
+      builder => builder.addInlineRule({ name: 'nl', priority: 1, triggerChars: [10], tokenize: (src) => (src.startsWith('\n') ? { raw: '\n', token: em() } : null) }),
+    ]
+    const markdown = '@  \nx '.repeat(30)
+
+    expect(createParser({ maxOutputLength: 2_000, plugins }).parse(markdown)).toBe(createParser({ plugins }).parse(markdown))
+  })
+
+  // Trimming a line's trailing spaces copied a rule's token, and the copy
+  // didn't return its children's charge when discarded.
+  it('returns the charge of a trimmed copy of a token with children', () => {
+    const plugin: MarkdownPlugin = builder => builder.addInlineRule({
+      name: 'at', priority: 1, triggerChars: [64],
+      tokenize: (src) => (src.startsWith('@  ')
+        ? { raw: '@  ', token: { type: 'text', raw: '@  ', text: 'a  ', tokens: Array.from({ length: 100 }, () => ({ type: 'text' as const, raw: '', text: '' })) } as InlineToken }
+        : null),
+    })
+    const markdown = '![@  \nx](u)\n\n'.repeat(60)
+
+    expect(createParser({ maxOutputLength: 5_000, plugins: [plugin] }).parse(markdown)).toBe(createParser({ plugins: [plugin] }).parse(markdown))
+  })
+
   // A new token for every image was measured into a map that kept them all.
   it('measures a new token for each of 20,000 images', () => {
     const plugin: MarkdownPlugin = builder => builder.addInlineRule({

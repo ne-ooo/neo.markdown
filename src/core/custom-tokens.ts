@@ -39,6 +39,8 @@ export interface InlineDocument {
   custom: boolean
   /** The alt text length of each image built here and still kept. */
   readonly images: WeakMap<object, number>
+  /** The alt text of each token rules returned, built once per document. */
+  readonly altTexts: WeakMap<object, string>
   /**
    * The descendants of kept custom tokens, without a token budget, where the
    * token budget counts them: up to the output limit.
@@ -167,6 +169,7 @@ export function createInlineDocument(budget: TokenBudget | undefined, maxOutputL
     measures: new WeakMap(),
     custom: false,
     images: new WeakMap(),
+    altTexts: new WeakMap(),
     nodes: !budget && maxOutputLength !== undefined
       ? createTokenBudget(maxOutputLength, 'maxOutputLength')
       : undefined,
@@ -202,6 +205,29 @@ export function keepAltText(document: InlineDocument, length: number): void {
     throw new RangeError(`Image alt text exceeds ${document.outputLimit}`)
   }
   document.altText += length
+}
+
+/**
+ * The alt text a token a rule returned gives, built once per document and
+ * skipping tokens that give none. Images in link text tokenized again take
+ * it each time, so building it each time would copy it each time.
+ */
+export function customAltText(token: InlineToken, document: InlineDocument): string {
+  const known = document.altTexts.get(token)
+  if (known !== undefined) return known
+  const pieces: string[] = []
+  const collect = (tokens: InlineToken[]): void => {
+    for (const child of tokens) {
+      if (document.measures.get(child)?.text === 0) continue
+      if ('tokens' in child) collect(child.tokens)
+      else pieces.push(leafText(child))
+    }
+  }
+  if ('tokens' in token) collect(token.tokens)
+  else pieces.push(leafText(token))
+  const text = pieces.length === 1 ? pieces[0]! : pieces.join('')
+  document.altTexts.set(token, text)
+  return text
 }
 
 /** What an incremental session records of a paragraph, and spends again when it reuses it. */

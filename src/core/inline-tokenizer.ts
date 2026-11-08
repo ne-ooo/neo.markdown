@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, createInlineDocument, keepAltText, leafText, type InlineDocument,
+  chargeCustomToken, createInlineDocument, customAltText, keepAltText, leafText, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -294,6 +294,36 @@ export class InlineTokenizerBase {
 
     while (cursor < src.length) {
       const char = src.charCodeAt(cursor)
+
+      // Before tokenizing at a line break, which a hard break would discard
+      // without returning what the token was charged.
+      if (char === 10) {
+        const previous = tokens.at(-1)
+        if (previous?.type === 'text') {
+          // Scanned from the end, so a long piece of text costs only its
+          // trailing spaces.
+          let start = previous.raw.length
+          while (start > 0 && (previous.raw.charCodeAt(start - 1) === 32 || previous.raw.charCodeAt(start - 1) === 9)) start--
+          const spaces = previous.raw.slice(start)
+          if (spaces) {
+            // A copy: the token may be one a custom rule returns every time.
+            const trimmed = {
+              ...previous,
+              raw: previous.raw.slice(0, -spaces.length),
+              text: previous.text.slice(0, -spaces.length),
+            }
+            // A rule's token with children is released by its measure.
+            const measure = 'tokens' in previous ? this.document!.measures.get(previous) : undefined
+            if (measure) this.document!.measures.set(trimmed, measure)
+            tokens[tokens.length - 1] = trimmed
+            if (/^ {2,}$/.test(spaces)) {
+              consumeTokenBudget(tokenBudget)
+              tokens.push({ type: 'br', raw: spaces + '\n' })
+              previousChar = '\n'; cursor++; fallbackTextIndex = -1; continue
+            }
+          }
+        }
+      }
       const token = this.tokenizeAt(
         src,
         cursor,
@@ -306,30 +336,6 @@ export class InlineTokenizerBase {
         tokenBudget,
         allowExtendedAutolinks
       )
-
-      if (char === 10) {
-        const previous = tokens.at(-1)
-        if (previous?.type === 'text') {
-          // Scanned from the end, so a long piece of text costs only its
-          // trailing spaces.
-          let start = previous.raw.length
-          while (start > 0 && (previous.raw.charCodeAt(start - 1) === 32 || previous.raw.charCodeAt(start - 1) === 9)) start--
-          const spaces = previous.raw.slice(start)
-          if (spaces) {
-            // A copy: the token may be one a custom rule returns every time.
-            tokens[tokens.length - 1] = {
-              ...previous,
-              raw: previous.raw.slice(0, -spaces.length),
-              text: previous.text.slice(0, -spaces.length),
-            }
-            if (/^ {2,}$/.test(spaces)) {
-              consumeTokenBudget(tokenBudget)
-              tokens.push({ type: 'br', raw: spaces + '\n' })
-              previousChar = '\n'; cursor++; fallbackTextIndex = -1; continue
-            }
-          }
-        }
-      }
       if (token) {
         this.assertProgress('inline tokenizer', src, cursor, token.raw)
         // Plain text, such as an escape, joins the text before it now rather
@@ -1052,7 +1058,7 @@ export class InlineTokenizerBase {
    * Gives an image the text of its children as alt text, which counts
    * against the output limit while the image is kept. Its length is known
    * from the children and the measures of custom tokens before any of it is
-   * built, and custom tokens that give no text aren't walked.
+   * built.
    */
   private withAltText(image: ImageToken, children: InlineToken[]): ImageToken {
     const document = this.document!
@@ -1068,16 +1074,24 @@ export class InlineTokenizerBase {
     }
     const length = lengthOf(children)
     keepAltText(document, length)
-    const pieces: string[] = []
+    // Joined by concatenation, which shares the pieces rather than copying
+    // them: link text tokenized again builds this again, and only an image
+    // that is kept and rendered needs it as one string.
+    let text = ''
     const collect = (tokens: InlineToken[]): void => {
       for (const token of tokens) {
-        if (document.measures.get(token)?.text === 0) continue
-        if ('tokens' in token) collect(token.tokens)
-        else pieces.push(leafText(token))
+        const measure = document.measures.get(token)
+        if (measure) {
+          if (measure.text > 0) text += customAltText(token, document)
+        } else if ('tokens' in token) {
+          collect(token.tokens)
+        } else {
+          text += leafText(token)
+        }
       }
     }
     collect(children)
-    image.text = pieces.join('')
+    image.text = text
     document.images.set(image, length)
     return image
   }
