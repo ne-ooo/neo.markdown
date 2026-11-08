@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, createInlineDocument, customAltText, keepAltText, leafText, type InlineDocument,
+  chargeCustomToken, createInlineDocument, keepAltText, leafText, TextBuilder, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -1074,24 +1074,18 @@ export class InlineTokenizerBase {
     }
     const length = lengthOf(children)
     keepAltText(document, length)
-    // Joined by concatenation, which shares the pieces rather than copying
-    // them: link text tokenized again builds this again, and only an image
-    // that is kept and rendered needs it as one string.
-    let text = ''
+    // Link text tokenized again builds this again, so long pieces, such as a
+    // rule token's text, are shared rather than copied each time.
+    const text = new TextBuilder()
     const collect = (tokens: InlineToken[]): void => {
       for (const token of tokens) {
-        const measure = document.measures.get(token)
-        if (measure) {
-          if (measure.text > 0) text += customAltText(token, document)
-        } else if ('tokens' in token) {
-          collect(token.tokens)
-        } else {
-          text += leafText(token)
-        }
+        if (document.measures.get(token)?.text === 0) continue
+        if ('tokens' in token) collect(token.tokens)
+        else text.add(leafText(token))
       }
     }
     collect(children)
-    image.text = text
+    image.text = text.toString()
     document.images.set(image, length)
     return image
   }

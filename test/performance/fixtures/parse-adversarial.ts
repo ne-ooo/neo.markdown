@@ -36,6 +36,11 @@ for (let level = 0; level < 200; level++) {
   deepCustomToken = { type: 'strong', raw: '@', text: '@', tokens: [deepCustomToken, { type: 'text', raw: 'x', text: 'x' }] }
 }
 const deepCustomParser = customParser(() => deepCustomToken)
+// Each level of the deep token as a token of its own, returned in turn.
+const overlappingRoots: InlineToken[] = []
+for (let token = deepCustomToken; 'tokens' in token; token = token.tokens[0]!) overlappingRoots.push(token)
+let overlappingCalls = 0
+const overlappingParser = customParser(() => overlappingRoots[overlappingCalls++ % overlappingRoots.length]!)
 const freshCustomParser = customParser(() => ({
   type: 'strong', raw: '@', text: '@', tokens: Array.from({ length: 100 }, () => ({ type: 'text' as const, raw: '', text: '' })),
 }))
@@ -93,6 +98,9 @@ const scenarios: Record<string, (size: number) => unknown> = {
   customDeepAlt: () => deepCustomParser.parse('![@](u)'),
   // Every token a rule returned was kept with its measure for the document.
   customFreshImages: () => freshCustomParser.parse('![@](u) '.repeat(10_000)),
+  // Each token's alt text was kept for the document: 200 tokens holding the
+  // same 2,000,000 characters, from a 57-character document.
+  customOverlappingRoots: () => overlappingParser.parse(`${'['.repeat(10)}![@](i)${'](u)'.repeat(10)}`),
   inlineCode: (size) => defaultParser.parse(`x${'`'.repeat(size * 4)}a`),
   links: (size) => defaultParser.parse('[x]('.repeat(size)),
   html: (size) => defaultParser.parse('<a '.repeat(size)),

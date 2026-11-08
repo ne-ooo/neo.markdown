@@ -68,7 +68,7 @@ describe('adversarial input memory', () => {
   // largest input. Counted as they are built, it refuses them within 48 MB.
   // A custom rule's token in alt text was built into a string for every
   // token in it, and every token rules returned was kept with its measure.
-  it.each(['customDeepAlt', 'customFreshImages'])(
+  it.each(['customDeepAlt', 'customFreshImages', 'customOverlappingRoots'])(
     'parses %s within a small heap',
     { timeout: EXECUTION_LIMIT_MS + 1_000 },
     (scenario) => {
