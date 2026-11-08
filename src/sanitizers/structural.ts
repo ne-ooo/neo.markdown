@@ -28,6 +28,97 @@ const RESERVED_EMBED_DATA_ATTRIBUTE = /^data-(?:embed(?:-|$)|gist-(?:src|height)
 type StructuralSanitizerOptions = NonNullable<Parameters<typeof structuralSanitizeHtml>[1]>
 const stableOptions = new WeakMap<SanitizerConfig, StructuralSanitizerOptions>()
 
+/**
+ * The deepest HTML the structural sanitizer accepts. Nothing past depth 100
+ * reaches its output, and its parser, htmlparser2, keeps open elements
+ * innermost first: each element it opens moves every open one, and each end
+ * tag searches them all, so 1 MiB of nested tags took up to a minute.
+ */
+export const MAX_HTML_NESTING_DEPTH = 256
+
+interface HtmlTokenizer { end(): void }
+type HtmlTokenizerClass = new (options: object, parser: object) => HtmlTokenizer
+type HtmlParserClass = new (callbacks: undefined, options: object) => { tokenizer: HtmlTokenizer }
+
+/**
+ * How many elements each parser running in the current sanitize call holds
+ * open, innermost parser last, from its own open and close events, which
+ * include implied end tags and void elements. sanitize-html parses a
+ * discarded iframe's text again with a parser of its own, once for each piece
+ * of the text, and in SVG each CDATA section is a piece. Each of those parses
+ * ends by closing a tag cut off at its end, which it never opened, so one
+ * count of every parser's events let those closes take elements off the outer
+ * parser's count without limit.
+ */
+let openElements: number[] = []
+let DefaultTokenizer: HtmlTokenizerClass | undefined
+
+/**
+ * htmlparser2 builds a parser's tokenizer with this as the parser starts,
+ * which gives the parser a count of its own until it ends. sanitize-html
+ * passes its `parser` options to every parser it builds, nested ones too.
+ */
+function CountingTokenizer(options: object, parser: object): HtmlTokenizer {
+  // A parser built without a Tokenizer option builds htmlparser2's own.
+  DefaultTokenizer ??= new (parser.constructor as HtmlParserClass)(undefined, { ...options, Tokenizer: undefined })
+    .tokenizer.constructor as HtmlTokenizerClass
+  const tokenizer = new DefaultTokenizer(options, parser)
+  const outer = openElements.length
+  openElements.push(0)
+  const end = tokenizer.end
+  // The parser's end runs its closing events, then this parser is done.
+  tokenizer.end = () => {
+    try {
+      end.call(tokenizer)
+      // The parser closes what is still open as its tokenizer ends. Any
+      // left open would be closed later, against the parser around it.
+      if (openElements[outer]! > 0) throw new Error('sanitize-html closed elements after its tokenizer ended')
+    } finally {
+      openElements.length = outer
+    }
+  }
+  return tokenizer
+}
+
+function openElement(): void {
+  const parser = openElements.length - 1
+  if (parser < 0) throw new Error('sanitize-html parsed without the counting tokenizer')
+  if (++openElements[parser]! > MAX_HTML_NESTING_DEPTH) {
+    throw new RangeError(`HTML nesting exceeds ${MAX_HTML_NESTING_DEPTH} elements`)
+  }
+}
+
+function closeElement(): void {
+  // A close after the parser's tokenizer ended would count against the
+  // parser around it; for the outermost one, against none.
+  const parser = openElements.length - 1
+  if (parser < 0) throw new Error('sanitize-html closed an element after its parse ended')
+  openElements[parser]!--
+}
+
+/**
+ * How much output removing inputs may copy. sanitize-html removes an element
+ * by cutting the output back to where it began, a copy of all the output
+ * before it, so 512 KiB of text followed by 75,000 inputs took 4 seconds.
+ * 1,000,000,000 code units take about a tenth of a second, and allow 950
+ * inputs after 1 MiB of text.
+ */
+const MAX_REMOVAL_COPY = 1_000_000_000
+let removalCopy = 0
+
+// Only a disabled checkbox input is kept.
+function removeInput(frame: { tag: string; attribs: Record<string, string>; tagPosition: number }): boolean {
+  const remove = frame.tag === 'input'
+    && (frame.attribs['type']?.toLowerCase() !== 'checkbox' || !Object.hasOwn(frame.attribs, 'disabled'))
+  if (remove) {
+    removalCopy += frame.tagPosition
+    if (removalCopy > MAX_REMOVAL_COPY) {
+      throw new RangeError('HTML has too many inputs to remove')
+    }
+  }
+  return remove
+}
+
 function hardenSanitizedTag(
   tagName: string,
   attribs: Record<string, string>
@@ -79,26 +170,41 @@ function buildStructuralOptions(config: SanitizerConfig): StructuralSanitizerOpt
     nonTextTags: ['script', 'style', 'textarea', 'xmp', 'option'],
     allowVulnerableTags: false,
     nestingLimit: 100,
+    onOpenTag: openElement,
+    onCloseTag: closeElement,
+    // sanitize-html's default parser options, and the tokenizer that counts.
+    parser: { decodeEntities: true, Tokenizer: CountingTokenizer as never },
     enforceHtmlBoundary: false,
     parseStyleAttributes: config.allowStyle,
     allowedStyles: config.allowStyle ? { '*': SAFE_INLINE_STYLES } : undefined,
     transformTags: { '*': hardenSanitizedTag },
-    exclusiveFilter: (frame) => (
-      frame.tag === 'input'
-      && (
-        frame.attribs['type']?.toLowerCase() !== 'checkbox'
-        || !Object.hasOwn(frame.attribs, 'disabled')
-      )
-    ),
+    exclusiveFilter: removeInput,
   }
 }
 
-/** Sanitize an HTML fragment with structural parsing and a strict allowlist. */
+/**
+ * Sanitize an HTML fragment with structural parsing and a strict allowlist.
+ * Throws a RangeError, stopping the parse, once the HTML nests deeper than
+ * MAX_HTML_NESTING_DEPTH elements.
+ */
 export function sanitizeHtml(html: string, config: SanitizerConfig): string {
   let options = stableOptions.get(config)
   if (!options) {
     options = buildStructuralOptions(config)
     if (isSanitizerConfigStable(config)) stableOptions.set(config, options)
   }
-  return structuralSanitizeHtml(html, options)
+  const outerElements = openElements
+  const outerCopy = removalCopy
+  openElements = []
+  removalCopy = 0
+  try {
+    const sanitized = structuralSanitizeHtml(html, options)
+    // Every parser's count ends with its tokenizer. One still open means
+    // htmlparser2 no longer ends a parse as this relies on.
+    if (openElements.length !== 0) throw new Error('sanitize-html ended a parse its tokenizer did not')
+    return sanitized
+  } finally {
+    openElements = outerElements
+    removalCopy = outerCopy
+  }
 }
