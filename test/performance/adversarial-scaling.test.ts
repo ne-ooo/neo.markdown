@@ -60,23 +60,28 @@ const adversarialInputs = [
 ] as const
 
 describe('adversarial input memory', () => {
-  // Inline pieces were counted only once emphasis resolved: UGC mode built a
-  // million of them, about 300 MB, before refusing 1,000,000 characters of
-  // emphasis. Counted as they are built, it refuses them within 64 MB.
-  it('refuses the largest UGC input of emphasis within a small heap', () => {
-    const output = execFileSync(
-      process.execPath,
-      ['--max-old-space-size=64', bundledFixture, 'ugcEmphasis'],
-      {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: EXECUTION_LIMIT_MS,
-        killSignal: 'SIGKILL',
-      }
-    )
+  // Inline pieces were counted only once emphasis resolved, and email links
+  // were built while a paragraph was scanned, before any was counted: UGC
+  // mode built a million pieces, or 333,332 link tokens, before refusing the
+  // largest input. Counted as they are built, it refuses them within 48 MB.
+  it.each(['ugcEmphasis', 'ugcEmails'])(
+    'refuses the largest UGC input of %s within a small heap',
+    { timeout: EXECUTION_LIMIT_MS + 1_000 },
+    (scenario) => {
+      const output = execFileSync(
+        process.execPath,
+        ['--max-old-space-size=48', bundledFixture, scenario],
+        {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: EXECUTION_LIMIT_MS,
+          killSignal: 'SIGKILL',
+        }
+      )
 
-    expect(output.trim()).toBe('ok')
-  }, EXECUTION_LIMIT_MS + 1_000)
+      expect(output.trim()).toBe('ok')
+    }
+  )
 })
 
 describe('adversarial input scaling', () => {

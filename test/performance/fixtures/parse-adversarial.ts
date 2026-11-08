@@ -64,6 +64,8 @@ const scenarios: Record<string, (size: number) => unknown> = {
   nestedMax: (size) => tokenLimited(() => ugcParser.parse(nestedEmphasis(size * 10 - 1))),
   // The largest UGC input, all emphasis: a million inline pieces.
   ugcEmphasis: () => tokenLimited(() => ugcParser.parse('*a* '.repeat(250_000))),
+  // The largest UGC input, all email addresses: 166,666 links.
+  ugcEmails: () => tokenLimited(() => ugcParser.parse('a@b.c '.repeat(166_666))),
   inlineCode: (size) => defaultParser.parse(`x${'`'.repeat(size * 4)}a`),
   links: (size) => defaultParser.parse('[x]('.repeat(size)),
   html: (size) => defaultParser.parse('<a '.repeat(size)),

@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { InlineTokenizer } from '../../src/core/inline-tokenizer.js'
+import { gfmInlineSupport } from '../../src/inline/gfm-support.js'
 import { createTokenBudget } from '../../src/core/token-budget.js'
 import type { InlineToken } from '../../src/core/types.js'
 import { createIncrementalMarkdown } from '../../src/experimental/incremental.js'
@@ -97,6 +98,34 @@ describe('maxTokens', () => {
     })
 
     expect(mismatches).toEqual([])
+  })
+
+  // Every email link in a paragraph was built while the paragraph was
+  // scanned, before any was counted: 166,666 addresses built 333,332 tokens.
+  it('counts an email link when it is built', () => {
+    const tokenizer = new InlineTokenizer([], { gfm: true })
+    const budget = createTokenBudget(10)
+    const built = vi.spyOn(gfmInlineSupport, 'emailLink')
+
+    expect(() => tokenizer.tokenize('a@b.c '.repeat(166_666), new Map(), budget)).toThrow(RangeError)
+    expect(built.mock.calls.length).toBeLessThanOrEqual(10)
+    built.mockRestore()
+  })
+
+  // A custom rule's token was charged for itself alone, but discarding it, as
+  // in alt text, released its children too: a 10-token budget grew to 109.
+  it("charges a custom rule's children, and releases what it charged", () => {
+    const children = Array.from({ length: 100 }, () => ({ type: 'text' as const, raw: 'x', text: 'x' }))
+    const tokenizer = new InlineTokenizer([{
+      name: 'dollar',
+      triggerChars: [36],
+      tokenize: (src) => (src.startsWith('$') ? { raw: '$', token: { type: 'em', raw: '$', text: '$', tokens: children } } : null),
+    }])
+    const budget = createTokenBudget(1_000)
+
+    expect(tokenizer.tokenize('![$](x)', new Map(), budget)).toMatchObject([{ type: 'image', text: 'x'.repeat(100) }])
+    expect(budget.remaining).toBe(999)
+    expect(() => tokenizer.tokenize('$', new Map(), createTokenBudget(100))).toThrow(RangeError)
   })
 
   it.each([-1, 1.5, Number.NaN, Infinity])('rejects maxTokens %s', (maxTokens) => {

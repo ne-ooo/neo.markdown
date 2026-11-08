@@ -20,7 +20,10 @@ type AutolinkResult = { token: InlineToken; raw: string }
 
 export interface GfmInlineSupport {
   filterHtml(html: string): string
-  emailLinks(source: string): Map<number, AutolinkResult>
+  /** Where each email autolink starts, and where it ends. */
+  emailLinks(source: string): Map<number, number>
+  /** The email autolink from `start` to `end`, built when it is used. */
+  emailLink(source: string, start: number, end: number): AutolinkResult
   textPattern(extra: string, single: boolean): RegExp
   isAutolinkStart(char: number): boolean
   isTildeCloser(source: string, index: number): number
@@ -57,7 +60,7 @@ export const gfmInlineSupport: GfmInlineSupport = {
     return html.replace(/<(\/?)(title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext)(?=[\t\n\f\r />])/gi, '&lt;$1$2')
   },
   emailLinks(source) {
-    const links = new Map<number, AutolinkResult>()
+    const links = new Map<number, number>()
     if (!source.includes('@')) return links
     // Scan each local-part run once. Retrying an email regex at every letter
     // would be quadratic on a long word without an @ character.
@@ -74,21 +77,26 @@ export const gfmInlineSupport: GfmInlineSupport = {
       const name = host[0].replace(/\.+$/, '')
       if (!name.includes('.') || !/[a-z\d]$/i.test(name)) continue
       let end = host.index + name.length
-      const explicit = /^(?:mailto:|xmpp:)/i.test(match[0])
       if (/^xmpp:/i.test(match[0])) {
         resource.lastIndex = end
         const suffix = resource.exec(source)
         if (suffix) end = resource.lastIndex
       }
-      const raw = source.slice(match.index, end)
-      links.set(match.index, {
-        raw,
-        token: { type: 'link', raw, href: explicit ? raw : `mailto:${raw}`, text: raw,
-          tokens: [{ type: 'text', raw, text: raw }] },
-      })
+      // Positions only: building every link's tokens here, before the
+      // tokenizer counts them, would let a run of addresses build any number.
+      links.set(match.index, end)
       local.lastIndex = end
     }
     return links
+  },
+  emailLink(source, start, end) {
+    const raw = source.slice(start, end)
+    const explicit = /^(?:mailto:|xmpp:)/i.test(raw)
+    return {
+      raw,
+      token: { type: 'link', raw, href: explicit ? raw : `mailto:${raw}`, text: raw,
+        tokens: [{ type: 'text', raw, text: raw }] },
+    }
   },
   isTildeCloser(source, index) {
     if (source[index] !== '~' || source[index - 1] === '~') return 0

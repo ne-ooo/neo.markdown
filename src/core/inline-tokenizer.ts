@@ -77,7 +77,7 @@ interface LinkScan {
   parenthesisBalance: Int32Array
   destinations: Map<number, ParsedLinkDestination | null>
   tildeClosers: number[][]
-  emailLinks: Map<number, InlineResult>
+  emailLinks: Map<number, number>
   emailStarts: number[]
   backtickRuns: DelimiterRun[]
   backtickClosers: Map<number, DelimiterRun[]>
@@ -407,6 +407,11 @@ export class InlineTokenizerBase {
         const result = candidate.rule.tokenize(src())
         if (result) {
           this.assertProgress(candidate.rule.name, source, cursor, result.raw)
+          // The caller charges the token itself; its children count too, so
+          // discarding it releases what was charged.
+          if ('tokens' in result.token) {
+            consumeTokenBudget(tokenBudget, this.countTokens(result.token.tokens))
+          }
           return result
         }
       }
@@ -422,7 +427,7 @@ export class InlineTokenizerBase {
     if (allowExtendedAutolinks && linkScan.emailLinks.has(cursor)) {
       result = tryBuiltin(INLINE_RULE_PRIORITIES['autolink'], () => {
         consumeTokenBudget(tokenBudget)
-        return linkScan.emailLinks.get(cursor)!
+        return this.gfmSupport!.emailLink(source, cursor, linkScan.emailLinks.get(cursor)!)
       })
       if (result) return result
     }
@@ -549,7 +554,7 @@ export class InlineTokenizerBase {
     const matchingParentheses = new Map<number, number>()
     const parenthesisStack: number[] = []
     const tildeClosers: number[][] = [[], [], []]
-    const emailLinks = (allowExtendedAutolinks ? this.gfmSupport?.emailLinks(src) : undefined) ?? new Map<number, InlineResult>()
+    const emailLinks = (allowExtendedAutolinks ? this.gfmSupport?.emailLinks(src) : undefined) ?? new Map<number, number>()
     const emailStarts = [...emailLinks.keys()]
     const backtickRuns: DelimiterRun[] = []
     const backtickClosers = new Map<number, DelimiterRun[]>()
