@@ -3,6 +3,15 @@ import type { LazyLineSet } from '../core/types.js'
 const MIN_CAPACITY = 16
 
 /**
+ * Only whole offsets an Int32Array holds exactly are kept. A Set never
+ * matches any other number against a line's offset, so storing a fraction
+ * or a larger number would mark a different line.
+ */
+function isOffset(offset: number): boolean {
+  return Number.isInteger(offset) && offset >= 0 && offset <= 0x7fff_ffff
+}
+
+/**
  * Offsets of lazy continuation lines in a container's content, kept sorted
  * in a typed array: four bytes a line, where a Set holds tens. Each nesting
  * level keeps its own while the levels inside it are tokenized, so a deep
@@ -19,7 +28,9 @@ export class LineSet implements LazyLineSet {
       this.count = offsets.count
       return
     }
-    const sorted = Int32Array.from(offsets).sort()
+    const valid: number[] = []
+    for (const offset of offsets) if (isOffset(offset)) valid.push(offset)
+    const sorted = Int32Array.from(valid).sort()
     let count = 0
     for (const offset of sorted) {
       if (count === 0 || offset !== sorted[count - 1]) sorted[count++] = offset
@@ -31,6 +42,7 @@ export class LineSet implements LazyLineSet {
 
   /** Adds an offset; containers add them in increasing order. */
   add(offset: number): void {
+    if (!isOffset(offset)) return
     const last = this.count > 0 ? this.offsets[this.count - 1]! : -1
     if (offset === last) return
     if (this.count === this.offsets.length) {

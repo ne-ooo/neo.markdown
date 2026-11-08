@@ -40,6 +40,16 @@ describe('LineSet', () => {
     empty.add(5)
     expect([...empty]).toEqual([5])
   })
+
+  // A Set never matches these against a line's offset.
+  it('ignores numbers that are not offsets', () => {
+    const lines = new LineSet([1.5, -1, NaN, Infinity, 2 ** 32 + 3, 4])
+    lines.add(6.5)
+    lines.add(2 ** 31)
+
+    expect([...lines]).toEqual([4])
+    expect([1, 3, 6].some(offset => lines.has(offset))).toBe(false)
+  })
 })
 
 describe('nested containers', () => {
