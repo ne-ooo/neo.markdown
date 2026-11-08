@@ -37,6 +37,12 @@ const scenarios: Record<string, (size: number) => unknown> = {
   gfmTildeRuns: (size) => defaultParser.parse('~a ~~b ~~~c '.repeat(size)),
   gfmTableRows: (size) => defaultParser.parse('| a | b |\n| - | - |\n' + 'row\n'.repeat(size)),
   gfmTagFilter: (size) => gfmHtmlParser.parse('<div>\n' + '<script x> </script> <script-like> '.repeat(size)),
+  // A heading whose text ends in a long run of spaces and tabs before a final
+  // character, and an autolink ending in a long run of trailing punctuation.
+  // Trimming them with a trailing-run pattern retried the run at every offset.
+  headingTrailingSpace: (size) => defaultParser.parse(`# x${' \t'.repeat(size * 2)}y`),
+  autolinkTrailingPunctuation: (size) =>
+    defaultParser.parse(`http://a.b/${'?!.,:*_~'.repeat(size)}z`),
   emphasis: (size) => defaultParser.parse('*_~'.repeat(size)),
   unmatchedEmphasis: (size) => defaultParser.parse('**a '.repeat(size)),
   unmatchedDelete: (size) => defaultParser.parse('~~a '.repeat(size)),
