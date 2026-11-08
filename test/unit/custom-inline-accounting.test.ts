@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createParser } from '../../src/index.js'
-import type { InlineRule, TextToken } from '../../src/core/types.js'
+import type { InlineRule, InlineToken, TextToken } from '../../src/core/types.js'
 
 /** A rule on `!` returning an emphasis of 200 pieces of text. */
 function wideEmphasis(priority: number): InlineRule {
@@ -23,6 +23,30 @@ describe('custom inline rules and the token budget', () => {
 
     expect(() => parser.parse(`![${'!'.repeat(50)}](u) ${'x * '.repeat(3_000)}`)).toThrow(RangeError)
     expect(() => createParser({ maxTokens: 2_000 }).parse('x * '.repeat(3_000))).toThrow(RangeError)
+  })
+
+  // Counting went over a shared child once per path to it: 2^60 here.
+  it.each([
+    ['shares its children', () => {
+      let token: InlineToken = { type: 'text', raw: 'x', text: 'x' }
+      for (let level = 0; level < 60; level++) token = { type: 'strong', raw: '!', text: '!', tokens: [token, token] }
+      return token
+    }],
+    ['holds itself', () => {
+      const token = { type: 'strong', raw: '!', text: '!', tokens: [] as InlineToken[] } satisfies InlineToken
+      token.tokens.push(token)
+      return token
+    }],
+  ])('refuses a custom token that %s once it passes the limit', (_, build) => {
+    const token = build()
+    const parser = createParser({
+      maxTokens: 1_000,
+      plugins: [builder => builder.addInlineRule({
+        name: 'bang', priority: 1, triggerChars: [33], tokenize: (src) => (src.startsWith('!') ? { raw: '!', token } : null),
+      })],
+    })
+
+    expect(() => parser.parse('a !')).toThrow(new RangeError('Markdown token count exceeds maxTokens 1000'))
   })
 
   // Adjacent text was merged by appending to the token before it, which

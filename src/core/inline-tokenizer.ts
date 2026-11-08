@@ -442,8 +442,8 @@ export class InlineTokenizerBase {
           this.assertProgress(candidate.rule.name, source, cursor, result.raw)
           // The caller charges the token itself; its children count too, so
           // discarding it releases what was charged.
-          if ('tokens' in result.token) {
-            consumeTokenBudget(tokenBudget, this.countTokens(result.token.tokens))
+          if (tokenBudget && 'tokens' in result.token) {
+            consumeTokenBudget(tokenBudget, this.countTokens(result.token.tokens, tokenBudget.remaining))
           }
           return { ...result, custom: true }
         }
@@ -993,13 +993,24 @@ export class InlineTokenizerBase {
    * link.
    */
   private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
-    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens))
+    // Everything released was charged, so its count is within the limit.
+    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens, tokenBudget.limit))
   }
 
-  private countTokens(tokens: InlineToken[]): number {
-    let count = tokens.length
-    for (const token of tokens) {
-      if ('tokens' in token) count += this.countTokens(token.tokens)
+  /**
+   * Counts tokens and their descendants, stopping once the count passes
+   * `limit`. A custom rule's token may share its children or hold itself: a
+   * recursive count went over each shared child once per path to it, which
+   * doubles with each level of sharing, and overflowed the stack on a cycle.
+   */
+  private countTokens(tokens: InlineToken[], limit: number): number {
+    let count = 0
+    const pending = [tokens]
+    while (pending.length > 0) {
+      const level = pending.pop()!
+      count += level.length
+      if (count > limit) return count
+      for (const token of level) if ('tokens' in token) pending.push(token.tokens)
     }
     return count
   }
