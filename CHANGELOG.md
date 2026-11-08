@@ -9,10 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - `maxOutputLength` stops rendering with a `RangeError` once the HTML passes a length, before sanitizing and HTML transforms. Reference links repeat their destination at each use, so a short document can render to hundreds of times its length: 471 KB of references rendered to 250 million characters. Each block, list item, and table cell is counted as it finishes, nested blocks once, and the parser stays usable after it stops. HTML a custom renderer renders and then discards still counts.
+- `maxTokens` stops parsing with a `RangeError` before building the token that passes a count, the budget UGC mode applies at 50,000, now available outside UGC mode, as with raw HTML allowed. A short document of emphasis builds hundreds of thousands of tokens (1 MiB of `*a* ` builds about 790,000), and each short table row is padded to the header's width: each table cell counts, including the padding, before it is built.
 
 ### Changed
 
 - UGC mode stops rendering HTML longer than 20,000,000 code units with a `RangeError`, even when a larger `maxOutputLength` is given.
+- In UGC mode, a smaller `maxTokens` lowers the 50,000-token limit, and the error names the limit that applied: `maxTokens` or `UGC limit`.
 
 ### Fixed
 

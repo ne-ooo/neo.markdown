@@ -26,6 +26,7 @@ import { buildSanitizerConfig, markSanitizerConfigStable } from './sanitizer.js'
 import {
   consumeTokenBudget,
   createTokenBudget,
+  MAX_UGC_TOKEN_COUNT,
   type TokenBudget,
 } from './token-budget.js'
 import { gfmInlineSupport, type GfmInlineSupport } from '../inline/gfm-support.js'
@@ -49,6 +50,7 @@ export class MarkdownParserBase implements Parser {
   private sanitizerConfig: SanitizerConfig | null
   private sanitizer: HtmlSanitizer | null
   private builder: PluginBuilderImpl
+  private tokenLimitName: string
 
   constructor(
     options: ParserOptions = {},
@@ -69,6 +71,12 @@ export class MarkdownParserBase implements Parser {
     ) {
       throw new TypeError('maxOutputLength must be a non-negative safe integer')
     }
+    if (
+      supplied.maxTokens !== undefined
+      && (!Number.isSafeInteger(supplied.maxTokens) || supplied.maxTokens < 0)
+    ) {
+      throw new TypeError('maxTokens must be a non-negative safe integer')
+    }
 
     const resolved = supplied.ugc
       ? {
@@ -85,8 +93,16 @@ export class MarkdownParserBase implements Parser {
             supplied.maxOutputLength ?? MAX_UGC_OUTPUT_LENGTH,
             MAX_UGC_OUTPUT_LENGTH
           ),
+          maxTokens: Math.min(
+            supplied.maxTokens ?? MAX_UGC_TOKEN_COUNT,
+            MAX_UGC_TOKEN_COUNT
+          ),
         }
       : supplied
+    this.tokenLimitName = supplied.ugc
+      && (supplied.maxTokens === undefined || supplied.maxTokens >= MAX_UGC_TOKEN_COUNT)
+      ? 'UGC limit'
+      : 'maxTokens'
 
     this.options = {
       allowHtml: false,
@@ -201,12 +217,7 @@ export class MarkdownParserBase implements Parser {
     // Validate caller-provided graphs before plugins can recursively walk or
     // clone them. Transformed output is validated again below.
     if (this.tokenTransforms.length > 0) {
-      this.validateBlockTokens(
-        tokens,
-        0,
-        new Set<object>(),
-        this.options.ugc ? createTokenBudget() : undefined
-      )
+      this.validateBlockTokens(tokens, 0, new Set<object>(), this.newTokenBudget())
     }
 
     let transformedTokens = tokens
@@ -216,12 +227,7 @@ export class MarkdownParserBase implements Parser {
       transformedTokens = transform(transformedTokens)
     }
 
-    this.validateBlockTokens(
-      transformedTokens,
-      0,
-      new Set<object>(),
-      this.options.ugc ? createTokenBudget() : undefined
-    )
+    this.validateBlockTokens(transformedTokens, 0, new Set<object>(), this.newTokenBudget())
 
     if (!this.options.allowHtml) {
       this.assertNoRawHtmlBlocks(transformedTokens)
@@ -263,7 +269,7 @@ export class MarkdownParserBase implements Parser {
       )
     }
 
-    const tokenBudget = this.options.ugc ? createTokenBudget() : undefined
+    const tokenBudget = this.newTokenBudget()
     const blockTokens = this.tokenizeBlocks(markdown, tokenBudget)
     const references = new Map<string, LinkReference>()
     this.collectReferenceDefinitions(blockTokens, references)
@@ -273,11 +279,18 @@ export class MarkdownParserBase implements Parser {
 
     // Enforce the documented limit against the complete returned graph too.
     // This catches nested tokens synthesized directly by custom rules.
-    if (this.options.ugc) {
-      this.validateBlockTokens(tokens, 0, new Set<object>(), createTokenBudget())
+    const graphBudget = this.newTokenBudget()
+    if (graphBudget) {
+      this.validateBlockTokens(tokens, 0, new Set<object>(), graphBudget)
     }
 
     return tokens
+  }
+
+  /** A fresh budget for one pass over a document, or none without a limit. */
+  private newTokenBudget(): TokenBudget | undefined {
+    const limit = this.options.maxTokens
+    return limit === undefined ? undefined : createTokenBudget(limit, this.tokenLimitName)
   }
 
   /** Internal extension point for dependency-aware block reuse. */

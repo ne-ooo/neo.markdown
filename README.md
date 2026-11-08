@@ -95,6 +95,7 @@ parser.render(tokens);
 | `maxNestingDepth`   | `number`                   | `100`             | Limit nested blockquotes and lists. The hard maximum is 100. |
 | `maxInputLength`    | `number`                   | No general limit  | Reject longer input. UGC mode has a hard limit.              |
 | `maxOutputLength`   | `number`                   | No general limit  | Stop rendering longer HTML. UGC mode has a hard limit.       |
+| `maxTokens`         | `number`                   | No general limit  | Stop parsing past this many tokens. UGC mode has a hard limit. |
 | `lazyImages`        | `boolean`                  | `true`            | Add `loading="lazy"` to rendered images.                     |
 | `safeLinks`         | `boolean \| object`        | `false`           | Set attributes for external links.                           |
 | `ugc`               | `boolean`                  | `false`           | Apply the user-generated-content controls.                   |
@@ -152,7 +153,8 @@ const html = parser.parse(userMarkdown);
 
 UGC mode disables raw HTML and applies safe-link defaults. It limits input to
 1,000,000 UTF-16 code units and 50,000 tokens, and rendered HTML to 20,000,000
-code units. Smaller `maxInputLength` and `maxOutputLength` values apply.
+code units. Smaller `maxInputLength`, `maxTokens` and `maxOutputLength` values
+apply.
 
 The parser also applies fixed inline nesting and work limits. These limits stop
 deep formatting and repeated rescans after the budgets are exhausted.
@@ -274,10 +276,14 @@ setup. Finite limits are appropriate for user-controlled source.
 
 With `errorPolicy: "plain"`, the fallback preserves the complete code token.
 Highlighting limits do not truncate this fallback. Set the parser's
-`maxInputLength` and `maxOutputLength`, or use `ugc: true`, to limit the
-whole document. Reference links repeat their destination at each use, so a
-short document can render to hundreds of times its length; `maxOutputLength`
-stops rendering with a `RangeError` before that HTML is built. HTML is counted
+`maxInputLength`, `maxTokens` and `maxOutputLength`, or use `ugc: true`, to
+limit the whole document. Reference links repeat their destination at each
+use, so a short document can render to hundreds of times its length;
+`maxOutputLength` stops rendering with a `RangeError` before that HTML is
+built. A short document of emphasis, or a wide table with short rows, builds
+hundreds of thousands of tokens; `maxTokens` stops parsing with a
+`RangeError` before building the token that passes it, counting each table
+cell, including the empty cells a short row is padded with. HTML is counted
 as it renders, so a custom renderer that renders a token's children and then
 discards them still has them counted.
 An error from `onError` itself propagates to the caller.

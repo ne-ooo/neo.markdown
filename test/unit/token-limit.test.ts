@@ -1,0 +1,68 @@
+import { describe, expect, it } from 'vitest'
+import { createIncrementalMarkdown } from '../../src/experimental/incremental.js'
+import { createParser } from '../../src/index.js'
+import { createParser as createSanitizedParser } from '../../src/sanitized.js'
+
+const wideTable = (columns: number, rows: number) =>
+  `${'|a'.repeat(columns)}|\n${'|-'.repeat(columns)}|\n${'b\n'.repeat(rows)}`
+
+describe('maxTokens', () => {
+  // 1 MiB of emphasis builds about 790,000 tokens.
+  it('stops a document of emphasis before building its tokens', () => {
+    const parser = createParser({ maxTokens: 10_000 })
+
+    expect(() => parser.parse('*a* '.repeat(262_144))).toThrow(
+      new RangeError('Markdown token count exceeds maxTokens 10000'),
+    )
+  })
+
+  // Each short row is padded to the header's width while the table is
+  // tokenized: 26 KB of rows under 1,000 columns makes 10 million cells.
+  it('counts the cells a short row is padded with before building them', () => {
+    const parser = createParser({ gfm: true, maxTokens: 10_000 })
+
+    expect(() => parser.parse(wideTable(1_000, 10_000))).toThrow(
+      new RangeError('Markdown token count exceeds maxTokens 10000'),
+    )
+    expect(() => parser.parse(wideTable(1_000, 4))).not.toThrow()
+  })
+
+  it('renders a document within the limit as an unlimited parser does', () => {
+    const markdown = '# T\n\n> *quote* [l](https://x.y)\n\n- a\n- **b**\n\n| a | b |\n|---|---|\n| 1 |\n'
+    const html = createParser({ gfm: true }).parse(markdown)
+
+    expect(createParser({ gfm: true, maxTokens: 1_000 }).parse(markdown)).toBe(html)
+    expect(() => createParser({ gfm: true, maxTokens: 10 }).parse(markdown)).toThrow(RangeError)
+  })
+
+  it('applies with the sanitized entry and raw HTML allowed', () => {
+    const parser = createSanitizedParser({ allowHtml: true, sanitize: true, maxTokens: 1_000 })
+
+    expect(parser.parse('<p align="center">*hi*</p>\n\n*a*')).toContain('<em>a</em>')
+    expect(() => parser.parse('*a* '.repeat(10_000))).toThrow(/exceeds maxTokens 1000/)
+  })
+
+  it('lowers the UGC limit, but cannot raise it', () => {
+    const source = '**text**\n\n'.repeat(18_000)
+
+    expect(() => createParser({ ugc: true, maxTokens: 100 }).parse('*a* '.repeat(100))).toThrow(
+      new RangeError('Markdown token count exceeds maxTokens 100'),
+    )
+    expect(() => createParser({ ugc: true, maxTokens: 1_000_000 }).parse(source)).toThrow(
+      new RangeError('Markdown token count exceeds UGC limit 50000'),
+    )
+  })
+
+  it('keeps the limit when an incremental session reuses cached tokens', () => {
+    const session = createIncrementalMarkdown({ parser: { maxTokens: 1_000 }, maxWorkCodeUnits: 10_000_000 })
+    session.update('**text**')
+
+    expect(() => session.update('**text**\n\n'.repeat(400))).toThrow(/exceeds maxTokens 1000/)
+  })
+
+  it.each([-1, 1.5, Number.NaN, Infinity])('rejects maxTokens %s', (maxTokens) => {
+    expect(() => createParser({ maxTokens })).toThrow(
+      new TypeError('maxTokens must be a non-negative safe integer'),
+    )
+  })
+})
