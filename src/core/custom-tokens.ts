@@ -13,6 +13,8 @@ import { consumeTokenBudget, createTokenBudget, type TokenBudget } from './token
 export interface InlineTokenMeasure {
   /** Its descendants: its children, their children, and so on. */
   readonly nodes: number
+  /** Its descendants that have children. */
+  readonly containers: number
   /** The code units of alt text it gives: its children's, or its own text without children. */
   readonly text: number
   /** 0 without children, else one more than its deepest child. */
@@ -40,8 +42,10 @@ export interface InlineDocument {
   /** The custom text in the alt text of each image built here and still kept. */
   readonly images: WeakMap<object, number>
   /**
-   * The descendants of kept custom tokens, without a token budget, where the
-   * token budget counts them: up to the output limit.
+   * Without a token budget, the descendants of kept custom tokens that have
+   * children, up to the output limit. Only they multiply the renderer's walk
+   * through a shared token; a token's text is bounded by the output it
+   * renders.
    */
   readonly nodes: TokenBudget | undefined
   /**
@@ -93,7 +97,7 @@ function leavesMeasure(children: InlineToken[]): InlineTokenMeasure {
     text += leafText(child).length
     link ||= (child as { type: string }).type === 'link'
   }
-  return { nodes: children.length, text, depth: children.length > 0 ? 1 : 0, link }
+  return { nodes: children.length, containers: 0, text, depth: children.length > 0 ? 1 : 0, link }
 }
 
 /**
@@ -133,7 +137,7 @@ function measureWithin(
     // Its deepest token with children is one above its deepest token.
     if (depth + held.depth - 1 > MAX_TOKEN_DEPTH) throw TOO_DEEP
   } else {
-    let nodes = children.length, text = 0, deepest = 0, link = false
+    let nodes = children.length, containers = 0, text = 0, deepest = 0, link = false
     for (const child of children) {
       checkChild(child)
       if (!('tokens' in child)) {
@@ -145,11 +149,12 @@ function measureWithin(
       const childMeasure = measures.get(child) ?? local.get(child)
         ?? measureWithin(child, childrenOf(child)!, measures, local, depth + 1)
       nodes += childMeasure.nodes
+      containers += 1 + childMeasure.containers
       text += childMeasure.text
       deepest = Math.max(deepest, childMeasure.depth + 1)
       link ||= childMeasure.link
     }
-    held = { nodes, text, depth: deepest, link }
+    held = { nodes, containers, text, depth: deepest, link }
     if (shared) measures.set(children, held)
   }
   const measure = token.type === 'link' && !held.link ? { ...held, link: true } : held
@@ -223,7 +228,9 @@ export function createInlineDocument(budget: TokenBudget | undefined, maxOutputL
 function keepNodes(document: InlineDocument, nodes: number): void {
   const budget = document.nodes
   if (!budget || nodes === 0) return
-  if (nodes > budget.remaining) throw new RangeError(`Custom inline tokens' descendants exceed ${document.outputLimit}`)
+  if (nodes > budget.remaining) {
+    throw new RangeError(`Custom inline tokens' descendants with children exceed ${document.outputLimit}`)
+  }
   budget.remaining -= nodes
 }
 
@@ -248,7 +255,7 @@ export function chargeCustomToken(token: InlineToken, document: InlineDocument, 
   const measure = known ?? measureCustomToken(token, document.measures)
   document.custom = true
   if (budget) consumeTokenBudget(budget, measure.nodes)
-  else keepNodes(document, measure.nodes)
+  else keepNodes(document, measure.containers)
 }
 
 /** Counts custom text an image's alt text keeps, refusing past the output limit. */
@@ -287,6 +294,7 @@ export function inlineDocumentSpent(document: InlineDocument | undefined): Inlin
 
 export function respendInlineDocument(document: InlineDocument | undefined, spent: InlineDocumentSpent): void {
   if (!document) return
-  keepNodes(document, spent.nodes)
-  keepAltText(document, spent.altText)
+  // A paragraph keeps what it charges, so what it spent is never below zero.
+  keepNodes(document, Math.max(0, spent.nodes))
+  keepAltText(document, Math.max(0, spent.altText))
 }

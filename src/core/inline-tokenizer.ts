@@ -1028,7 +1028,7 @@ export class InlineTokenizerBase {
         const measure = document.custom ? document.measures.get(token) : undefined
         if (measure) {
           count += measure.nodes
-          custom += measure.nodes
+          custom += measure.containers
           continue
         }
         const image = document.custom ? document.images.get(token) : undefined

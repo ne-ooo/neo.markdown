@@ -66,7 +66,7 @@ describe('custom inline rules and the token budget', () => {
     const parser = createParser({ maxOutputLength: 100, plugins: [at(shared(26, ''))] })
     const started = performance.now()
 
-    expect(() => parser.parse(markdown)).toThrow(new RangeError("Custom inline tokens' descendants exceed maxOutputLength 100"))
+    expect(() => parser.parse(markdown)).toThrow(new RangeError("Custom inline tokens' descendants with children exceed maxOutputLength 100"))
     expect(performance.now() - started).toBeLessThan(500)
   })
 
@@ -214,7 +214,8 @@ describe('custom inline rules and the token budget', () => {
     const leaf: InlineToken = { type: 'text', raw: '', text: '' }
     const flat: InlineToken = { type: 'em', raw: '@', text: '', tokens: Array<InlineToken>(50).fill(leaf) }
     const wrapper: InlineToken = { type: 'strong', raw: '%', text: '', tokens: [flat] }
-    const forty: InlineToken = { type: 'strong', raw: 'R', text: '', tokens: [{ type: 'em', raw: '', text: '', tokens: Array<InlineToken>(39).fill(leaf) }] }
+    // 40 tokens with children.
+    const forty: InlineToken = { type: 'strong', raw: 'R', text: '', tokens: Array.from({ length: 40 }, () => ({ type: 'em', raw: '', text: '', tokens: [leaf] }) as InlineToken) }
     const parser = createParser({
       maxOutputLength: 100,
       renderer: { strong: () => '', em: () => '' },
@@ -224,10 +225,12 @@ describe('custom inline rules and the token budget', () => {
         }
       }],
     })
-    const refusal = new RangeError("Custom inline tokens' descendants exceed maxOutputLength 100")
+    const refusal = new RangeError("Custom inline tokens' descendants with children exceed maxOutputLength 100")
 
-    expect(() => parser.parse('R R R')).toThrow(refusal)
-    expect(() => parser.parse('R ![@%](u) R R')).toThrow(refusal)
+    expect(() => parser.tokenize('R R R')).toThrow(refusal)
+    expect(() => parser.tokenize('R ![@%](u) R R')).toThrow(refusal)
+    // Tokens of text alone don't count against it.
+    expect(() => parser.tokenize('@ '.repeat(1_000))).not.toThrow()
   })
 
   // Alt text from the Markdown itself counted against the output limit,
@@ -241,11 +244,11 @@ describe('custom inline rules and the token budget', () => {
     expect(() => createParser({ maxOutputLength: 200 }).tokenize(markdown)).not.toThrow()
   })
 
-  // A token whose children are text counts as a built-in one, unless it was
-  // measured inside another rule's token, when releasing it returned what
-  // charging it hadn't taken.
+  // A token measured inside another rule's token, then returned itself, is
+  // charged and released by the same measure, so images holding it make no
+  // room for more.
   it('charges a token measured inside another by its measure', () => {
-    const inner: InlineToken = { type: 'em', raw: '%', text: '%', tokens: [{ type: 'text', raw: '', text: '' }] }
+    const inner: InlineToken = { type: 'em', raw: '%', text: '%', tokens: [{ type: 'em', raw: '', text: '', tokens: [{ type: 'text', raw: '', text: '' }] }] }
     const outer: InlineToken = { type: 'strong', raw: '@', text: '@', tokens: [inner] }
     const parser = createParser({
       maxOutputLength: 40,
@@ -254,11 +257,11 @@ describe('custom inline rules and the token budget', () => {
         name: 'percent', priority: 1, triggerChars: [37], tokenize: (src) => (src.startsWith('%') ? { raw: '%', token: inner } : null),
       })],
     })
+    const refusal = new RangeError("Custom inline tokens' descendants with children exceed maxOutputLength 40")
 
-    // 20 of the outer token use the 40 descendants allowed; 40 inner tokens
-    // in alt text, released, must not make room for 20 more.
-    expect(() => parser.parse(`${'@ '.repeat(20)}${'![%](u) '.repeat(40)}${'@ '.repeat(20)}`))
-      .toThrow(new RangeError("Custom inline tokens' descendants exceed maxOutputLength 40"))
+    // Each outer token holds 2 tokens with children, of the 40 allowed.
+    expect(() => parser.tokenize(`${'@ '.repeat(19)}${'![%](u) '.repeat(40)}@`)).not.toThrow()
+    expect(() => parser.tokenize(`${'@ '.repeat(19)}${'![%](u) '.repeat(40)}${'@ '.repeat(2)}`)).toThrow(refusal)
   })
 
   // Measures were kept for good, so a token a transform changed after one
