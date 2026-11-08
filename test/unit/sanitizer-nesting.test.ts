@@ -46,6 +46,16 @@ describe('HTML nesting in the structural sanitizer', () => {
     expect(() => parser().parse(`<p>${iframe}${'</div>'.repeat(opened)}</p>`.repeat(1_000))).not.toThrow()
   })
 
+  // In SVG an iframe's text isn't raw, and each CDATA section in it is parsed
+  // again on its own. Each of those parses ending in a cut-off tag took an
+  // element off the outer count.
+  it('keeps counting past a discarded iframe in SVG whose CDATA sections end in cut-off tags', () => {
+    const text = `<![CDATA[<iframe ]]>${'<![CDATA[<b ]]>'.repeat(250)}`
+
+    expect(() => parser().parse(`<div><svg>${`${'<b>'.repeat(250)}<iframe>${text}`.repeat(3)}x</div>`)).toThrow(refusal)
+    expect(() => parser().parse(`<div><svg><iframe>${text}</iframe></svg></div>`.repeat(300))).not.toThrow()
+  })
+
   it('refuses 1 MB of nested tags after discarded iframes as soon as they pass the limit', () => {
     const started = performance.now()
 
@@ -106,5 +116,6 @@ describe('inputs in the structural sanitizer', () => {
     )
     expect(performance.now() - started).toBeLessThan(2_000)
     expect(gfm().parse(`${'x'.repeat(10_000)}<input>\n\n`.repeat(50))).not.toContain('<input')
+    expect(gfm().parse(`${'x'.repeat(1 << 20)}${'<input>'.repeat(500)}`)).not.toContain('<input')
   })
 })
