@@ -33,15 +33,16 @@ describe('plain-text fast path', () => {
     )
   })
 
-  // Each piece counts while it exists, and returns to the budget as it merges.
+  // An escape joins the text before it as it is built, so the run holds one
+  // piece throughout.
   it('merges adjacent text without bypassing token accounting', () => {
     const tokenizer = new InlineTokenizer()
-    const budget = createTokenBudget(3)
+    const budget = createTokenBudget(1)
     expect(tokenizer.tokenize('a\\*b', new Map(), budget)).toEqual([
       { type: 'text', raw: 'a\\*b', text: 'a*b' },
     ])
-    expect(budget.remaining).toBe(2)
-    expect(() => tokenizer.tokenize('a\\*b', new Map(), createTokenBudget(2))).toThrow(/token count/)
+    expect(budget.remaining).toBe(0)
+    expect(() => tokenizer.tokenize('a\\*b', new Map(), budget)).toThrow(/token count/)
   })
 })
 

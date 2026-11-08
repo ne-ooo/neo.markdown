@@ -19,7 +19,7 @@ const wideTable = (columns: number, rows: number) =>
 
 describe('maxTokens', () => {
   // 1 MiB of emphasis builds about 790,000 tokens.
-  it('stops a document of emphasis before building its tokens', () => {
+  it('refuses a document of emphasis past the limit', () => {
     const parser = createParser({ maxTokens: 10_000 })
 
     expect(() => parser.parse('*a* '.repeat(262_144))).toThrow(
@@ -76,20 +76,36 @@ describe('maxTokens', () => {
   // before the first was counted. They now count as they are built, and
   // return to the budget as they merge or are used up.
   it('counts inline pieces as they are built', () => {
-    const tokenizer = new InlineTokenizer()
-    const budget = createTokenBudget(1_000)
+    let reachedEnd = false
+    const tokenizer = new InlineTokenizer([{
+      name: 'end',
+      triggerChars: [167],
+      tokenize: (src) => {
+        reachedEnd = true
+        return src.startsWith('§') ? { raw: '§', token: { type: 'text', raw: '§', text: '§' } } : null
+      },
+    }])
 
-    expect(() => tokenizer.tokenize('*a* '.repeat(262_144), new Map(), budget)).toThrow(
+    expect(() => tokenizer.tokenize(`${'*a* '.repeat(262_144)}§`, new Map(), createTokenBudget(1_000))).toThrow(
       new RangeError('Markdown token count exceeds UGC limit 1000'),
     )
-    expect(budget.remaining).toBe(0)
+    expect(reachedEnd).toBe(false)
+  })
+
+  // Each escape stayed its own piece until the paragraph ended, so a long
+  // paragraph of them, as HTML-to-Markdown converters write, passed the limit.
+  it('holds a run of escapes as one piece', () => {
+    const markdown = 'a\\_ '.repeat(30_000)
+
+    expect(createParser({ ugc: true }).parse(markdown)).toBe(`<p>${'a_ '.repeat(30_000).trimEnd()}</p>\n`)
   })
 
   it.each([
-    ['CommonMark', commonmark],
-    ['GFM', gfm.examples],
-  ])('charges exactly the inline tokens it returns, across the %s examples', (_, examples) => {
-    const tokenizer = new InlineTokenizer()
+    ['CommonMark', commonmark, {}],
+    ['GFM', gfm.examples, { gfm: true }],
+    ['GFM, raw HTML and breaks', [...commonmark, ...gfm.examples], { gfm: true, allowHtml: true, breaks: true }],
+  ])('charges exactly the inline tokens it returns, across the %s examples', (_, examples, options) => {
+    const tokenizer = new InlineTokenizer([], options)
     const mismatches = examples.flatMap(({ markdown }) => {
       const budget = createTokenBudget(1_000_000)
       const tokens = tokenizer.tokenize(markdown, new Map(), budget)

@@ -48,7 +48,13 @@ const DEFAULT_CUSTOM_PRIORITY = 750
 const HARD_MAX_INLINE_NESTING_DEPTH = 32
 const MIN_INLINE_WORK_BUDGET = 10_000
 
-type InlineResult = { token: InlineToken; raw: string; delimiter?: Omit<EmphasisDelimiter, 'index'> }
+type InlineResult = {
+  token: InlineToken
+  raw: string
+  delimiter?: Omit<EmphasisDelimiter, 'index'>
+  /** A custom rule's token, which may be shared, so it is never merged into. */
+  custom?: boolean
+}
 
 interface ParsedLinkDestination {
   end: number
@@ -289,10 +295,22 @@ export class InlineTokenizerBase {
       }
       if (token) {
         this.assertProgress('inline tokenizer', src, cursor, token.raw)
-        consumeTokenBudget(tokenBudget)
-        if (token.delimiter) delimiters.push({ ...token.delimiter, index: tokens.length })
-        tokens.push(token.token)
-        fallbackTextIndex = -1
+        // Plain text, such as an escape, joins the text before it now rather
+        // than when the paragraph ends, so a run of escapes holds one piece.
+        const plain = token.token.type === 'text' && !token.delimiter && !token.custom
+        const previous = tokens[fallbackTextIndex]
+        if (
+          plain && token.token.type === 'text'
+          && fallbackTextIndex === tokens.length - 1 && previous?.type === 'text'
+        ) {
+          previous.raw += token.token.raw
+          previous.text += token.token.text
+        } else {
+          consumeTokenBudget(tokenBudget)
+          if (token.delimiter) delimiters.push({ ...token.delimiter, index: tokens.length })
+          tokens.push(token.token)
+        }
+        fallbackTextIndex = plain ? tokens.length - 1 : -1
         previousChar = token.raw.at(-1) ?? previousChar
         cursor += token.raw.length
       } else {
@@ -412,7 +430,7 @@ export class InlineTokenizerBase {
           if ('tokens' in result.token) {
             consumeTokenBudget(tokenBudget, this.countTokens(result.token.tokens))
           }
-          return result
+          return { ...result, custom: true }
         }
       }
       return null
