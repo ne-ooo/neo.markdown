@@ -1,3 +1,4 @@
+import type { BlockRuleContext } from '../core/types.js'
 import { indentation, stripIndent } from './whitespace.js'
 
 export function listMarker(line: string) {
@@ -51,4 +52,13 @@ export class ParagraphState {
     if (!this.open && indentation(line) >= 4) return
     this.open = true
   }
+}
+
+/**
+ * The depth to tokenize a container's content at: one level deeper, or
+ * `maxNestingDepth`, where no container nests, once the document has
+ * tokenized as much nested content as it may.
+ */
+export function nestedDepth(context: BlockRuleContext, content: string): number {
+  return context.reserveNested?.(content.length) === false ? context.maxNestingDepth : context.depth + 1
 }

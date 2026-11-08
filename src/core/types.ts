@@ -602,11 +602,25 @@ export interface BlockRule {
 }
 
 /** Safe recursive services exposed to block rules by the tokenizer. */
+/**
+ * Offsets of lazy continuation lines in a container's content. A Set of
+ * numbers is one; built-in containers keep a compact sorted set.
+ */
+export type LazyLineSet = Pick<ReadonlySet<number>, 'has' | 'size'> & Iterable<number>
+
 export interface BlockRuleContext {
   readonly depth: number
   readonly maxNestingDepth: number
   /** Tokenize nested block content at an explicit container depth. */
-  tokenize(src: string, depth: number, lazyLines?: ReadonlySet<number>, key?: number): BlockToken[]
+  tokenize(src: string, depth: number, lazyLines?: LazyLineSet, key?: number): BlockToken[]
+  /**
+   * Reserves `length` code units of nested content for a container to
+   * tokenize. Nested content is tokenized again at each level, so the
+   * document caps the total. When `length` doesn't fit what is left, this
+   * returns false and reserves nothing, and the container tokenizes its
+   * content at `maxNestingDepth`, where no container nests.
+   */
+  reserveNested?(length: number): boolean
   /** Container continuation lines cannot introduce setext underlines. */
   isLazyLine?(offset: number): boolean
   /** Return true when a higher-priority enabled rule starts at src. */
@@ -622,6 +636,8 @@ export interface BlockRuleContext {
     retain(snapshot: () => unknown): void
     reused(codeUnits: number): void
     budget(): number
+    /** The document's nested-work budget: what's left, and how often it refused. */
+    nested?(): { readonly remaining: number; readonly refusals: number }
   }
 }
 

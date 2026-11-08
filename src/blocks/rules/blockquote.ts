@@ -1,7 +1,8 @@
 import { dependOnLine } from '../dependencies.js'
 import type { BlockRule } from '../../core/types.js'
 import { stripIndent } from '../whitespace.js'
-import { ParagraphState } from '../container-state.js'
+import { nestedDepth, ParagraphState } from '../container-state.js'
+import { LineSet } from '../line-set.js'
 
 interface QuoteState {
   kind: 'blockquote'; cursor: number; length: number; lines: string[]; lazy: number[]
@@ -20,7 +21,7 @@ export const blockquote: BlockRule = {
     const saved = previous?.kind === 'blockquote' ? previous : undefined
     const state = new ParagraphState(saved?.paragraph)
     const lines: string[] = saved?.lines.slice() ?? []
-    const lazy = new Set<number>(saved?.lazy)
+    const lazy = new LineSet(saved?.lazy)
     let length = saved?.length ?? 0
     let cursor = saved?.cursor ?? 0
     if (saved) continuation!.reused(cursor)
@@ -46,11 +47,15 @@ export const blockquote: BlockRule = {
       if (continuation) {
         const end = cursor, count = lines.length, size = length, paragraph = state.snapshot()
         continuation.retain(() => ({ kind: 'blockquote', cursor: end, length: size,
-          lines: lines.slice(0, count), lazy: [...lazy].filter(offset => offset < size), paragraph } satisfies QuoteState))
+          lines: lines.slice(0, count), lazy: lazy.below(size), paragraph } satisfies QuoteState))
       }
     }
     const raw = src.slice(0, cursor)
-    const tokens = context ? context.tokenize(lines.join('\n'), context.depth + 1, lazy) : []
+    const content = lines.join('\n')
+    // The lines aren't needed while the content is tokenized, unless a
+    // continuation snapshot reads them.
+    if (!continuation) lines.length = 0
+    const tokens = context ? context.tokenize(content, nestedDepth(context, content), lazy) : []
     return { token: { type: 'blockquote', raw, tokens }, raw }
   },
 }

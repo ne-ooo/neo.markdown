@@ -47,6 +47,7 @@ const adversarialInputs = [
   'lineBreakRuns',
   'escapedLines',
   'embedRestore',
+  'nestedHtml',
   'balancedEmphasis',
   'referenceLabels',
   'nestedContainers',
@@ -93,6 +94,30 @@ describe('adversarial input memory', () => {
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'pipe'],
           timeout: EXECUTION_LIMIT_MS,
+          killSignal: 'SIGKILL',
+        }
+      )
+
+      expect(output.trim()).toBe('ok')
+    }
+  )
+})
+
+describe('nested container memory', () => {
+  // Each nesting level held its own copy of a long body and a Set entry per
+  // lazy line: 256 KB under 99 levels took 680 MB. Tokenized to a bound, it
+  // fits in 48 MB. These measure memory, so they allow more time.
+  it.each(['deepQuotes', 'deepLists'])(
+    'parses %s around a long body within a small heap',
+    { timeout: 11_000 },
+    (scenario) => {
+      const output = execFileSync(
+        process.execPath,
+        ['--max-old-space-size=48', bundledFixture, scenario],
+        {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 10_000,
           killSignal: 'SIGKILL',
         }
       )

@@ -314,8 +314,9 @@ export class MarkdownParserBase implements Parser {
 
   /** Resume built-in block rules at a normalized top-level boundary. */
   protected resumeBlocks(markdown: string, start: number, tokenBudget: TokenBudget | undefined,
-    checkpoint: Parameters<Tokenizer['resume']>[3], continuations?: Parameters<Tokenizer['resume']>[4]): BlockToken[] {
-    return this.blockTokenizer.resume(markdown, start, tokenBudget, checkpoint, continuations)
+    checkpoint: Parameters<Tokenizer['resume']>[3], continuations?: Parameters<Tokenizer['resume']>[4],
+    work?: Parameters<Tokenizer['resume']>[5]): BlockToken[] {
+    return this.blockTokenizer.resume(markdown, start, tokenBudget, checkpoint, continuations, work)
   }
 
   private collectReferenceDefinitions(
