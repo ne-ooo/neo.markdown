@@ -2,8 +2,9 @@
  * Accounting for the tokens custom inline rules return. A rule may return
  * the same token every time, a token whose children share tokens, or one
  * that holds itself, and a document decides how often the rule runs. Each
- * token is measured once, counting every path to a shared token as a
- * recursive walk would, and what it expands to is charged to the document.
+ * token is measured as the rule returns it, counting every path to a shared
+ * token as a recursive walk would, and what it expands to is charged to the
+ * document.
  */
 import type { InlineToken } from './types.js'
 import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
@@ -28,6 +29,13 @@ export interface InlineTokenMeasure {
 export interface InlineDocument {
   spentNodes: number
   spentText: number
+  /**
+   * The measures of the tokens rules returned in this document, and of
+   * everything they hold, taken the first time each was returned. A plugin
+   * may change a token it returns again, as a token transform can after a
+   * document, so measures aren't kept between documents.
+   */
+  readonly measures: WeakMap<object, InlineTokenMeasure>
   readonly maxNodes: number
   readonly maxText: number
   readonly nodeLimit: string
@@ -39,15 +47,6 @@ export interface InlineDocument {
  * of its token limit, or of its output limit without one.
  */
 export const CUSTOM_NODES_FACTOR = 4
-
-// Tokens a custom rule returned, and everything they hold. Rules' tokens are
-// treated as immutable once returned, as rendering them already requires.
-const measures = new WeakMap<object, InlineTokenMeasure>()
-
-/** The measure of a token a custom rule returned, or of anything it holds. */
-export function customTokenMeasure(token: object): InlineTokenMeasure | undefined {
-  return measures.get(token)
-}
 
 /** The text a token without children gives as alt text, as join would give it. */
 export function leafText(token: InlineToken): string {
@@ -67,11 +66,12 @@ function childrenOf(token: InlineToken): InlineToken[] | undefined {
 }
 
 /**
- * Measures a token a custom rule returned, once per token object, in time
- * proportional to the distinct tokens it holds. A token that holds itself is
- * refused, as rendering it would be.
+ * Measures a token a custom rule returned, in time proportional to the
+ * distinct tokens it holds that `measures` doesn't have yet, and adds their
+ * measures to it. A token that holds itself is refused, as rendering it
+ * would be.
  */
-export function measureCustomToken(token: InlineToken): InlineTokenMeasure {
+export function measureCustomToken(token: InlineToken, measures: WeakMap<object, InlineTokenMeasure>): InlineTokenMeasure {
   const known = measures.get(token)
   if (known) return known
   const open = new Set<object>()
@@ -120,6 +120,7 @@ export function createInlineDocument(budget: TokenBudget | undefined, maxOutputL
   return {
     spentNodes: 0,
     spentText: 0,
+    measures: new WeakMap(),
     maxNodes: nodeLimit ? CUSTOM_NODES_FACTOR * nodeLimit.limit : Infinity,
     maxText: maxOutputLength ?? Infinity,
     nodeLimit: nodeLimit ? `${CUSTOM_NODES_FACTOR} times ${nodeLimit.name} ${nodeLimit.limit}` : '',
@@ -146,7 +147,7 @@ export function spendInlineDocument(document: InlineDocument, nodes: number, tex
  * which it doesn't.
  */
 export function chargeCustomToken(token: InlineToken, document: InlineDocument, budget: TokenBudget | undefined): void {
-  const measure = measureCustomToken(token)
+  const measure = measureCustomToken(token, document.measures)
   if (budget && measure.nodes > 0) consumeTokenBudget(budget, measure.nodes)
   spendInlineDocument(document, measure.nodes, measure.text)
 }

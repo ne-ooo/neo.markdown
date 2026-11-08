@@ -1,6 +1,6 @@
 import type { InlineToken } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
-import { customTokenMeasure } from './custom-tokens.js'
+import type { InlineTokenMeasure } from './custom-tokens.js'
 
 export interface EmphasisDelimiter {
   index: number
@@ -33,7 +33,8 @@ export function delimiterFlags(source: string, start: number, length: number) {
  * charged as they are built, and tokens return to it as adjacent text merges
  * and used-up delimiter runs go away.
  */
-export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[], source: string, budget?: TokenBudget, maxDepth = 32): InlineToken[] {
+export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[], source: string, budget?: TokenBudget, maxDepth = 32,
+  customMeasures?: WeakMap<object, InlineTokenMeasure>): InlineToken[] {
   if (runs.length === 0) {
     const result: InlineToken[] = []
     for (const token of tokens) {
@@ -58,7 +59,7 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
       const current = pending.pop()!
       // A custom rule's token was measured as it was built: walking it would
       // go over a shared token once per path to it.
-      const measure = customTokenMeasure(current.token)
+      const measure = customMeasures?.get(current.token)
       if (measure) {
         depth = Math.max(depth, current.depth + measure.depth)
         continue

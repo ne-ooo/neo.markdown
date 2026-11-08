@@ -112,6 +112,18 @@ describe('custom inline rules and the token budget', () => {
     expect(() => createParser({ plugins: [at(token)] }).parse('*a* @')).toThrow(new TypeError('Cyclic token graph is not renderable'))
   })
 
+  // Measures were kept for good, so a token a transform changed after one
+  // document kept the measure of what it was.
+  it('measures a token again in each document', () => {
+    const token: TextToken = { type: 'text', raw: '@', text: '' }
+    const parser = createParser({
+      plugins: [at(token), builder => builder.addTokenTransform(tokens => { token.text = 'visible'; return tokens })],
+    })
+
+    expect(parser.parse('@')).toBe('<p>visible</p>\n')
+    expect(parser.parse('![@](u)')).toContain('alt="visible"')
+  })
+
   // Each paragraph an incremental session tokenized started a new
   // allowance, and a reused one spent none.
   it('keeps one allowance for a document in an incremental session', () => {

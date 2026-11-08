@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, createInlineDocument, customTokenMeasure, leafText, spendInlineDocument, type InlineDocument,
+  chargeCustomToken, createInlineDocument, leafText, spendInlineDocument, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -418,7 +418,7 @@ export class InlineTokenizerBase {
       }
     }
 
-    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth)
+    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth, this.document?.measures)
   }
 
   private appendFallbackText(
@@ -1032,7 +1032,7 @@ export class InlineTokenizerBase {
       const level = pending.pop()!
       count += level.length
       for (const token of level) {
-        const measure = customTokenMeasure(token)
+        const measure = this.document?.measures.get(token)
         if (measure) count += measure.nodes
         else if ('tokens' in token) pending.push(token.tokens)
       }
@@ -1042,7 +1042,7 @@ export class InlineTokenizerBase {
 
   private containsLink(tokens: InlineToken[]): boolean {
     return tokens.some(token => {
-      const measure = customTokenMeasure(token)
+      const measure = this.document?.measures.get(token)
       if (measure) return measure.link
       return token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens))
     })
@@ -1060,7 +1060,7 @@ export class InlineTokenizerBase {
     let copied = 0
     const collect = (tokens: InlineToken[], inCustom: boolean): void => {
       for (const token of tokens) {
-        const measure = customTokenMeasure(token)
+        const measure = this.document?.measures.get(token)
         if (measure && !inCustom) custom += measure.text
         if (measure?.text === 0) continue
         if ('tokens' in token) {
