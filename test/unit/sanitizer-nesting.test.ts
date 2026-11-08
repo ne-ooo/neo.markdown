@@ -23,6 +23,13 @@ describe('HTML nesting in the structural sanitizer', () => {
     expect(() => parser().parse(html)).toThrow(refusal)
   })
 
+  // sanitize-html sanitizes a discarded iframe's text again as HTML, with a
+  // parser of its own, whose elements count too.
+  it('counts elements in the text of a discarded iframe', () => {
+    expect(() => parser().parse(`<iframe>${'<div>'.repeat(170_000)}`)).toThrow(refusal)
+    expect(parser().parse('<iframe><b>fallback</b></iframe>')).toContain('fallback')
+  })
+
   it('counts elements the parser closes for itself as closed', () => {
     expect(() => parser().parse(`<div>${'<p>a'.repeat(1_000)}</div>`)).not.toThrow()
     expect(() => parser().parse(`<ul>${'<li>a'.repeat(1_000)}</ul>`)).not.toThrow()
