@@ -66,7 +66,7 @@ describe('custom inline rules and the token budget', () => {
     const parser = createParser({ maxOutputLength: 100, plugins: [at(shared(26, ''))] })
     const started = performance.now()
 
-    expect(() => parser.parse(markdown)).toThrow(new RangeError("Custom inline tokens' children exceed 4 times maxOutputLength 100"))
+    expect(() => parser.parse(markdown)).toThrow(new RangeError("Custom inline tokens' descendants exceed maxOutputLength 100"))
     expect(performance.now() - started).toBeLessThan(500)
   })
 
@@ -80,12 +80,12 @@ describe('custom inline rules and the token budget', () => {
     expect(createParser({ maxOutputLength: 1_100 }).parse(markdown)).toBe(html)
   })
 
-  // Alt text returns its tokens to the budget, so each image could count and
-  // read the same large token again: 10,000 of them took four seconds.
+  // Each image counted, read and released the same large token again:
+  // 10,000 of them took four seconds. Its measure is read once.
   it.each([
     ['one paragraph', '![!](u) '],
     ['separate paragraphs', '![!](u)\n\n'],
-  ])('refuses a custom token counted again for each image, in %s', (_, image) => {
+  ])('reads a large custom token once for every image holding it, in %s', (_, image) => {
     let token: InlineToken = { type: 'text', raw: '', text: '' }
     for (let level = 0; level < 13; level++) token = { type: 'strong', raw: '!', text: '!', tokens: [token, token] }
     const parser = createParser({
@@ -96,11 +96,22 @@ describe('custom inline rules and the token budget', () => {
     })
     const started = performance.now()
 
-    expect(() => parser.parse(image.repeat(10_000))).toThrow(
-      new RangeError('Custom inline tokens\' children exceed 4 times maxTokens 50000'),
-    )
+    expect(parser.parse(image.repeat(10_000)).match(/<img src="u" alt=""/g)).toHaveLength(10_000)
     expect(performance.now() - started).toBeLessThan(1_000)
-    expect(parser.parse(image.repeat(3)).match(/<img src="u" alt=""/g)).toHaveLength(3)
+  })
+
+  // Link text holding a link is tokenized again, 2^(d - 1) times for d
+  // levels, so charges that never returned refused a 61-character document.
+  it.each([
+    ['UGC mode, a token of 300 children', { ugc: true }, { type: 'strong', raw: '@', text: '@', tokens: Array.from({ length: 300 }, () => ({ type: 'text', raw: 'x', text: 'x' })) }],
+    ['an output limit, a token of 2,000 characters', { maxOutputLength: 1 << 20 }, { type: 'text', raw: '@', text: 'x'.repeat(2_000) }],
+  ] as const)('accepts nested link text tokenized again, with %s', (_, options, token) => {
+    for (const inner of ['@', '![@](i)']) {
+      const markdown = `${'['.repeat(12)}${inner}${'](u)'.repeat(12)}`
+      const plugins = [at(token as InlineToken)]
+
+      expect(createParser({ ...options, plugins }).parse(markdown)).toBe(createParser({ plugins }).parse(markdown))
+    }
   })
 
   // Without a token limit, emphasis measured a token's depth by walking all
@@ -130,7 +141,7 @@ describe('custom inline rules and the token budget', () => {
     const token: InlineToken = { type: 'text', raw: '@', text: 'x'.repeat(100) }
     const plugin = defineIncrementalPlugin(at(token), { protocol: 1, id: 'at', profile: 'inline', effects: 'none', dependencies: { kind: 'static' } })
     const options = { maxOutputLength: 150, plugins: [plugin] }
-    const refusal = new RangeError("Custom inline tokens' text exceeds maxOutputLength 150")
+    const refusal = new RangeError('Image alt text exceeds maxOutputLength 150')
     const both = '![@](x)\n\n![@](y)'
 
     expect(() => createParser(options).parse(both)).toThrow(refusal)
@@ -150,7 +161,7 @@ describe('custom inline rules and the token budget', () => {
     const parser = createParser({ ugc: true, plugins: [at(token)] })
     const started = performance.now()
 
-    expect(() => parser.parse('![@](x) '.repeat(10_000))).toThrow(new RangeError("Custom inline tokens' text exceeds maxOutputLength 20000000"))
+    expect(() => parser.parse('![@](x) '.repeat(10_000))).toThrow(new RangeError('Image alt text exceeds maxOutputLength 20000000'))
     expect(performance.now() - started).toBeLessThan(1_000)
     expect(parser.parse('![@](x) '.repeat(3)).match(/alt="x{100000}y{100000}"/g)).toHaveLength(3)
     expect(() => createParser({ maxOutputLength: 50, plugins: [at(token)] }).parse('![@](x)')).toThrow(RangeError)

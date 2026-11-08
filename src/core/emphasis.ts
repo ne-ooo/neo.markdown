@@ -34,12 +34,13 @@ export function delimiterFlags(source: string, start: number, length: number) {
  * and used-up delimiter runs go away.
  */
 export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[], source: string, budget?: TokenBudget, maxDepth = 32,
-  customMeasures?: WeakMap<object, InlineTokenMeasure>): InlineToken[] {
+  customMeasures?: ReadonlyMap<object, InlineTokenMeasure>): InlineToken[] {
   if (runs.length === 0) {
     const result: InlineToken[] = []
     for (const token of tokens) {
       const previous = result.at(-1)
-      if (previous?.type === 'text' && token.type === 'text') {
+      // A custom rule's text token may have children, which merging would drop.
+      if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
         // A custom rule's token may be shared, so merging builds a new one.
         result[result.length - 1] = { ...previous, raw: previous.raw + token.raw, text: previous.text + token.text }
         releaseTokenBudget(budget)
@@ -146,7 +147,7 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
   for (let node = head.next; node; node = node.next) {
     const token = node.token
     const previous = result.at(-1)
-    if (previous?.type === 'text' && token.type === 'text') {
+    if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
       result[result.length - 1] = { ...previous, raw: previous.raw + token.raw, text: previous.text + token.text }
       releaseTokenBudget(budget)
     } else {

@@ -20,7 +20,9 @@ import type {
 import { DocumentCollector } from './document-result.js'
 import { Tokenizer } from './tokenizer.js'
 import { InlineTokenizerBase } from './inline-tokenizer.js'
-import { createInlineDocument, spendInlineDocument, type InlineDocument } from './custom-tokens.js'
+import {
+  createInlineDocument, inlineDocumentSpent, respendInlineDocument, type InlineDocument, type InlineDocumentSpent,
+} from './custom-tokens.js'
 import { HtmlRenderer } from './renderer.js'
 import { PluginBuilderImpl } from './plugin-builder.js'
 import { buildSanitizerConfig, markSanitizerConfigStable } from './sanitizer.js'
@@ -398,14 +400,14 @@ export class MarkdownParserBase implements Parser {
     })
   }
 
-  /** Internal extension point: what the document's custom inline tokens have spent so far. */
-  protected inlineDocumentSpent(): { nodes: number; text: number } {
-    return { nodes: this.inlineDocument?.spentNodes ?? 0, text: this.inlineDocument?.spentText ?? 0 }
+  /** Internal extension point: what the document's custom inline tokens and images have spent so far. */
+  protected inlineDocumentSpent(): InlineDocumentSpent {
+    return inlineDocumentSpent(this.inlineDocument)
   }
 
   /** Internal extension point: spends again what reused inline tokens spent. */
-  protected respendInlineDocument(nodes: number, text: number): void {
-    if (this.inlineDocument) spendInlineDocument(this.inlineDocument, nodes, text)
+  protected respendInlineDocument(spent: InlineDocumentSpent): void {
+    respendInlineDocument(this.inlineDocument, spent)
   }
 
   /** Internal extension point for bounded, per-parser inline reuse experiments. */

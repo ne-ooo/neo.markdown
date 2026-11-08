@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, createInlineDocument, leafText, spendInlineDocument, type InlineDocument,
+  chargeCustomToken, copyCustomText, createInlineDocument, customAltText, keepAltText, leafText, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -50,12 +50,6 @@ const INLINE_RULE_PRIORITIES: Readonly<Record<string, number>> = {
 const DEFAULT_CUSTOM_PRIORITY = 750
 const HARD_MAX_INLINE_NESTING_DEPTH = 32
 const MIN_INLINE_WORK_BUDGET = 10_000
-/**
- * The custom text each image's alt text holds, for images built here. An
- * image holding another copies its alt text, and that copy counts again.
- */
-const customAltText = new WeakMap<object, number>()
-
 type InlineResult = {
   token: InlineToken
   raw: string
@@ -418,7 +412,7 @@ export class InlineTokenizerBase {
       }
     }
 
-    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth, this.document?.measures)
+    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth, this.document?.measures.size ? this.document.measures : undefined)
   }
 
   private appendFallbackText(
@@ -1012,73 +1006,88 @@ export class InlineTokenizerBase {
   }
 
   /**
-   * Returns to the budget the tokens of text the result doesn't keep: an
+   * Returns what the tokens of text the result doesn't keep were charged: an
    * image's alt text becomes a string, and link text holding a link isn't a
-   * link.
+   * link. A custom rule's token returns the descendants its measure gives,
+   * and an image built here its alt text.
    */
   private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
-    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens))
-  }
-
-  /**
-   * Counts tokens and their descendants as they were charged. A custom
-   * rule's token counts the descendants its measure gives: walking them would
-   * go over a shared token once per path to it.
-   */
-  private countTokens(tokens: InlineToken[]): number {
+    const document = this.document!
     let count = 0
+    let custom = 0
+    let altText = 0
     const pending = [tokens]
     while (pending.length > 0) {
       const level = pending.pop()!
       count += level.length
       for (const token of level) {
-        const measure = this.document?.measures.get(token)
-        if (measure) count += measure.nodes
-        else if ('tokens' in token) pending.push(token.tokens)
+        const measure = document.measures.get(token)
+        if (measure) {
+          count += measure.nodes
+          custom += measure.nodes
+          continue
+        }
+        const image = document.images.get(token)
+        if (image) {
+          altText += image.length
+          document.images.delete(token)
+        }
+        if ('tokens' in token) pending.push(token.tokens)
       }
     }
-    return count
+    releaseTokenBudget(tokenBudget, count)
+    releaseTokenBudget(document.nodes, custom)
+    document.altText -= altText
   }
 
   private containsLink(tokens: InlineToken[]): boolean {
     return tokens.some(token => {
-      const measure = this.document?.measures.get(token)
+      const measure = this.document!.measures.get(token)
       if (measure) return measure.link
       return token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens))
     })
   }
 
   /**
-   * Gives an image the text of its children as alt text. Text a custom rule's
-   * token gives was charged to the document as the token was built, and a
-   * walk skips what gives none. An image holding another copies its alt
-   * text, so the custom text in that copy counts again.
+   * Gives an image the text of its children as alt text, which counts
+   * against the output limit while the image is kept. A custom rule's token
+   * gives the alt text built for it once per document; copying it, or an
+   * inner image's custom text, is work that counts each time.
    */
   private withAltText(image: ImageToken, children: InlineToken[]): ImageToken {
+    const document = this.document!
     const pieces: string[] = []
+    let length = 0
     let custom = 0
-    let copied = 0
-    const collect = (tokens: InlineToken[], inCustom: boolean): void => {
+    const collect = (tokens: InlineToken[]): void => {
       for (const token of tokens) {
-        const measure = this.document?.measures.get(token)
-        if (measure && !inCustom) custom += measure.text
-        if (measure?.text === 0) continue
-        if ('tokens' in token) {
-          collect(token.tokens, inCustom || measure !== undefined)
+        const measure = document.measures.get(token)
+        if (measure) {
+          if (measure.text === 0) continue
+          copyCustomText(document, measure.text)
+          custom += measure.text
+          length += measure.text
+          pieces.push(customAltText(token, document))
           continue
         }
-        if (!measure) {
-          const inner = customAltText.get(token) ?? 0
-          custom += inner
-          copied += inner
+        if ('tokens' in token) {
+          collect(token.tokens)
+          continue
         }
-        pieces.push(leafText(token))
+        const inner = document.images.get(token)
+        if (inner && inner.custom > 0) {
+          copyCustomText(document, inner.custom)
+          custom += inner.custom
+        }
+        const text = leafText(token)
+        length += text.length
+        pieces.push(text)
       }
     }
-    collect(children, false)
-    spendInlineDocument(this.document!, 0, copied)
+    collect(children)
+    keepAltText(document, length)
     image.text = pieces.join('')
-    if (custom > 0) customAltText.set(image, custom)
+    document.images.set(image, { length, custom })
     return image
   }
 
