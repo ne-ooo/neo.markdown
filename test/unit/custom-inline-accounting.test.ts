@@ -214,6 +214,26 @@ describe('custom inline rules and the token budget', () => {
     expect(() => createParser({ maxOutputLength: 200 }).tokenize(markdown)).not.toThrow()
   })
 
+  // A token whose children are text counts as a built-in one, unless it was
+  // measured inside another rule's token, when releasing it returned what
+  // charging it hadn't taken.
+  it('charges a token measured inside another by its measure', () => {
+    const inner: InlineToken = { type: 'em', raw: '%', text: '%', tokens: [{ type: 'text', raw: '', text: '' }] }
+    const outer: InlineToken = { type: 'strong', raw: '@', text: '@', tokens: [inner] }
+    const parser = createParser({
+      maxOutputLength: 40,
+      renderer: { strong: () => '', em: () => '' },
+      plugins: [at(outer), builder => builder.addInlineRule({
+        name: 'percent', priority: 1, triggerChars: [37], tokenize: (src) => (src.startsWith('%') ? { raw: '%', token: inner } : null),
+      })],
+    })
+
+    // 20 of the outer token use the 40 descendants allowed; 40 inner tokens
+    // in alt text, released, must not make room for 20 more.
+    expect(() => parser.parse(`${'@ '.repeat(20)}${'![%](u) '.repeat(40)}${'@ '.repeat(20)}`))
+      .toThrow(new RangeError("Custom inline tokens' descendants exceed maxOutputLength 40"))
+  })
+
   // Measures were kept for good, so a token a transform changed after one
   // document kept the measure of what it was.
   it('measures a token again in each document', () => {
@@ -229,7 +249,7 @@ describe('custom inline rules and the token budget', () => {
   // Each paragraph an incremental session tokenized started a new
   // allowance, and a reused one spent none.
   it('keeps one allowance for a document in an incremental session', () => {
-    const token: InlineToken = { type: 'strong', raw: '@', text: '@', tokens: [{ type: 'text', raw: '@', text: 'x'.repeat(100) }] }
+    const token: InlineToken = { type: 'strong', raw: '@', text: '@', tokens: [{ type: 'em', raw: '@', text: '@', tokens: [{ type: 'text', raw: '@', text: 'x'.repeat(100) }] }] }
     const plugin = defineIncrementalPlugin(at(token), { protocol: 1, id: 'at', profile: 'inline', effects: 'none', dependencies: { kind: 'static' } })
     const options = { maxOutputLength: 150, plugins: [plugin] }
     const refusal = new RangeError('Custom text in image alt text exceeds maxOutputLength 150')
@@ -245,17 +265,21 @@ describe('custom inline rules and the token budget', () => {
   // Each image's alt text copied the token's text: 10,000 images ran out of
   // memory before the rendered HTML met its limit.
   it('counts the text of custom tokens against the output limit as they are built', () => {
-    const token: InlineToken = {
-      type: 'strong', raw: '@', text: '@',
-      tokens: [{ type: 'text', raw: 'x', text: 'x'.repeat(100_000) }, { type: 'text', raw: 'y', text: 'y'.repeat(100_000) }],
-    }
-    const parser = createParser({ ugc: true, plugins: [at(token)] })
+    const leaves: InlineToken[] = [{ type: 'text', raw: 'x', text: 'x'.repeat(100_000) }, { type: 'text', raw: 'y', text: 'y'.repeat(100_000) }]
+    // A token whose children hold tokens is measured, and its text counted.
+    const nested: InlineToken = { type: 'strong', raw: '@', text: '@', tokens: [{ type: 'em', raw: '@', text: '@', tokens: leaves }] }
+    const parser = createParser({ ugc: true, plugins: [at(nested)] })
     const started = performance.now()
 
     expect(() => parser.parse('![@](x) '.repeat(10_000))).toThrow(new RangeError('Custom text in image alt text exceeds maxOutputLength 20000000'))
     expect(performance.now() - started).toBeLessThan(1_000)
     expect(parser.parse('![@](x) '.repeat(3)).match(/alt="x{100000}y{100000}"/g)).toHaveLength(3)
-    expect(() => createParser({ maxOutputLength: 50, plugins: [at(token)] }).parse('![@](x)')).toThrow(RangeError)
+    expect(() => createParser({ maxOutputLength: 50, plugins: [at(nested)] }).parse('![@](x)')).toThrow(RangeError)
+    // One whose children are text counts as built-in tokens do: its long
+    // text is shared by each alt text, and the rendered HTML meets the limit.
+    const flat: InlineToken = { type: 'strong', raw: '@', text: '@', tokens: leaves }
+    expect(() => createParser({ ugc: true, plugins: [at(flat)] }).parse('![@](x) '.repeat(10_000)))
+      .toThrow(new RangeError('Rendered HTML exceeds maxOutputLength 20000000'))
   })
 
   // A length that isn't a number never passed the limit.

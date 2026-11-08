@@ -1,4 +1,4 @@
-import type { InlineToken } from './types.js'
+import type { InlineToken, TextToken } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import { copyToken, type InlineTokenMeasure } from './custom-tokens.js'
 
@@ -33,23 +33,34 @@ export function delimiterFlags(source: string, start: number, length: number) {
  * charged as they are built, and tokens return to it as adjacent text merges
  * and used-up delimiter runs go away.
  */
+/**
+ * Merges adjacent text. A token a custom rule returns may be shared, so the
+ * first of a run is copied once, and the copy takes the rest; a text token
+ * with children, which merging would drop, stays apart.
+ */
+function mergeText(tokens: InlineToken[], budget?: TokenBudget): InlineToken[] {
+  const result: InlineToken[] = []
+  let owned: TextToken | undefined
+  for (const token of tokens) {
+    const previous = result.at(-1)
+    if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
+      if (previous !== owned) {
+        owned = copyToken(previous, { raw: previous.raw, text: previous.text })
+        result[result.length - 1] = owned
+      }
+      owned.raw += token.raw
+      owned.text += token.text
+      releaseTokenBudget(budget)
+    } else {
+      result.push(token)
+    }
+  }
+  return result
+}
+
 export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[], source: string, budget?: TokenBudget, maxDepth = 32,
   customMeasures?: Pick<WeakMap<object, InlineTokenMeasure>, 'get'>): InlineToken[] {
-  if (runs.length === 0) {
-    const result: InlineToken[] = []
-    for (const token of tokens) {
-      const previous = result.at(-1)
-      // A custom rule's text token may have children, which merging would drop.
-      if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
-        // A custom rule's token may be shared, so merging builds a new one.
-        result[result.length - 1] = copyToken(previous, { raw: previous.raw + token.raw, text: previous.text + token.text })
-        releaseTokenBudget(budget)
-      } else {
-        result.push(token)
-      }
-    }
-    return result
-  }
+  if (runs.length === 0) return mergeText(tokens, budget)
   const head: Node = { token: { type: 'text', raw: '', text: '' }, depth: 0 }
   const nodes: Node[] = []
   let tail = head
@@ -143,16 +154,7 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
       releaseTokenBudget(budget)
     }
   }
-  const result: InlineToken[] = []
-  for (let node = head.next; node; node = node.next) {
-    const token = node.token
-    const previous = result.at(-1)
-    if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
-      result[result.length - 1] = copyToken(previous, { raw: previous.raw + token.raw, text: previous.text + token.text })
-      releaseTokenBudget(budget)
-    } else {
-      result.push(token)
-    }
-  }
-  return result
+  const resolved: InlineToken[] = []
+  for (let node = head.next; node; node = node.next) resolved.push(node.token)
+  return mergeText(resolved, budget)
 }

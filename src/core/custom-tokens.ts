@@ -60,6 +60,7 @@ const MAX_TOKEN_DEPTH = 256
 export function leafText(token: InlineToken): string {
   if (token.type === 'br') return '\n'
   const value: unknown = (token as { text?: unknown }).text
+  if (typeof value === 'string') return value
   return value == null ? '' : String(value)
 }
 
@@ -67,20 +68,16 @@ function childrenOf(token: InlineToken): InlineToken[] | undefined {
   if (!('tokens' in token)) return undefined
   const children: unknown = token.tokens
   if (!Array.isArray(children)) throw new TypeError('Inline token children must be an array')
-  for (const child of children) {
-    if (typeof child !== 'object' || child === null) throw new TypeError('Inline token children must be tokens')
-  }
   return children as InlineToken[]
+}
+
+function checkChild(child: unknown): asserts child is InlineToken {
+  if (typeof child !== 'object' || child === null) throw new TypeError('Inline token children must be tokens')
 }
 
 // Thrown through the recursive measure when a token is deeper than the
 // renderer renders, or holds itself.
 const TOO_DEEP = Symbol('too deep')
-
-function leafMeasure(token: InlineToken): InlineTokenMeasure {
-  // A plugin's token may be a link without children.
-  return { nodes: 0, text: leafText(token).length, depth: 0, link: (token as { type: string }).type === 'link' }
-}
 
 /**
  * Arrays of children at least this long are measured once per document,
@@ -88,6 +85,33 @@ function leafMeasure(token: InlineToken): InlineTokenMeasure {
  * each time.
  */
 const SHARED_CHILDREN_LENGTH = 16
+
+/** The measure of an array of tokens without children. */
+function leavesMeasure(children: InlineToken[]): InlineTokenMeasure {
+  let text = 0, link = false
+  for (const child of children) {
+    text += leafText(child).length
+    link ||= (child as { type: string }).type === 'link'
+  }
+  return { nodes: children.length, text, depth: children.length > 0 ? 1 : 0, link }
+}
+
+/**
+ * Whether every child is a token without children. A token holding only
+ * such children can't share a token or hold itself, so it counts and reads
+ * as a built-in one does, and isn't measured.
+ */
+function onlyLeaves(children: InlineToken[], measures: WeakMap<object, InlineTokenMeasure>): boolean {
+  const long = children.length >= SHARED_CHILDREN_LENGTH
+  const held = long ? measures.get(children) : undefined
+  if (held) return held.depth <= 1
+  for (const child of children) {
+    checkChild(child)
+    if ('tokens' in child) return false
+  }
+  if (long) measures.set(children, leavesMeasure(children))
+  return true
+}
 
 /**
  * Measures a token with children. Tokens shared within it are measured once,
@@ -105,21 +129,20 @@ function measureWithin(
   const shared = children.length >= SHARED_CHILDREN_LENGTH
   let held = shared ? measures.get(children) : undefined
   if (held) {
-    if (depth + held.depth > MAX_TOKEN_DEPTH) throw TOO_DEEP
+    // Its deepest token with children is one above its deepest token.
+    if (depth + held.depth - 1 > MAX_TOKEN_DEPTH) throw TOO_DEEP
   } else {
     let nodes = children.length, text = 0, deepest = 0, link = false
     for (const child of children) {
-      let childMeasure = measures.get(child) ?? local.get(child)
-      if (!childMeasure) {
-        const grandchildren = childrenOf(child)
-        if (!grandchildren) {
-          text += leafText(child).length
-          deepest = Math.max(deepest, 1)
-          link ||= (child as { type: string }).type === 'link'
-          continue
-        }
-        childMeasure = measureWithin(child, grandchildren, measures, local, depth + 1)
+      checkChild(child)
+      if (!('tokens' in child)) {
+        text += leafText(child).length
+        deepest = Math.max(deepest, 1)
+        link ||= (child as { type: string }).type === 'link'
+        continue
       }
+      const childMeasure = measures.get(child) ?? local.get(child)
+        ?? measureWithin(child, childrenOf(child)!, measures, local, depth + 1)
       nodes += childMeasure.nodes
       text += childMeasure.text
       deepest = Math.max(deepest, childMeasure.depth + 1)
@@ -144,6 +167,7 @@ function holdsItself(token: InlineToken, measures: WeakMap<object, InlineTokenMe
     const children = childrenOf(frame.token)
     if (children && frame.next < children.length) {
       const child = children[frame.next++]!
+      checkChild(child)
       if (open.has(child)) return true
       if (measures.has(child) || done.has(child)) continue
       open.add(child)
@@ -158,20 +182,17 @@ function holdsItself(token: InlineToken, measures: WeakMap<object, InlineTokenMe
 }
 
 /**
- * Measures a token a custom rule returned, in time proportional to the
- * distinct tokens it holds that `measures` doesn't have yet, and adds their
- * measures to it. A token that holds itself is refused, as rendering it
- * would be, and so is one deeper than the renderer renders.
+ * Measures a token with children a custom rule returned, in time
+ * proportional to the distinct tokens it holds that `measures` doesn't have
+ * yet, and adds their measures to it. A token that holds itself is refused,
+ * as rendering it would be, and so is one deeper than the renderer renders.
  */
 export function measureCustomToken(token: InlineToken, measures: WeakMap<object, InlineTokenMeasure>): InlineTokenMeasure {
   const known = measures.get(token)
   if (known) return known
-  const children = childrenOf(token)
-  // A token without children counts and reads as a built-in one does.
-  if (!children) return leafMeasure(token)
   let measure: InlineTokenMeasure
   try {
-    measure = measureWithin(token, children, measures, new Map(), 0)
+    measure = measureWithin(token, childrenOf(token)!, measures, new Map(), 0)
   } catch (error) {
     if (error !== TOO_DEEP) throw error
     if (holdsItself(token, measures)) throw new TypeError('Cyclic token graph is not renderable')
@@ -205,14 +226,24 @@ function keepNodes(document: InlineDocument, nodes: number): void {
 
 /**
  * Charges a token a custom rule returned: its descendants count while it's
- * kept, against the token budget, or the document's own without one. The
- * caller charges the token itself.
+ * kept, against the token budget, or the document's own without one. A token
+ * whose children have none counts as a built-in one does. The caller
+ * charges the token itself.
  */
 export function chargeCustomToken(token: InlineToken, document: InlineDocument, budget: TokenBudget | undefined): void {
-  if (!('tokens' in token)) return
-  const measure = measureCustomToken(token, document.measures)
+  const children = childrenOf(token)
+  // Without a limit nothing counts descendants, as without rules; the
+  // renderer still refuses a token that holds itself or is too deep.
+  if (!children || (!budget && !document.nodes)) return
+  // A token already measured, as one in another rule's token, is released
+  // by its measure, so it is charged by it too.
+  const known = document.measures.get(token)
+  if (!known && onlyLeaves(children, document.measures)) {
+    if (budget) consumeTokenBudget(budget, children.length)
+    return
+  }
+  const measure = known ?? measureCustomToken(token, document.measures)
   document.custom = true
-  if (measure.nodes === 0) return
   if (budget) consumeTokenBudget(budget, measure.nodes)
   else keepNodes(document, measure.nodes)
 }
@@ -241,31 +272,7 @@ export function copyToken<T extends object>(token: T, changes: Partial<T>): T {
 }
 
 /** Pieces at least this long are shared by an alt text rather than copied into it. */
-const SHARED_PIECE_LENGTH = 256
-
-/**
- * Builds a string from pieces, sharing long ones by concatenation and
- * joining runs of short ones, so a long piece isn't copied and short ones
- * cost no more than their text.
- */
-export class TextBuilder {
-  private text = ''
-  private run: string[] = []
-
-  add(piece: string): void {
-    if (piece.length >= SHARED_PIECE_LENGTH) {
-      if (this.run.length > 0) this.text += this.run.join('')
-      this.run = []
-      this.text += piece
-    } else if (piece) {
-      this.run.push(piece)
-    }
-  }
-
-  toString(): string {
-    return this.run.length > 0 ? this.text + this.run.join('') : this.text
-  }
-}
+export const SHARED_PIECE_LENGTH = 256
 
 /** What an incremental session records of a paragraph, and spends again when it reuses it. */
 export interface InlineDocumentSpent {

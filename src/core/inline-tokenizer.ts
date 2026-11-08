@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, copyToken, createInlineDocument, keepAltText, leafText, TextBuilder, type InlineDocument,
+  chargeCustomToken, copyToken, createInlineDocument, keepAltText, leafText, SHARED_PIECE_LENGTH, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -1016,6 +1016,8 @@ export class InlineTokenizerBase {
    */
   private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
     const document = this.document!
+    // Nothing to return without a budget or measured rule tokens.
+    if (!tokenBudget && !document.custom) return
     let count = 0
     let custom = 0
     let altText = 0
@@ -1063,10 +1065,12 @@ export class InlineTokenizerBase {
     const customLength = (tokens: InlineToken[]): number => {
       let length = 0
       for (const token of tokens) {
+        if (!('tokens' in token)) {
+          length += document.images.get(token) ?? 0
+          continue
+        }
         const measure = document.measures.get(token)
-        if (measure) length += measure.text
-        else if ('tokens' in token) length += customLength(token.tokens)
-        else length += document.images.get(token) ?? 0
+        length += measure ? measure.text : customLength(token.tokens)
       }
       return length
     }
@@ -1074,17 +1078,35 @@ export class InlineTokenizerBase {
     this.release(children, tokenBudget)
     keepAltText(document, custom)
     // Link text tokenized again builds this again, so long pieces, such as a
-    // rule token's text, are shared rather than copied each time.
-    const text = new TextBuilder()
+    // rule token's text, are shared by concatenation rather than copied each
+    // time, and runs of short ones are joined.
+    const pieces: string[] = []
+    let count = 0
+    let shared = ''
     const collect = (tokens: InlineToken[]): void => {
-      for (const token of tokens) {
-        if (document.custom && document.measures.get(token)?.text === 0) continue
-        if ('tokens' in token) collect(token.tokens)
-        else text.add(leafText(token))
+      for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index]!
+        if ('tokens' in token) {
+          if (!document.custom || document.measures.get(token)?.text !== 0) collect(token.tokens)
+          continue
+        }
+        const value: unknown = token.type === 'br' ? '\n' : (token as { text?: unknown }).text
+        const piece = typeof value === 'string' ? value : leafText(token)
+        if (piece.length < SHARED_PIECE_LENGTH) {
+          pieces[count++] = piece
+        } else {
+          if (count > 0) {
+            pieces.length = count
+            shared += pieces.join('')
+            count = 0
+          }
+          shared += piece
+        }
       }
     }
     collect(children)
-    image.text = text.toString()
+    pieces.length = count
+    image.text = count > 0 ? shared + pieces.join('') : shared
     if (custom > 0) document.images.set(image, custom)
     return image
   }
