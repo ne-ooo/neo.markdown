@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, createInlineDocument, keepAltText, leafText, TextBuilder, type InlineDocument,
+  chargeCustomToken, copyToken, createInlineDocument, keepAltText, leafText, TextBuilder, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -307,11 +307,10 @@ export class InlineTokenizerBase {
           const spaces = previous.raw.slice(start)
           if (spaces) {
             // A copy: the token may be one a custom rule returns every time.
-            const trimmed = {
-              ...previous,
+            const trimmed = copyToken(previous, {
               raw: previous.raw.slice(0, -spaces.length),
               text: previous.text.slice(0, -spaces.length),
-            }
+            })
             // A rule's token with children is released by its measure.
             const measure = 'tokens' in previous ? this.document!.measures.get(previous) : undefined
             if (measure) this.document!.measures.set(trimmed, measure)
@@ -928,8 +927,7 @@ export class InlineTokenizerBase {
 
     if (isImage) {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
-      this.release(children, tokenBudget)
-      return { token: this.withAltText({ type: 'image', raw, href, title, text: '' }, children), raw }
+      return { token: this.withAltText({ type: 'image', raw, href, title, text: '' }, children, tokenBudget), raw }
     }
 
     // Recursively tokenize link text
@@ -986,9 +984,8 @@ export class InlineTokenizerBase {
     const raw = src.slice(cursor, end)
     if (isImage) {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
-      this.release(children, tokenBudget)
       return {
-        token: this.withAltText({ type: 'image', raw, text: '', href: reference.href, title: reference.title }, children),
+        token: this.withAltText({ type: 'image', raw, text: '', href: reference.href, title: reference.title }, children, tokenBudget),
         raw,
       }
     }
@@ -1027,13 +1024,13 @@ export class InlineTokenizerBase {
       const level = pending.pop()!
       count += level.length
       for (const token of level) {
-        const measure = document.measures.get(token)
+        const measure = document.custom ? document.measures.get(token) : undefined
         if (measure) {
           count += measure.nodes
           custom += measure.nodes
           continue
         }
-        const image = document.images.get(token)
+        const image = document.custom ? document.images.get(token) : undefined
         if (image !== undefined) {
           altText += image
           document.images.delete(token)
@@ -1048,45 +1045,47 @@ export class InlineTokenizerBase {
 
   private containsLink(tokens: InlineToken[]): boolean {
     return tokens.some(token => {
-      const measure = this.document!.measures.get(token)
+      const measure = this.document!.custom ? this.document!.measures.get(token) : undefined
       if (measure) return measure.link
       return token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens))
     })
   }
 
   /**
-   * Gives an image the text of its children as alt text, which counts
-   * against the output limit while the image is kept. Its length is known
-   * from the children and the measures of custom tokens before any of it is
-   * built.
+   * Gives an image the text of its children as alt text, and returns the
+   * children's charge. Custom text in it counts against the output limit
+   * while the image is kept, known from the measures of rule tokens, and of
+   * inner images before they are released, before any of it is built. Alt
+   * text from the Markdown itself is bounded by the Markdown.
    */
-  private withAltText(image: ImageToken, children: InlineToken[]): ImageToken {
+  private withAltText(image: ImageToken, children: InlineToken[], tokenBudget?: TokenBudget): ImageToken {
     const document = this.document!
-    const lengthOf = (tokens: InlineToken[]): number => {
+    const customLength = (tokens: InlineToken[]): number => {
       let length = 0
       for (const token of tokens) {
         const measure = document.measures.get(token)
         if (measure) length += measure.text
-        else if ('tokens' in token) length += lengthOf(token.tokens)
-        else length += leafText(token).length
+        else if ('tokens' in token) length += customLength(token.tokens)
+        else length += document.images.get(token) ?? 0
       }
       return length
     }
-    const length = lengthOf(children)
-    keepAltText(document, length)
+    const custom = document.custom ? customLength(children) : 0
+    this.release(children, tokenBudget)
+    keepAltText(document, custom)
     // Link text tokenized again builds this again, so long pieces, such as a
     // rule token's text, are shared rather than copied each time.
     const text = new TextBuilder()
     const collect = (tokens: InlineToken[]): void => {
       for (const token of tokens) {
-        if (document.measures.get(token)?.text === 0) continue
+        if (document.custom && document.measures.get(token)?.text === 0) continue
         if ('tokens' in token) collect(token.tokens)
         else text.add(leafText(token))
       }
     }
     collect(children)
     image.text = text.toString()
-    document.images.set(image, length)
+    if (custom > 0) document.images.set(image, custom)
     return image
   }
 

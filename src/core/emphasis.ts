@@ -1,6 +1,6 @@
 import type { InlineToken } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
-import type { InlineTokenMeasure } from './custom-tokens.js'
+import { copyToken, type InlineTokenMeasure } from './custom-tokens.js'
 
 export interface EmphasisDelimiter {
   index: number
@@ -42,7 +42,7 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
       // A custom rule's text token may have children, which merging would drop.
       if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
         // A custom rule's token may be shared, so merging builds a new one.
-        result[result.length - 1] = { ...previous, raw: previous.raw + token.raw, text: previous.text + token.text }
+        result[result.length - 1] = copyToken(previous, { raw: previous.raw + token.raw, text: previous.text + token.text })
         releaseTokenBudget(budget)
       } else {
         result.push(token)
@@ -148,7 +148,7 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
     const token = node.token
     const previous = result.at(-1)
     if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
-      result[result.length - 1] = { ...previous, raw: previous.raw + token.raw, text: previous.text + token.text }
+      result[result.length - 1] = copyToken(previous, { raw: previous.raw + token.raw, text: previous.text + token.text })
       releaseTokenBudget(budget)
     } else {
       result.push(token)

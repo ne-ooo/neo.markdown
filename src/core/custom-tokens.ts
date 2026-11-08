@@ -35,16 +35,19 @@ export interface InlineDocument {
    * seen.
    */
   readonly measures: WeakMap<object, InlineTokenMeasure>
-  /** Whether a rule has returned a token in this document, so there are measures to read. */
+  /** Whether a rule has returned a token with children in this document, so there are measures to read. */
   custom: boolean
-  /** The alt text length of each image built here and still kept. */
+  /** The custom text in the alt text of each image built here and still kept. */
   readonly images: WeakMap<object, number>
   /**
    * The descendants of kept custom tokens, without a token budget, where the
    * token budget counts them: up to the output limit.
    */
   readonly nodes: TokenBudget | undefined
-  /** The alt text of kept images, up to the output limit. */
+  /**
+   * The custom text in kept images' alt text, up to the output limit. Alt
+   * text from the Markdown itself is bounded by the Markdown.
+   */
   altText: number
   readonly maxAltText: number
   readonly outputLimit: string
@@ -80,9 +83,16 @@ function leafMeasure(token: InlineToken): InlineTokenMeasure {
 }
 
 /**
+ * Arrays of children at least this long are measured once per document,
+ * however many tokens hold them: a rule may wrap one array in a new token
+ * each time.
+ */
+const SHARED_CHILDREN_LENGTH = 16
+
+/**
  * Measures a token with children. Tokens shared within it are measured once,
- * through `local`; only those that give no alt text are kept in the
- * document's measures, so alt text can skip them.
+ * through `local`. The document keeps the measures of long arrays of
+ * children, and of tokens that give no alt text, so alt text can skip them.
  */
 function measureWithin(
   token: InlineToken,
@@ -92,27 +102,35 @@ function measureWithin(
   depth: number,
 ): InlineTokenMeasure {
   if (depth > MAX_TOKEN_DEPTH) throw TOO_DEEP
-  let nodes = children.length, text = 0, deepest = 0, link = token.type === 'link'
-  for (const child of children) {
-    let childMeasure = measures.get(child) ?? local.get(child)
-    if (!childMeasure) {
-      const grandchildren = childrenOf(child)
-      if (!grandchildren) {
-        text += leafText(child).length
-        deepest = Math.max(deepest, 1)
-        link ||= (child as { type: string }).type === 'link'
-        continue
+  const shared = children.length >= SHARED_CHILDREN_LENGTH
+  let held = shared ? measures.get(children) : undefined
+  if (held) {
+    if (depth + held.depth > MAX_TOKEN_DEPTH) throw TOO_DEEP
+  } else {
+    let nodes = children.length, text = 0, deepest = 0, link = false
+    for (const child of children) {
+      let childMeasure = measures.get(child) ?? local.get(child)
+      if (!childMeasure) {
+        const grandchildren = childrenOf(child)
+        if (!grandchildren) {
+          text += leafText(child).length
+          deepest = Math.max(deepest, 1)
+          link ||= (child as { type: string }).type === 'link'
+          continue
+        }
+        childMeasure = measureWithin(child, grandchildren, measures, local, depth + 1)
       }
-      childMeasure = measureWithin(child, grandchildren, measures, local, depth + 1)
+      nodes += childMeasure.nodes
+      text += childMeasure.text
+      deepest = Math.max(deepest, childMeasure.depth + 1)
+      link ||= childMeasure.link
     }
-    nodes += childMeasure.nodes
-    text += childMeasure.text
-    deepest = Math.max(deepest, childMeasure.depth + 1)
-    link ||= childMeasure.link
+    held = { nodes, text, depth: deepest, link }
+    if (shared) measures.set(children, held)
   }
-  const measure = { nodes, text, depth: deepest, link }
+  const measure = token.type === 'link' && !held.link ? { ...held, link: true } : held
   local.set(token, measure)
-  if (text === 0) measures.set(token, measure)
+  if (measure.text === 0) measures.set(token, measure)
   return measure
 }
 
@@ -149,9 +167,11 @@ export function measureCustomToken(token: InlineToken, measures: WeakMap<object,
   const known = measures.get(token)
   if (known) return known
   const children = childrenOf(token)
+  // A token without children counts and reads as a built-in one does.
+  if (!children) return leafMeasure(token)
   let measure: InlineTokenMeasure
   try {
-    measure = children ? measureWithin(token, children, measures, new Map(), 0) : leafMeasure(token)
+    measure = measureWithin(token, children, measures, new Map(), 0)
   } catch (error) {
     if (error !== TOO_DEEP) throw error
     if (holdsItself(token, measures)) throw new TypeError('Cyclic token graph is not renderable')
@@ -189,6 +209,7 @@ function keepNodes(document: InlineDocument, nodes: number): void {
  * caller charges the token itself.
  */
 export function chargeCustomToken(token: InlineToken, document: InlineDocument, budget: TokenBudget | undefined): void {
+  if (!('tokens' in token)) return
   const measure = measureCustomToken(token, document.measures)
   document.custom = true
   if (measure.nodes === 0) return
@@ -196,12 +217,27 @@ export function chargeCustomToken(token: InlineToken, document: InlineDocument, 
   else keepNodes(document, measure.nodes)
 }
 
-/** Counts alt text an image keeps, refusing past the output limit. */
+/** Counts custom text an image's alt text keeps, refusing past the output limit. */
 export function keepAltText(document: InlineDocument, length: number): void {
   if (length > document.maxAltText - document.altText) {
-    throw new RangeError(`Image alt text exceeds ${document.outputLimit}`)
+    throw new RangeError(`Custom text in image alt text exceeds ${document.outputLimit}`)
   }
   document.altText += length
+}
+
+/**
+ * Copies a token with changes. A plain object is spread; any other, such as
+ * a class instance a rule returns, is inherited from, so its getters and
+ * methods stay.
+ */
+export function copyToken<T extends object>(token: T, changes: Partial<T>): T {
+  const prototype: unknown = Object.getPrototypeOf(token)
+  if (prototype === Object.prototype || prototype === null) return { ...token, ...changes }
+  const copy = Object.create(token) as T
+  for (const [key, value] of Object.entries(changes)) {
+    Object.defineProperty(copy, key, { value, writable: true, enumerable: true, configurable: true })
+  }
+  return copy
 }
 
 /** Pieces at least this long are shared by an alt text rather than copied into it. */

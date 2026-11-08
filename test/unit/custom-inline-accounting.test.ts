@@ -179,6 +179,33 @@ describe('custom inline rules and the token budget', () => {
     expect(createParser({ ugc: true, plugins: [plugin] }).parse('![@](u) '.repeat(20_000)).match(/<img /g)).toHaveLength(20_000)
   })
 
+  // Merging and trimming spread a rule's token into a plain object, which
+  // dropped the getters of a class instance.
+  it('copies a rule token that is a class instance with its getters', () => {
+    class Leaf { raw = '@'; text = 'L'; get type() { return 'text' as const } }
+    class Spaced { raw = '@  '; text = 'C  '; get type() { return 'text' as const } }
+    const leaf = createParser({ plugins: [at(new Leaf() as unknown as InlineToken)] })
+    const spaced = createParser({ plugins: [builder => builder.addInlineRule({
+      name: 'at', priority: 1, triggerChars: [64], tokenize: (src) => (src.startsWith('@  ') ? { raw: '@  ', token: new Spaced() as unknown as InlineToken } : null),
+    })] })
+
+    expect(leaf.parse('@b')).toBe('<p>Lb</p>\n')
+    expect(leaf.parse('@ b')).toBe('<p>L b</p>\n')
+    expect(spaced.parse('@  \nx')).toBe('<p>C<br>\nx</p>\n')
+    expect(spaced.parse('![@  \nx](u)')).toContain('alt="C\nx"')
+  })
+
+  // Alt text from the Markdown itself counted against the output limit,
+  // though a renderer or a transform may drop images, and tokenizing renders
+  // nothing.
+  it('counts only custom text in alt text against the output limit', () => {
+    const markdown = `![${'a'.repeat(300)}](u) and text`
+    const dropped = createParser({ maxOutputLength: 200, renderer: { image: () => '<img>' } })
+
+    expect(dropped.parse(markdown)).toBe('<p><img> and text</p>\n')
+    expect(() => createParser({ maxOutputLength: 200 }).tokenize(markdown)).not.toThrow()
+  })
+
   // Measures were kept for good, so a token a transform changed after one
   // document kept the measure of what it was.
   it('measures a token again in each document', () => {
@@ -194,10 +221,10 @@ describe('custom inline rules and the token budget', () => {
   // Each paragraph an incremental session tokenized started a new
   // allowance, and a reused one spent none.
   it('keeps one allowance for a document in an incremental session', () => {
-    const token: InlineToken = { type: 'text', raw: '@', text: 'x'.repeat(100) }
+    const token: InlineToken = { type: 'strong', raw: '@', text: '@', tokens: [{ type: 'text', raw: '@', text: 'x'.repeat(100) }] }
     const plugin = defineIncrementalPlugin(at(token), { protocol: 1, id: 'at', profile: 'inline', effects: 'none', dependencies: { kind: 'static' } })
     const options = { maxOutputLength: 150, plugins: [plugin] }
-    const refusal = new RangeError('Image alt text exceeds maxOutputLength 150')
+    const refusal = new RangeError('Custom text in image alt text exceeds maxOutputLength 150')
     const both = '![@](x)\n\n![@](y)'
 
     expect(() => createParser(options).parse(both)).toThrow(refusal)
@@ -217,7 +244,7 @@ describe('custom inline rules and the token budget', () => {
     const parser = createParser({ ugc: true, plugins: [at(token)] })
     const started = performance.now()
 
-    expect(() => parser.parse('![@](x) '.repeat(10_000))).toThrow(new RangeError('Image alt text exceeds maxOutputLength 20000000'))
+    expect(() => parser.parse('![@](x) '.repeat(10_000))).toThrow(new RangeError('Custom text in image alt text exceeds maxOutputLength 20000000'))
     expect(performance.now() - started).toBeLessThan(1_000)
     expect(parser.parse('![@](x) '.repeat(3)).match(/alt="x{100000}y{100000}"/g)).toHaveLength(3)
     expect(() => createParser({ maxOutputLength: 50, plugins: [at(token)] }).parse('![@](x)')).toThrow(RangeError)
