@@ -83,6 +83,8 @@ function resolveAgainstBase(url: string, baseUrl: URL): string {
 export class HtmlRenderer implements Renderer {
   private rendererOptions: HtmlRendererOptions
   private baseUrl: URL | null
+  private outputLimit = Infinity
+  private outputLength = 0
   private codeBlockHooks: readonly CodeBlockRenderHook[] = []
   private documentCodeBlockHook: CodeBlockRenderHook | undefined
 
@@ -402,7 +404,41 @@ export class HtmlRenderer implements Renderer {
    */
   renderBlock(tokens: BlockToken[]): string {
     let html = ''
-    for (const token of tokens) html += this.renderBlockToken(token)
+    for (const token of tokens) {
+      const start = this.outputLength
+      html += this.counted(start, this.renderBlockToken(token))
+    }
+    return html
+  }
+
+  /**
+   * @internal Render `render` with at most `limit` code units of output.
+   * `outputLength` tracks the document rendered so far: a token's HTML holds
+   * its children's, so when a token finishes, the length becomes where it
+   * started plus its own length, and its children are counted once. Each
+   * child checks the limit as it finishes, so an expanding token stops before
+   * its HTML is built.
+   */
+  withOutputLimit<T>(limit: number, render: () => T): T {
+    const previousLimit = this.outputLimit
+    const previousLength = this.outputLength
+    this.outputLimit = limit
+    this.outputLength = 0
+    try {
+      return render()
+    } finally {
+      this.outputLimit = previousLimit
+      this.outputLength = previousLength
+    }
+  }
+
+  private counted(start: number, html: string): string {
+    if (this.outputLimit !== Infinity) {
+      this.outputLength = start + html.length
+      if (this.outputLength > this.outputLimit) {
+        throw new RangeError(`Rendered HTML exceeds maxOutputLength ${this.outputLimit}`)
+      }
+    }
     return html
   }
 
@@ -441,7 +477,10 @@ export class HtmlRenderer implements Renderer {
    */
   renderInline(tokens: InlineToken[]): string {
     let html = ''
-    for (const token of tokens) html += this.renderInlineToken(token)
+    for (const token of tokens) {
+      const start = this.outputLength
+      html += this.counted(start, this.renderInlineToken(token))
+    }
     return html
   }
 

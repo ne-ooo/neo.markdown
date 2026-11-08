@@ -94,6 +94,7 @@ parser.render(tokens);
 | `breaks`            | `boolean`                  | `false`           | Convert bare newlines to `<br>`.                             |
 | `maxNestingDepth`   | `number`                   | `100`             | Limit nested blockquotes and lists. The hard maximum is 100. |
 | `maxInputLength`    | `number`                   | No general limit  | Reject longer input. UGC mode has a hard limit.              |
+| `maxOutputLength`   | `number`                   | No general limit  | Stop rendering longer HTML. UGC mode has a hard limit.       |
 | `lazyImages`        | `boolean`                  | `true`            | Add `loading="lazy"` to rendered images.                     |
 | `safeLinks`         | `boolean \| object`        | `false`           | Set attributes for external links.                           |
 | `ugc`               | `boolean`                  | `false`           | Apply the user-generated-content controls.                   |
@@ -272,7 +273,10 @@ setup. Finite limits are appropriate for user-controlled source.
 
 With `errorPolicy: "plain"`, the fallback preserves the complete code token.
 Highlighting limits do not truncate this fallback. Set the parser's
-`maxInputLength`, or use `ugc: true`, to limit the whole document.
+`maxInputLength` and `maxOutputLength`, or use `ugc: true`, to limit the
+whole document. Reference links repeat their destination at each use, so a
+short document can render to hundreds of times its length; `maxOutputLength`
+stops rendering with a `RangeError` before that HTML is built.
 An error from `onError` itself propagates to the caller.
 
 For per-block diff lines, the callback receives the original code token:
