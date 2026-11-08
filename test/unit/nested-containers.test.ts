@@ -39,7 +39,8 @@ describe('nested containers', () => {
     expect(depth).toBeGreaterThan(8)
     expect(depth).toBeLessThan(99)
     expect(html.match(/y/g)!.length).toBe(131_072)
-  })
+    // Crossing the bound takes 4,000,000 code units of work, slow under coverage.
+  }, 60_000)
 
   it('still nests a short document as deep as the nesting limit', () => {
     expect(createParser().parse(`${'> '.repeat(99)}x\n${'y\n'.repeat(100)}`).match(/<blockquote>/g)!.length).toBe(99)
