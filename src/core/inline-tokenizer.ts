@@ -3,7 +3,7 @@
  */
 
 import type { InlineRule, InlineToken, LinkReference } from './types.js'
-import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
+import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
 import { decodeEntities, decodeMarkdown, normalizeDestination } from '../utils/markdown-text.js'
@@ -289,7 +289,7 @@ export class InlineTokenizerBase {
       }
       if (token) {
         this.assertProgress('inline tokenizer', src, cursor, token.raw)
-        if (token.token.type !== 'text') consumeTokenBudget(tokenBudget)
+        consumeTokenBudget(tokenBudget)
         if (token.delimiter) delimiters.push({ ...token.delimiter, index: tokens.length })
         tokens.push(token.token)
         fallbackTextIndex = -1
@@ -305,6 +305,7 @@ export class InlineTokenizerBase {
           let end = cursor + 1
           while (src.charCodeAt(end) === 91) end++
           const raw = src.slice(cursor, end)
+          consumeTokenBudget(tokenBudget)
           tokens.push({ type: 'text', raw, text: raw })
           fallbackTextIndex = tokens.length - 1
           previousChar = '['
@@ -356,7 +357,7 @@ export class InlineTokenizerBase {
     tokens: InlineToken[],
     fallbackTextIndex: number,
     raw: string,
-    _tokenBudget?: TokenBudget
+    tokenBudget?: TokenBudget
   ): number {
     const previous = tokens[fallbackTextIndex]
     if (fallbackTextIndex === tokens.length - 1 && previous?.type === 'text') {
@@ -364,6 +365,7 @@ export class InlineTokenizerBase {
       previous.text += raw
       return fallbackTextIndex
     }
+    consumeTokenBudget(tokenBudget)
     tokens.push({ type: 'text', raw, text: raw })
     return tokens.length - 1
   }
@@ -862,6 +864,7 @@ export class InlineTokenizerBase {
 
     if (isImage) {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
+      this.release(children, tokenBudget)
       return {
         token: {
           type: 'image',
@@ -879,7 +882,10 @@ export class InlineTokenizerBase {
       text, references, depth + 1, workBudget, tokenBudget, false
     )
 
-    if (this.containsLink(tokens)) return null
+    if (this.containsLink(tokens)) {
+      this.release(tokens, tokenBudget)
+      return null
+    }
     return {
       token: {
         type: 'link',
@@ -924,14 +930,19 @@ export class InlineTokenizerBase {
 
     const raw = src.slice(cursor, end)
     if (isImage) {
+      const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
+      this.release(children, tokenBudget)
       return {
-        token: { type: 'image', raw, text: this.inlineText(this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)), href: reference.href, title: reference.title },
+        token: { type: 'image', raw, text: this.inlineText(children), href: reference.href, title: reference.title },
         raw,
       }
     }
 
     const tokens = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget, false)
-    if (this.containsLink(tokens)) return null
+    if (this.containsLink(tokens)) {
+      this.release(tokens, tokenBudget)
+      return null
+    }
     return {
       token: {
         type: 'link',
@@ -943,6 +954,23 @@ export class InlineTokenizerBase {
       },
       raw,
     }
+  }
+
+  /**
+   * Returns to the budget the tokens of text the result doesn't keep: an
+   * image's alt text becomes a string, and link text holding a link isn't a
+   * link.
+   */
+  private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
+    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens))
+  }
+
+  private countTokens(tokens: InlineToken[]): number {
+    let count = tokens.length
+    for (const token of tokens) {
+      if ('tokens' in token) count += this.countTokens(token.tokens)
+    }
+    return count
   }
 
   private containsLink(tokens: InlineToken[]): boolean {

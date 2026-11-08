@@ -33,14 +33,15 @@ describe('plain-text fast path', () => {
     )
   })
 
+  // Each piece counts while it exists, and returns to the budget as it merges.
   it('merges adjacent text without bypassing token accounting', () => {
     const tokenizer = new InlineTokenizer()
-    const budget = createTokenBudget(1)
+    const budget = createTokenBudget(3)
     expect(tokenizer.tokenize('a\\*b', new Map(), budget)).toEqual([
       { type: 'text', raw: 'a\\*b', text: 'a*b' },
     ])
-    expect(budget.remaining).toBe(0)
-    expect(() => tokenizer.tokenize('a\\*b', new Map(), budget)).toThrow(/token count/)
+    expect(budget.remaining).toBe(2)
+    expect(() => tokenizer.tokenize('a\\*b', new Map(), createTokenBudget(2))).toThrow(/token count/)
   })
 })
 
@@ -94,10 +95,12 @@ describe('inline parsing without syntax indexes', () => {
       type: 'strong', raw: source, text: 'bold &amp;',
       tokens: [{ type: 'text', raw: 'bold &amp;', text: 'bold &' }],
     }]
-    const budget = createTokenBudget(1)
+    // The delimiters, the text and the wrapper exist at once; the used-up
+    // delimiters return to the budget, leaving the wrapper and its text.
+    const budget = createTokenBudget(4)
     const tokens = tokenizer.tokenize(source, new Map(), budget)
     expect(tokens).toEqual(expected)
-    expect(budget.remaining).toBe(0)
+    expect(budget.remaining).toBe(2)
     tokens[0].text = 'changed'
     tokens[0].tokens![0].text = 'changed child'
     expect(tokenizer.tokenize(source)).toEqual(expected)

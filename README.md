@@ -282,8 +282,9 @@ use, so a short document can render to hundreds of times its length;
 `maxOutputLength` stops rendering with a `RangeError` before that HTML is
 built. A short document of emphasis, or a wide table with short rows, builds
 hundreds of thousands of tokens; `maxTokens` stops parsing with a
-`RangeError` before building the token that passes it, counting each table
-cell, including the empty cells a short row is padded with. HTML is counted
+`RangeError` before building the token that passes it. It counts each table
+cell, including the empty cells a short row is padded with, and each inline
+piece from when it is built until it merges or is used up. HTML is counted
 as it renders, so a custom renderer that renders a token's children and then
 discards them still has them counted.
 An error from `onError` itself propagates to the caller.

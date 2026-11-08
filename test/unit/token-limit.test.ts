@@ -1,7 +1,17 @@
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
+import { InlineTokenizer } from '../../src/core/inline-tokenizer.js'
+import { createTokenBudget } from '../../src/core/token-budget.js'
+import type { InlineToken } from '../../src/core/types.js'
 import { createIncrementalMarkdown } from '../../src/experimental/incremental.js'
 import { createParser } from '../../src/index.js'
 import { createParser as createSanitizedParser } from '../../src/sanitized.js'
+import gfm from '../fixtures/gfm-official.json'
+
+const require = createRequire(import.meta.url)
+const commonmark = require('commonmark-spec').tests as Array<{ markdown: string }>
+const countTokens = (tokens: InlineToken[]): number =>
+  tokens.reduce((count, token) => count + 1 + ('tokens' in token ? countTokens(token.tokens) : 0), 0)
 
 const wideTable = (columns: number, rows: number) =>
   `${'|a'.repeat(columns)}|\n${'|-'.repeat(columns)}|\n${'b\n'.repeat(rows)}`
@@ -58,6 +68,35 @@ describe('maxTokens', () => {
     session.update('**text**')
 
     expect(() => session.update('**text**\n\n'.repeat(400))).toThrow(/exceeds maxTokens 1000/)
+  })
+
+  // Inline pieces were counted only once emphasis resolved and adjacent text
+  // merged: 1 MiB of emphasis built a million of them, hundreds of megabytes,
+  // before the first was counted. They now count as they are built, and
+  // return to the budget as they merge or are used up.
+  it('counts inline pieces as they are built', () => {
+    const tokenizer = new InlineTokenizer()
+    const budget = createTokenBudget(1_000)
+
+    expect(() => tokenizer.tokenize('*a* '.repeat(262_144), new Map(), budget)).toThrow(
+      new RangeError('Markdown token count exceeds UGC limit 1000'),
+    )
+    expect(budget.remaining).toBe(0)
+  })
+
+  it.each([
+    ['CommonMark', commonmark],
+    ['GFM', gfm.examples],
+  ])('charges exactly the inline tokens it returns, across the %s examples', (_, examples) => {
+    const tokenizer = new InlineTokenizer()
+    const mismatches = examples.flatMap(({ markdown }) => {
+      const budget = createTokenBudget(1_000_000)
+      const tokens = tokenizer.tokenize(markdown, new Map(), budget)
+      const charged = 1_000_000 - budget.remaining
+      return charged === countTokens(tokens) ? [] : [markdown]
+    })
+
+    expect(mismatches).toEqual([])
   })
 
   it.each([-1, 1.5, Number.NaN, Infinity])('rejects maxTokens %s', (maxTokens) => {

@@ -23,3 +23,17 @@ export function consumeTokenBudget(
   }
   budget.remaining -= count
 }
+
+/**
+ * Returns tokens to the budget when built tokens go away, as when adjacent
+ * text merges or a delimiter run is used up. Charging tokens as they are
+ * built and returning them as they go keeps the budget's count at the live
+ * token count, so a document can't build far more than the limit before
+ * its tokens are counted.
+ */
+export function releaseTokenBudget(
+  budget: TokenBudget | undefined,
+  count = 1
+): void {
+  if (budget) budget.remaining += count
+}

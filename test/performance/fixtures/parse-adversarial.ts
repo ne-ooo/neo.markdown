@@ -18,6 +18,17 @@ const sanitizedEmbedParser = createSanitizedParser({
   plugins: [embedPlugin({ youtube: true })],
 })
 
+function tokenLimited(parse: () => string): string {
+  try {
+    return parse()
+  } catch (error) {
+    if (error instanceof RangeError && error.message.startsWith('Markdown token count exceeds')) {
+      return 'refused'
+    }
+    throw error
+  }
+}
+
 function nestedEmphasis(depth: number): string {
   const openings: string[] = []
   const closings: string[] = []
@@ -48,7 +59,11 @@ const scenarios: Record<string, (size: number) => unknown> = {
   unmatchedEmphasis: (size) => defaultParser.parse('**a '.repeat(size)),
   unmatchedDelete: (size) => defaultParser.parse('~~a '.repeat(size)),
   nestedEmphasis: (size) => defaultParser.parse(nestedEmphasis(size)),
-  nestedMax: (size) => ugcParser.parse(nestedEmphasis(size * 10 - 1)),
+  // UGC mode counts each delimiter run as it is built, so it refuses this
+  // past its token limit instead of building every run first.
+  nestedMax: (size) => tokenLimited(() => ugcParser.parse(nestedEmphasis(size * 10 - 1))),
+  // The largest UGC input, all emphasis: a million inline pieces.
+  ugcEmphasis: () => tokenLimited(() => ugcParser.parse('*a* '.repeat(250_000))),
   inlineCode: (size) => defaultParser.parse(`x${'`'.repeat(size * 4)}a`),
   links: (size) => defaultParser.parse('[x]('.repeat(size)),
   html: (size) => defaultParser.parse('<a '.repeat(size)),

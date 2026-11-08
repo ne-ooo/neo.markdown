@@ -59,6 +59,26 @@ const adversarialInputs = [
   'autolinkTrailingPunctuation',
 ] as const
 
+describe('adversarial input memory', () => {
+  // Inline pieces were counted only once emphasis resolved: UGC mode built a
+  // million of them, about 300 MB, before refusing 1,000,000 characters of
+  // emphasis. Counted as they are built, it refuses them within 64 MB.
+  it('refuses the largest UGC input of emphasis within a small heap', () => {
+    const output = execFileSync(
+      process.execPath,
+      ['--max-old-space-size=64', bundledFixture, 'ugcEmphasis'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: EXECUTION_LIMIT_MS,
+        killSignal: 'SIGKILL',
+      }
+    )
+
+    expect(output.trim()).toBe('ok')
+  }, EXECUTION_LIMIT_MS + 1_000)
+})
+
 describe('adversarial input scaling', () => {
   it.each(adversarialInputs)(
     'handles increasing %s inputs within a hard execution limit',

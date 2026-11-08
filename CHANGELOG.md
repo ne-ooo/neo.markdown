@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - UGC mode stops rendering HTML longer than 20,000,000 code units with a `RangeError`, even when a larger `maxOutputLength` is given.
 - In UGC mode, a smaller `maxTokens` lowers the 50,000-token limit, and the error names the limit that applied: `maxTokens` or `UGC limit`.
+- Inline tokens count against the token limit as they are built. Delimiter runs and pieces of text counted only once emphasis resolved and adjacent text merged, so 1,000,000 characters of emphasis built a million of them, about 300 MB, before the first was counted. Each piece now counts from when it is built, and returns to the budget as it merges or is used up, so a document's count when parsing ends is unchanged, but a paragraph whose pieces pass the limit before they resolve is refused. Text inside emphasis and strong counts as the final token check already counted it, and alt text and rejected link text return to the budget. In UGC mode, 1,000,000 characters of nested emphasis past the nesting limit is now refused instead of parsed.
 
 ### Fixed
 

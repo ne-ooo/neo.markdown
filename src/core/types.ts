@@ -402,11 +402,13 @@ export interface ParserOptions {
   maxOutputLength?: number
 
   /**
-   * Maximum number of tokens the parser builds for one document, counting
-   * each table cell, including the empty cells a short row is padded with.
-   * Parsing stops with a RangeError before building the token that passes
-   * it. A short document of emphasis or a wide table with short rows builds
-   * hundreds of thousands of tokens.
+   * Maximum number of tokens the parser holds for one document, counting
+   * each table cell, including the empty cells a short row is padded with,
+   * and each inline piece from when it is built until it merges with
+   * adjacent text or is used up as a delimiter. Parsing stops with a
+   * RangeError before building the token that passes it. A short document
+   * of emphasis or a wide table with short rows builds hundreds of
+   * thousands of tokens.
    * UGC mode uses a hard maximum of 50,000.
    */
   maxTokens?: number

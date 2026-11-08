@@ -1,5 +1,5 @@
 import type { InlineToken } from './types.js'
-import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
+import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 
 export interface EmphasisDelimiter {
   index: number
@@ -26,7 +26,12 @@ export function delimiterFlags(source: string, start: number, length: number) {
     : { open: left, close: right }
 }
 
-/** Resolve delimiter runs on linked lists, including CommonMark's rule of three. */
+/**
+ * Resolve delimiter runs on linked lists, including CommonMark's rule of three.
+ * `tokens` are already charged to `budget`: emphasis and strong wrappers are
+ * charged as they are built, and tokens return to it as adjacent text merges
+ * and used-up delimiter runs go away.
+ */
 export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[], source: string, budget?: TokenBudget, maxDepth = 32): InlineToken[] {
   if (runs.length === 0) {
     const result: InlineToken[] = []
@@ -35,8 +40,8 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
       if (previous?.type === 'text' && token.type === 'text') {
         previous.raw += token.raw
         previous.text += token.text
+        releaseTokenBudget(budget)
       } else {
-        if (token.type === 'text') consumeTokenBudget(budget)
         result.push(token)
       }
     }
@@ -118,11 +123,13 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
     if (closer.node.token.type === 'text') closer.node.token.text = closer.node.token.raw
     if (!opener.length) {
       opener.node.previous!.next = wrapper; wrapper.previous = opener.node.previous; remove(opener)
+      releaseTokenBudget(budget)
     }
     if (!closer.length) {
       wrapper.next = closer.node.next
       if (closer.node.next) closer.node.next.previous = wrapper
       const next = closer.next; remove(closer); closer = next!
+      releaseTokenBudget(budget)
     }
   }
   const result: InlineToken[] = []
@@ -131,8 +138,8 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
     const previous = result.at(-1)
     if (previous?.type === 'text' && token.type === 'text') {
       previous.raw += token.raw; previous.text += token.text
+      releaseTokenBudget(budget)
     } else {
-      if (token.type === 'text') consumeTokenBudget(budget)
       result.push(token)
     }
   }
