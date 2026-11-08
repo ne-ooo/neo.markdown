@@ -1,4 +1,4 @@
-import type { BlockToken } from '../core/types.js'
+import type { BlockToken, LazyLineSet } from '../core/types.js'
 import { normalizeMarkdown, type BlockCheckpoint, type BlockResume, type BlockContinuationFactory } from '../core/tokenizer.js'
 import { consumeTokenBudget, type TokenBudget } from '../core/token-budget.js'
 
@@ -40,7 +40,7 @@ export class BlockCache {
   private reusedBlocks = 0
   private restart = 0
   private parsedThrough = 0
-  private lazy: ReadonlySet<number> | undefined
+  private lazy: LazyLineSet | undefined
 
   constructor(private readonly limits: { checkpoints: number; nodes: number; units: number },
     private readonly charge: (units: number) => void,
@@ -55,7 +55,7 @@ export class BlockCache {
       lastBlockRestart: this.restart, lastBlockParsedThrough: this.parsedThrough, ...this.continuationMetrics }
   }
 
-  parse(input: string, budget: TokenBudget | undefined, resume: BlockResume, lazy?: ReadonlySet<number>): BlockToken[] {
+  parse(input: string, budget: TokenBudget | undefined, resume: BlockResume, lazy?: LazyLineSet): BlockToken[] {
     const next = normalizeMarkdown(input)
     const previous = this.source
     const old = this.points

@@ -1,7 +1,8 @@
 import { dependOnLine } from '../dependencies.js'
 import type { BlockRule, ListItemToken } from '../../core/types.js'
 import { indentation, stripIndent } from '../whitespace.js'
-import { listMarker, ParagraphState } from '../container-state.js'
+import { listMarker, nestedDepth, ParagraphState } from '../container-state.js'
+import { LineSet } from '../line-set.js'
 
 interface ListState {
   kind: 'list'; cursor: number; items: ListItemToken[]; loose: boolean; previousBlank: boolean; cost: number
@@ -41,13 +42,13 @@ export const list: BlockRule = {
       let content: string
       let task: string | undefined
       let lines: string[]
-      let lazy: Set<number>
+      let lazy: LineSet
       let state: ParagraphState
       let contentLength: number
       let blank: boolean
       if (resumed) {
         marker = resumed.marker; itemStart = resumed.start; content = resumed.content; task = resumed.task
-        lines = resumed.lines.slice(); lazy = new Set(resumed.lazy); state = new ParagraphState(resumed.paragraph)
+        lines = resumed.lines.slice(); lazy = new LineSet(resumed.lazy); state = new ParagraphState(resumed.paragraph)
         contentLength = resumed.contentLength; blank = resumed.blank
       } else {
         dependOnLine(src, cursor, context)
@@ -62,7 +63,7 @@ export const list: BlockRule = {
         const match = options.gfm === true ? /^\[([ xX])\][ \t]+/.exec(content) : null
         task = match?.[1]
         if (match) content = content.slice(match[0].length)
-        lines = [content]; lazy = new Set<number>(); state = new ParagraphState()
+        lines = [content]; lazy = new LineSet(); state = new ParagraphState()
         state.feed(content)
         contentLength = content.length + 1
         cursor = newline < 0 ? src.length : newline + 1
@@ -75,7 +76,7 @@ export const list: BlockRule = {
         continuation.retain(() => ({ kind: 'list', cursor: end, items: items.slice(0, itemCount),
           loose: prefixLoose, previousBlank: prefixBlank, cost, current: {
             start: itemStart, marker, content, task, lines: lines.slice(0, count),
-            lazy: [...lazy].filter(offset => offset < size), contentLength: size, blank: tailBlank, paragraph,
+            lazy: lazy.below(size), contentLength: size, blank: tailBlank, paragraph,
           } } satisfies ListState))
       } : undefined
       retain?.()
@@ -104,7 +105,8 @@ export const list: BlockRule = {
       }
       previousBlank = blank || (lines.length === 1 && /^[ \t]*$/.test(content) && /^[ \t]*\n/.test(src.slice(cursor)))
       const text = lines.join('\n') + '\n'
-      const tokens = context ? context.tokenize(text, context.depth + 1, lazy, itemStart) : []
+      if (!continuation) lines.length = 0
+      const tokens = context ? context.tokenize(text, nestedDepth(context, text), lazy, itemStart) : []
       // Blank lines inside a child block do not make its containing list loose.
       let offset = 0
       for (let index = 0; index < tokens.length; index++) {

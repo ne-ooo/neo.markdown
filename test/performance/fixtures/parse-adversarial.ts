@@ -67,6 +67,11 @@ const scenarios: Record<string, (size: number) => unknown> = {
   ugcEmphasis: () => tokenLimited(() => ugcParser.parse('*a* '.repeat(250_000))),
   // The largest UGC input, all email addresses: 166,666 links.
   ugcEmails: () => tokenLimited(() => ugcParser.parse('a@b.c '.repeat(166_666))),
+  // A long body under containers nested to the limit.
+  deepQuotes: () => defaultParser.parse(`${'> '.repeat(99)}x\n${'y\n'.repeat(131_072)}`),
+  deepLists: () => defaultParser.parse(
+    `${Array.from({ length: 99 }, (_, level) => `${'  '.repeat(level)}- a`).join('\n')}\n${'y\n'.repeat(131_072)}`,
+  ),
   inlineCode: (size) => defaultParser.parse(`x${'`'.repeat(size * 4)}a`),
   links: (size) => defaultParser.parse('[x]('.repeat(size)),
   html: (size) => defaultParser.parse('<a '.repeat(size)),

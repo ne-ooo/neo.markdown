@@ -9,6 +9,7 @@ import type {
   BlockRule,
   BlockRuleContext,
   BlockToken,
+  LazyLineSet,
   ParserOptions,
 } from './types.js'
 import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
@@ -34,7 +35,7 @@ export type BlockResume = (src: string, start: number, budget: TokenBudget | und
 export interface BlockContinuationScope {
   context: NonNullable<BlockRuleContext['continuation']>
   finish(): unknown
-  tokenize(src: string, depth: number, lazy: ReadonlySet<number> | undefined, key: number, resume: BlockResume): BlockToken[]
+  tokenize(src: string, depth: number, lazy: LazyLineSet | undefined, key: number, resume: BlockResume): BlockToken[]
 }
 export type BlockContinuationFactory = (cursor: number, readThrough: () => number) => BlockContinuationScope | undefined
 
@@ -46,12 +47,19 @@ export function normalizeMarkdown(src: string): string {
 const DEFAULT_MAX_NESTING_DEPTH = 100
 const HARD_MAX_NESTING_DEPTH = 100
 const DEFAULT_CUSTOM_PRIORITY = 150
+/**
+ * How much nested content a document may tokenize: 8 times its length, and
+ * at least 4,000,000 code units, which covers 100 levels of 40,000.
+ */
+export const NESTED_WORK_FACTOR = 8
+export const MIN_NESTED_WORK = 4_000_000
 
 /** Parse Markdown into block tokens using only the supplied rules. */
 export class Tokenizer {
   private readonly options: Readonly<ParserOptions>
   private readonly rules: InternalBlockRule[]
   private readonly maxNestingDepth: number
+  private nestedWork: { remaining: number } | undefined
 
   constructor(
     options: ParserOptions = {},
@@ -109,20 +117,38 @@ export class Tokenizer {
 
   /** Tokenize a complete Markdown document. */
   tokenize(src: string, tokenBudget?: TokenBudget): BlockToken[] {
-    return this.tokenizeInternal(src, 0, tokenBudget)
+    return this.withNestedWork(src, () => this.tokenizeInternal(src, 0, tokenBudget))
   }
 
   /** Internal experimental entry. Resume at a previously observed top-level boundary. */
   resume(src: string, start: number, tokenBudget: TokenBudget | undefined,
     checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory): BlockToken[] {
-    return this.tokenizeInternal(src, 0, tokenBudget, undefined, start, checkpoint, continuations)
+    return this.withNestedWork(src, () =>
+      this.tokenizeInternal(src, 0, tokenBudget, undefined, start, checkpoint, continuations))
+  }
+
+  /**
+   * Containers tokenize their content again at each level, so a document
+   * nested deep around a long body did that much work, and held each level's
+   * content at once: 256 KB under 99 blockquotes took 680 MB. A document may
+   * tokenize at most NESTED_WORK_FACTOR times its length, or MIN_NESTED_WORK,
+   * as nested content.
+   */
+  private withNestedWork<T>(src: string, tokenize: () => T): T {
+    const previous = this.nestedWork
+    this.nestedWork = { remaining: Math.max(NESTED_WORK_FACTOR * src.length, MIN_NESTED_WORK) }
+    try {
+      return tokenize()
+    } finally {
+      this.nestedWork = previous
+    }
   }
 
   private tokenizeInternal(
     src: string,
     depth: number,
     tokenBudget?: TokenBudget,
-    lazyLines?: ReadonlySet<number>,
+    lazyLines?: LazyLineSet,
     start = 0,
     checkpoint?: (point: BlockCheckpoint) => boolean,
     continuations?: BlockContinuationFactory
@@ -185,7 +211,7 @@ export class Tokenizer {
     return tokens
   }
 
-  private createContext(depth: number, tokenBudget?: TokenBudget, cursor = 0, lazyLines?: ReadonlySet<number>,
+  private createContext(depth: number, tokenBudget?: TokenBudget, cursor = 0, lazyLines?: LazyLineSet,
     observe?: (end: number) => void, length = 0, scope?: BlockContinuationScope): BlockRuleContext {
     return {
       depth,
@@ -195,6 +221,13 @@ export class Tokenizer {
           this.tokenizeInternal(source, nestedDepth, budget, lazy, start, checkpoint, continuations))
         : this.tokenizeInternal(src, nestedDepth, tokenBudget, lazy),
       isLazyLine: (offset) => lazyLines?.has(cursor + offset) ?? false,
+      reserveNested: (length) => {
+        const work = this.nestedWork
+        if (!work) return true
+        if (work.remaining < length) return false
+        work.remaining -= length
+        return true
+      },
       interruptsParagraph: (src, paragraphPriority, excludedRule) => {
         if (observe) {
           const first = src.indexOf('\n')
