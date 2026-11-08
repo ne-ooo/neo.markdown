@@ -191,6 +191,14 @@ describe('custom inline rules and the token budget', () => {
 
     expect(leaf.parse('@b')).toBe('<p>Lb</p>\n')
     expect(leaf.parse('@ b')).toBe('<p>L b</p>\n')
+    // Inheriting from the token before added a prototype for each merge,
+    // which made a run of them quadratic, and left fields out of copies.
+    class Own { type = 'text' as const; raw = '@'; text = 'L' }
+    const own = createParser({ plugins: [at(new Own() as unknown as InlineToken)] })
+    const merged = (own.tokenize('@@@b')[0] as { tokens: InlineToken[] }).tokens[0]!
+    expect(Object.getPrototypeOf(merged)).toBe(Own.prototype)
+    expect(JSON.parse(JSON.stringify(merged))).toEqual({ type: 'text', raw: '@@@b', text: 'LLLb' })
+    expect(own.render(structuredClone(own.tokenize('@b')))).toBe('<p>Lb</p>\n')
     expect(spaced.parse('@  \nx')).toBe('<p>C<br>\nx</p>\n')
     expect(spaced.parse('![@  \nx](u)')).toContain('alt="C\nx"')
   })

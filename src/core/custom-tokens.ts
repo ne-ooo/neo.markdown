@@ -226,18 +226,18 @@ export function keepAltText(document: InlineDocument, length: number): void {
 }
 
 /**
- * Copies a token with changes. A plain object is spread; any other, such as
- * a class instance a rule returns, is inherited from, so its getters and
- * methods stay.
+ * Copies a token with changes. A plain object is spread. Any other, such as
+ * a class instance a rule returns, keeps its prototype, so its getters and
+ * methods stay, and its own properties, so it serializes as it did.
  */
 export function copyToken<T extends object>(token: T, changes: Partial<T>): T {
-  const prototype: unknown = Object.getPrototypeOf(token)
+  const prototype: object | null = Object.getPrototypeOf(token)
   if (prototype === Object.prototype || prototype === null) return { ...token, ...changes }
-  const copy = Object.create(token) as T
+  const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(token)
   for (const [key, value] of Object.entries(changes)) {
-    Object.defineProperty(copy, key, { value, writable: true, enumerable: true, configurable: true })
+    descriptors[key] = { value, writable: true, enumerable: true, configurable: true }
   }
-  return copy
+  return Object.create(prototype, descriptors) as T
 }
 
 /** Pieces at least this long are shared by an alt text rather than copied into it. */
