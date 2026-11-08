@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, copyCustomText, createInlineDocument, customAltText, keepAltText, leafText, type InlineDocument,
+  chargeCustomToken, createInlineDocument, keepAltText, leafText, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -412,7 +412,7 @@ export class InlineTokenizerBase {
       }
     }
 
-    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth, this.document?.measures.size ? this.document.measures : undefined)
+    return resolveEmphasis(tokens, delimiters, src, tokenBudget, HARD_MAX_INLINE_NESTING_DEPTH - depth, this.document?.custom ? this.document.measures : undefined)
   }
 
   private appendFallbackText(
@@ -1028,8 +1028,8 @@ export class InlineTokenizerBase {
           continue
         }
         const image = document.images.get(token)
-        if (image) {
-          altText += image.length
+        if (image !== undefined) {
+          altText += image
           document.images.delete(token)
         }
         if ('tokens' in token) pending.push(token.tokens)
@@ -1050,44 +1050,35 @@ export class InlineTokenizerBase {
 
   /**
    * Gives an image the text of its children as alt text, which counts
-   * against the output limit while the image is kept. A custom rule's token
-   * gives the alt text built for it once per document; copying it, or an
-   * inner image's custom text, is work that counts each time.
+   * against the output limit while the image is kept. Its length is known
+   * from the children and the measures of custom tokens before any of it is
+   * built, and custom tokens that give no text aren't walked.
    */
   private withAltText(image: ImageToken, children: InlineToken[]): ImageToken {
     const document = this.document!
-    const pieces: string[] = []
-    let length = 0
-    let custom = 0
-    const collect = (tokens: InlineToken[]): void => {
+    const lengthOf = (tokens: InlineToken[]): number => {
+      let length = 0
       for (const token of tokens) {
         const measure = document.measures.get(token)
-        if (measure) {
-          if (measure.text === 0) continue
-          copyCustomText(document, measure.text)
-          custom += measure.text
-          length += measure.text
-          pieces.push(customAltText(token, document))
-          continue
-        }
-        if ('tokens' in token) {
-          collect(token.tokens)
-          continue
-        }
-        const inner = document.images.get(token)
-        if (inner && inner.custom > 0) {
-          copyCustomText(document, inner.custom)
-          custom += inner.custom
-        }
-        const text = leafText(token)
-        length += text.length
-        pieces.push(text)
+        if (measure) length += measure.text
+        else if ('tokens' in token) length += lengthOf(token.tokens)
+        else length += leafText(token).length
+      }
+      return length
+    }
+    const length = lengthOf(children)
+    keepAltText(document, length)
+    const pieces: string[] = []
+    const collect = (tokens: InlineToken[]): void => {
+      for (const token of tokens) {
+        if (document.measures.get(token)?.text === 0) continue
+        if ('tokens' in token) collect(token.tokens)
+        else pieces.push(leafText(token))
       }
     }
     collect(children)
-    keepAltText(document, length)
     image.text = pieces.join('')
-    document.images.set(image, { length, custom })
+    document.images.set(image, length)
     return image
   }
 

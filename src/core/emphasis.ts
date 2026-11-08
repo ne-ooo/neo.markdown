@@ -34,7 +34,7 @@ export function delimiterFlags(source: string, start: number, length: number) {
  * and used-up delimiter runs go away.
  */
 export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[], source: string, budget?: TokenBudget, maxDepth = 32,
-  customMeasures?: ReadonlyMap<object, InlineTokenMeasure>): InlineToken[] {
+  customMeasures?: Pick<WeakMap<object, InlineTokenMeasure>, 'get'>): InlineToken[] {
   if (runs.length === 0) {
     const result: InlineToken[] = []
     for (const token of tokens) {

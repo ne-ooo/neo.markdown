@@ -166,9 +166,7 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
       }
       const spentAfter = this.inlineDocumentSpent()
       cache.set(text, { tokens: snapshot?.tokens ?? tokens, budgetCost: remaining - (budget?.remaining ?? 0), count, units,
-        documentCost: {
-          nodes: spentAfter.nodes - spent.nodes, altText: spentAfter.altText - spent.altText, copiedText: spentAfter.copiedText - spent.copiedText,
-        },
+        documentCost: { nodes: spentAfter.nodes - spent.nodes, altText: spentAfter.altText - spent.altText },
         references: tracked.dependencies, wholeMapRead: tracked.wholeMapRead })
       cachedCodeUnits += text.length; cachedTokens += count; cachedTokenCodeUnits += units
       cachedReferenceDependencies += tracked.dependencies.size

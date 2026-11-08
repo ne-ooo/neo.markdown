@@ -22,24 +22,23 @@ export interface InlineTokenMeasure {
 }
 
 /**
- * One document's accounting for custom rules' tokens.
- *
- * What the tokens a document keeps expand to, and the alt text of the images
- * it keeps, count while they're kept and return when they're discarded, so
- * link text tokenized again costs nothing more. Copying custom text into alt
- * text is work done each time, and none of it returns.
+ * One document's accounting for custom rules' tokens and images' alt text.
+ * What the document keeps counts while it's kept and returns when it's
+ * discarded, so link text tokenized again costs nothing more.
  */
 export interface InlineDocument {
   /**
-   * The measures of the tokens rules returned in this document, and of
-   * everything they hold, taken the first time each was returned. A plugin
-   * may change a token between documents, as a token transform can.
+   * The measures of the tokens rules returned in this document, and of the
+   * tokens in them that give no alt text, taken the first time each was
+   * returned. Weak, so discarded tokens aren't kept; per document, so a
+   * change a plugin makes between documents, as a token transform can, is
+   * seen.
    */
-  readonly measures: Map<object, InlineTokenMeasure>
-  /** The alt text of custom tokens, built at most once per document. */
-  readonly altTexts: Map<object, string>
-  /** For each image built here: its alt text's length, and the custom text in it. */
-  readonly images: Map<object, { length: number; custom: number }>
+  readonly measures: WeakMap<object, InlineTokenMeasure>
+  /** Whether a rule has returned a token in this document, so there are measures to read. */
+  custom: boolean
+  /** The alt text length of each image built here and still kept. */
+  readonly images: WeakMap<object, number>
   /**
    * The descendants of kept custom tokens, without a token budget, where the
    * token budget counts them: up to the output limit.
@@ -48,18 +47,8 @@ export interface InlineDocument {
   /** The alt text of kept images, up to the output limit. */
   altText: number
   readonly maxAltText: number
-  /** Custom text copied into alt text, up to CUSTOM_COPY_FACTOR times the output limit. */
-  copiedText: number
-  readonly maxCopiedText: number
   readonly outputLimit: string
 }
-
-/**
- * How much custom text a document may copy into alt text, as a multiple of
- * its output limit. Link text is tokenized again when it holds a link, which
- * builds the alt text of the images in it again.
- */
-export const CUSTOM_COPY_FACTOR = 4
 
 /** The deepest token the renderer renders, so the deepest a rule may return. */
 const MAX_TOKEN_DEPTH = 256
@@ -90,30 +79,45 @@ function leafMeasure(token: InlineToken): InlineTokenMeasure {
   return { nodes: 0, text: leafText(token).length, depth: 0, link: (token as { type: string }).type === 'link' }
 }
 
-function measureWithin(token: InlineToken, measures: Map<object, InlineTokenMeasure>, depth: number): InlineTokenMeasure {
-  const known = measures.get(token)
-  if (known) return known
+/**
+ * Measures a token with children. Tokens shared within it are measured once,
+ * through `local`; only those that give no alt text are kept in the
+ * document's measures, so alt text can skip them.
+ */
+function measureWithin(
+  token: InlineToken,
+  children: InlineToken[],
+  measures: WeakMap<object, InlineTokenMeasure>,
+  local: Map<object, InlineTokenMeasure>,
+  depth: number,
+): InlineTokenMeasure {
   if (depth > MAX_TOKEN_DEPTH) throw TOO_DEEP
-  const children = childrenOf(token)
-  let measure: InlineTokenMeasure
-  if (!children) measure = leafMeasure(token)
-  else {
-    let nodes = children.length, text = 0, deepest = 0, link = token.type === 'link'
-    for (const child of children) {
-      const childMeasure = measureWithin(child, measures, depth + 1)
-      nodes += childMeasure.nodes
-      text += childMeasure.text
-      deepest = Math.max(deepest, childMeasure.depth + 1)
-      link ||= childMeasure.link
+  let nodes = children.length, text = 0, deepest = 0, link = token.type === 'link'
+  for (const child of children) {
+    let childMeasure = measures.get(child) ?? local.get(child)
+    if (!childMeasure) {
+      const grandchildren = childrenOf(child)
+      if (!grandchildren) {
+        text += leafText(child).length
+        deepest = Math.max(deepest, 1)
+        link ||= (child as { type: string }).type === 'link'
+        continue
+      }
+      childMeasure = measureWithin(child, grandchildren, measures, local, depth + 1)
     }
-    measure = { nodes, text, depth: deepest, link }
+    nodes += childMeasure.nodes
+    text += childMeasure.text
+    deepest = Math.max(deepest, childMeasure.depth + 1)
+    link ||= childMeasure.link
   }
-  measures.set(token, measure)
+  const measure = { nodes, text, depth: deepest, link }
+  local.set(token, measure)
+  if (text === 0) measures.set(token, measure)
   return measure
 }
 
 /** Whether a token holds itself, by a walk that keeps the tokens it is inside. */
-function holdsItself(token: InlineToken, measures: Map<object, InlineTokenMeasure>): boolean {
+function holdsItself(token: InlineToken, measures: WeakMap<object, InlineTokenMeasure>): boolean {
   const open = new Set<object>([token])
   const done = new Set<object>()
   const pending: Array<{ token: InlineToken; next: number }> = [{ token, next: 0 }]
@@ -141,32 +145,42 @@ function holdsItself(token: InlineToken, measures: Map<object, InlineTokenMeasur
  * measures to it. A token that holds itself is refused, as rendering it
  * would be, and so is one deeper than the renderer renders.
  */
-export function measureCustomToken(token: InlineToken, measures: Map<object, InlineTokenMeasure>): InlineTokenMeasure {
+export function measureCustomToken(token: InlineToken, measures: WeakMap<object, InlineTokenMeasure>): InlineTokenMeasure {
+  const known = measures.get(token)
+  if (known) return known
+  const children = childrenOf(token)
+  let measure: InlineTokenMeasure
   try {
-    return measureWithin(token, measures, 0)
+    measure = children ? measureWithin(token, children, measures, new Map(), 0) : leafMeasure(token)
   } catch (error) {
     if (error !== TOO_DEEP) throw error
     if (holdsItself(token, measures)) throw new TypeError('Cyclic token graph is not renderable')
     throw new RangeError(`Token render depth exceeds ${MAX_TOKEN_DEPTH}`)
   }
+  measures.set(token, measure)
+  return measure
 }
 
 /** A document's accounting, from its token budget and output limit. */
 export function createInlineDocument(budget: TokenBudget | undefined, maxOutputLength: number | undefined): InlineDocument {
-  const limit = maxOutputLength ?? Infinity
   return {
-    measures: new Map(),
-    altTexts: new Map(),
-    images: new Map(),
+    measures: new WeakMap(),
+    custom: false,
+    images: new WeakMap(),
     nodes: !budget && maxOutputLength !== undefined
       ? createTokenBudget(maxOutputLength, 'maxOutputLength')
       : undefined,
     altText: 0,
-    maxAltText: limit,
-    copiedText: 0,
-    maxCopiedText: CUSTOM_COPY_FACTOR * limit,
+    maxAltText: maxOutputLength ?? Infinity,
     outputLimit: `maxOutputLength ${maxOutputLength}`,
   }
+}
+
+function keepNodes(document: InlineDocument, nodes: number): void {
+  const budget = document.nodes
+  if (!budget || nodes === 0) return
+  if (nodes > budget.remaining) throw new RangeError(`Custom inline tokens' descendants exceed ${document.outputLimit}`)
+  budget.remaining -= nodes
 }
 
 /**
@@ -176,14 +190,10 @@ export function createInlineDocument(budget: TokenBudget | undefined, maxOutputL
  */
 export function chargeCustomToken(token: InlineToken, document: InlineDocument, budget: TokenBudget | undefined): void {
   const measure = measureCustomToken(token, document.measures)
+  document.custom = true
   if (measure.nodes === 0) return
   if (budget) consumeTokenBudget(budget, measure.nodes)
-  else if (document.nodes) {
-    if (measure.nodes > document.nodes.remaining) {
-      throw new RangeError(`Custom inline tokens' descendants exceed ${document.outputLimit}`)
-    }
-    document.nodes.remaining -= measure.nodes
-  }
+  else keepNodes(document, measure.nodes)
 }
 
 /** Counts alt text an image keeps, refusing past the output limit. */
@@ -194,68 +204,21 @@ export function keepAltText(document: InlineDocument, length: number): void {
   document.altText += length
 }
 
-/** Counts custom text copied into alt text, refusing past CUSTOM_COPY_FACTOR times the output limit. */
-export function copyCustomText(document: InlineDocument, length: number): void {
-  if (length > document.maxCopiedText - document.copiedText) {
-    throw new RangeError(`Custom inline tokens' text copied into alt text exceeds ${CUSTOM_COPY_FACTOR} times ${document.outputLimit}`)
-  }
-  document.copiedText += length
-}
-
-/**
- * The alt text a custom token gives, built once per document from its
- * children's, skipping what gives none. Its length is known from its
- * measure, and the caller has counted it.
- */
-export function customAltText(token: InlineToken, document: InlineDocument): string {
-  const known = document.altTexts.get(token)
-  if (known !== undefined) return known
-  const pending: Array<{ token: InlineToken; next: number; pieces: string[] }> = [{ token, next: 0, pieces: [] }]
-  let result = ''
-  while (pending.length > 0) {
-    const frame = pending[pending.length - 1]!
-    const children = 'tokens' in frame.token ? frame.token.tokens : undefined
-    if (children && frame.next < children.length) {
-      const child = children[frame.next++]!
-      if (document.measures.get(child)?.text === 0) continue
-      const built = document.altTexts.get(child)
-      if (built !== undefined) frame.pieces.push(built)
-      else if ('tokens' in child) pending.push({ token: child, next: 0, pieces: [] })
-      else frame.pieces.push(leafText(child))
-      continue
-    }
-    const text = children ? (frame.pieces.length === 1 ? frame.pieces[0]! : frame.pieces.join('')) : leafText(frame.token)
-    document.altTexts.set(frame.token, text)
-    pending.pop()
-    if (pending.length > 0) pending[pending.length - 1]!.pieces.push(text)
-    else result = text
-  }
-  return result
-}
-
 /** What an incremental session records of a paragraph, and spends again when it reuses it. */
 export interface InlineDocumentSpent {
   nodes: number
   altText: number
-  copiedText: number
 }
 
 export function inlineDocumentSpent(document: InlineDocument | undefined): InlineDocumentSpent {
   return {
     nodes: document?.nodes ? document.nodes.limit - document.nodes.remaining : 0,
     altText: document?.altText ?? 0,
-    copiedText: document?.copiedText ?? 0,
   }
 }
 
 export function respendInlineDocument(document: InlineDocument | undefined, spent: InlineDocumentSpent): void {
   if (!document) return
-  if (spent.nodes > 0 && document.nodes) {
-    if (spent.nodes > document.nodes.remaining) {
-      throw new RangeError(`Custom inline tokens' descendants exceed ${document.outputLimit}`)
-    }
-    document.nodes.remaining -= spent.nodes
-  }
+  keepNodes(document, spent.nodes)
   keepAltText(document, spent.altText)
-  copyCustomText(document, spent.copiedText)
 }

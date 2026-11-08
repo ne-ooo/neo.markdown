@@ -123,6 +123,35 @@ describe('custom inline rules and the token budget', () => {
     expect(() => createParser({ plugins: [at(token)] }).parse('*a* @')).toThrow(new TypeError('Cyclic token graph is not renderable'))
   })
 
+  // Alt text memoized for each token in a custom token kept the whole text
+  // under each, and charges that never returned refused images in link text
+  // tokenized again, or missed inner images' text.
+  it.each([
+    ['a long text under 200 levels', { ugc: true }, '![@](u)', () => {
+      let token: InlineToken = { type: 'text', raw: '@', text: 'y'.repeat(2_000_000) }
+      for (let level = 0; level < 200; level++) token = { type: 'strong', raw: '@', text: '@', tokens: [token, { type: 'text', raw: 'x', text: 'x' }] }
+      return token
+    }],
+    ['ten nested images', { maxOutputLength: 1_100 }, Array.from({ length: 10 }).reduce<string>(inner => `![${inner}a](u)`, '@'), () => ({ type: 'text', raw: '@', text: 'x'.repeat(1_000) }) as InlineToken],
+    ['an image in link text tokenized again', { maxOutputLength: 10_000 }, `${'['.repeat(7)}![@](i)${'](u)'.repeat(7)}`, () => ({ type: 'text', raw: '@', text: 'x'.repeat(1_000) }) as InlineToken],
+  ])('renders alt text from %s as without limits', (_, options, markdown, build) => {
+    const token = build()
+
+    expect(createParser({ ...options, plugins: [at(token)] }).parse(markdown)).toBe(createParser({ plugins: [at(token)] }).parse(markdown))
+  })
+
+  // A new token for every image was measured into a map that kept them all.
+  it('measures a new token for each of 20,000 images', () => {
+    const plugin: MarkdownPlugin = builder => builder.addInlineRule({
+      name: 'at', priority: 1, triggerChars: [64],
+      tokenize: (src) => (src.startsWith('@')
+        ? { raw: '@', token: { type: 'strong', raw: '@', text: '@', tokens: Array.from({ length: 100 }, () => ({ type: 'text' as const, raw: '', text: '' })) } }
+        : null),
+    })
+
+    expect(createParser({ ugc: true, plugins: [plugin] }).parse('![@](u) '.repeat(20_000)).match(/<img /g)).toHaveLength(20_000)
+  })
+
   // Measures were kept for good, so a token a transform changed after one
   // document kept the measure of what it was.
   it('measures a token again in each document', () => {
