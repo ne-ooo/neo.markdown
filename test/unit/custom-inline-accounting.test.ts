@@ -49,6 +49,29 @@ describe('custom inline rules and the token budget', () => {
     expect(() => parser.parse('a !')).toThrow(new RangeError('Markdown token count exceeds maxTokens 1000'))
   })
 
+  // Alt text returns its tokens to the budget, so each image could count and
+  // read the same large token again: 10,000 of them took four seconds.
+  it.each([
+    ['one paragraph', '![!](u) '],
+    ['separate paragraphs', '![!](u)\n\n'],
+  ])('refuses a custom token counted again for each image, in %s', (_, image) => {
+    let token: InlineToken = { type: 'text', raw: '', text: '' }
+    for (let level = 0; level < 13; level++) token = { type: 'strong', raw: '!', text: '!', tokens: [token, token] }
+    const parser = createParser({
+      maxTokens: 50_000,
+      plugins: [builder => builder.addInlineRule({
+        name: 'bang', priority: 1, triggerChars: [33], tokenize: (src) => (src.startsWith('!') && !src.startsWith('![') ? { raw: '!', token } : null),
+      })],
+    })
+    const started = performance.now()
+
+    expect(() => parser.parse(image.repeat(10_000))).toThrow(
+      new RangeError('Custom inline tokens\' children exceed 4 times maxTokens 50000'),
+    )
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(parser.parse(image.repeat(3)).match(/<img src="u" alt=""/g)).toHaveLength(3)
+  })
+
   // Adjacent text was merged by appending to the token before it, which
   // changed a token a custom rule returns every time.
   it.each([1, -1])('leaves a shared token from a custom rule as it was at priority %i', (priority) => {

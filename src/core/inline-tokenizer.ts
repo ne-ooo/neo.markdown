@@ -47,6 +47,15 @@ const INLINE_RULE_PRIORITIES: Readonly<Record<string, number>> = {
 const DEFAULT_CUSTOM_PRIORITY = 750
 const HARD_MAX_INLINE_NESTING_DEPTH = 32
 const MIN_INLINE_WORK_BUDGET = 10_000
+/**
+ * How many children of custom tokens a document may count, in all, as a
+ * multiple of its token limit. Alt text and rejected link text return their
+ * tokens to the budget, so a custom rule returning a large token could
+ * otherwise have it counted, read and released again for every image:
+ * 10,000 images took four seconds.
+ */
+const CUSTOM_CHILDREN_WORK_FACTOR = 4
+const customChildrenWork = new WeakMap<TokenBudget, { remaining: number }>()
 
 type InlineResult = {
   token: InlineToken
@@ -442,9 +451,7 @@ export class InlineTokenizerBase {
           this.assertProgress(candidate.rule.name, source, cursor, result.raw)
           // The caller charges the token itself; its children count too, so
           // discarding it releases what was charged.
-          if (tokenBudget && 'tokens' in result.token) {
-            consumeTokenBudget(tokenBudget, this.countTokens(result.token.tokens, tokenBudget.remaining))
-          }
+          if (tokenBudget && 'tokens' in result.token) this.chargeCustomChildren(result.token.tokens, tokenBudget)
           return { ...result, custom: true }
         }
       }
@@ -992,6 +999,27 @@ export class InlineTokenizerBase {
    * image's alt text becomes a string, and link text holding a link isn't a
    * link.
    */
+  /**
+   * Charges a custom token's children to the budget, which they return if
+   * the token is discarded, and to the document's custom work, which they
+   * don't.
+   */
+  private chargeCustomChildren(tokens: InlineToken[], tokenBudget: TokenBudget): void {
+    let work = customChildrenWork.get(tokenBudget)
+    if (!work) {
+      work = { remaining: CUSTOM_CHILDREN_WORK_FACTOR * tokenBudget.limit }
+      customChildrenWork.set(tokenBudget, work)
+    }
+    const count = this.countTokens(tokens, Math.min(tokenBudget.remaining, work.remaining))
+    consumeTokenBudget(tokenBudget, count)
+    if (count > work.remaining) {
+      throw new RangeError(
+        `Custom inline tokens' children exceed ${CUSTOM_CHILDREN_WORK_FACTOR} times ${tokenBudget.name} ${tokenBudget.limit}`
+      )
+    }
+    work.remaining -= count
+  }
+
   private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
     // Everything released was charged, so its count is within the limit.
     if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens, tokenBudget.limit))
