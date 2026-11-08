@@ -25,6 +25,21 @@ describe('LineSet', () => {
     expect(lines.size).toBe(500)
     expect(lines.has(998) && !lines.has(999)).toBe(true)
   })
+
+  // Adding each offset of a descending Set moved every one already held.
+  it('sorts offsets given in any order once', () => {
+    const descending = new Set(Array.from({ length: 200_000 }, (_, index) => 400_000 - 2 * index))
+    const started = performance.now()
+    const lines = new LineSet([...descending, 2, 2])
+
+    expect(performance.now() - started).toBeLessThan(500)
+    expect(lines.size).toBe(200_000)
+    expect([...lines].slice(0, 3)).toEqual([2, 4, 6])
+    expect([...new LineSet(lines)]).toEqual([...lines])
+    const empty = new LineSet([])
+    empty.add(5)
+    expect([...empty]).toEqual([5])
+  })
 })
 
 describe('nested containers', () => {
@@ -82,7 +97,8 @@ describe('nested containers in incremental sessions', () => {
 
   it.each([
     ['a block after reused ones', block('x') + block('x'), block('x') + block('z')],
-    ['a block before a reused suffix', block('x') + block('x'), block('z') + block('x')],
+    // The suffix was parsed after a paragraph, with the whole bound left.
+    ['a block before a reused suffix', `para\n\n${block('x')}`, block('z') + block('x')],
     ['a document that grows past the bound', `${block('x')}tail\n`, `${block('x') + block('x')}tail\n`],
     ['an item appended after reused siblings', items('x', 'x'), items('x', 'x', 'x')],
   ])('renders %s as a fresh parse does', (_, before, after) => {
@@ -90,5 +106,13 @@ describe('nested containers in incremental sessions', () => {
     incremental.update(before)
 
     expect(incremental.update(after).html).toBe(createParser().parse(after))
+  }, 60_000)
+
+  // A fresh parse sizes the bound from the document before its line endings
+  // are normalized, which here leaves room for two more levels.
+  it('sizes the bound as a fresh parse does', () => {
+    const markdown = `${'> '.repeat(50)}x\r\n${'y\r\n'.repeat(200_000)}`
+
+    expect(session().update(markdown).html).toBe(createParser().parse(markdown))
   }, 60_000)
 })

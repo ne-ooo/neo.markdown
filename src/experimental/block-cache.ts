@@ -60,11 +60,13 @@ export class BlockCache {
 
   /**
    * `work` is the document's nested-work budget, which a child cache shares
-   * with its document. A block is reused only if a fresh parse would leave
-   * it its whole nested cost, and spends that cost again.
+   * with its document. Like a fresh parse, it is sized from the document as
+   * given, before line endings are normalized. A block is reused only if a
+   * fresh parse would leave it its whole nested cost, and spends that cost
+   * again.
    */
   parse(input: string, budget: TokenBudget | undefined, resume: BlockResume, lazy?: LazyLineSet,
-    work: NestedWork = createNestedWork(normalizeMarkdown(input).length)): BlockToken[] {
+    work: NestedWork = createNestedWork(input.length)): BlockToken[] {
     const next = normalizeMarkdown(input)
     const previous = this.source
     const old = this.points

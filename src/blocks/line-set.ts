@@ -1,5 +1,7 @@
 import type { LazyLineSet } from '../core/types.js'
 
+const MIN_CAPACITY = 16
+
 /**
  * Offsets of lazy continuation lines in a container's content, kept sorted
  * in a typed array: four bytes a line, where a Set holds tens. Each nesting
@@ -10,9 +12,21 @@ export class LineSet implements LazyLineSet {
   private offsets: Int32Array
   private count = 0
 
+  /** Sorts the offsets once: a custom rule's Set may hold them in any order. */
   constructor(offsets: Iterable<number> = []) {
-    this.offsets = new Int32Array(16)
-    for (const offset of offsets) this.add(offset)
+    if (offsets instanceof LineSet) {
+      this.offsets = offsets.offsets.slice(0, Math.max(offsets.count, MIN_CAPACITY))
+      this.count = offsets.count
+      return
+    }
+    const sorted = Int32Array.from(offsets).sort()
+    let count = 0
+    for (const offset of sorted) {
+      if (count === 0 || offset !== sorted[count - 1]) sorted[count++] = offset
+    }
+    this.offsets = count >= MIN_CAPACITY ? sorted : new Int32Array(MIN_CAPACITY)
+    if (count < MIN_CAPACITY) this.offsets.set(sorted.subarray(0, count))
+    this.count = count
   }
 
   /** Adds an offset; containers add them in increasing order. */
