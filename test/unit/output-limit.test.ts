@@ -8,13 +8,23 @@ const expanding = (uses: number) => `[r]: https://example.com/${'a'.repeat(2000)
 
 describe('maxOutputLength', () => {
   it('stops an expanding document before its HTML is built', () => {
-    const parser = createParser({ gfm: true, maxOutputLength: 1_000_000 })
-    const started = performance.now()
+    let links = 0
+    const parser = createParser({
+      gfm: true,
+      maxOutputLength: 1_000_000,
+      renderer: {
+        link: (token) => {
+          links++
+          return `<a href="${token.href}">r</a>`
+        },
+      },
+    })
 
     expect(() => parser.parse(expanding(120_000))).toThrow(
       new RangeError('Rendered HTML exceeds maxOutputLength 1000000'),
     )
-    expect(performance.now() - started).toBeLessThan(1_000)
+    // About 490 links pass the limit, of the 120,000 the document holds.
+    expect(links).toBeLessThan(1_000)
   })
 
   it('counts the document once, however deeply its blocks nest', () => {
