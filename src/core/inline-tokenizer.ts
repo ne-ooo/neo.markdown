@@ -56,6 +56,12 @@ const MIN_INLINE_WORK_BUDGET = 10_000
  */
 const CUSTOM_CHILDREN_WORK_FACTOR = 4
 const customChildrenWork = new WeakMap<TokenBudget, { remaining: number }>()
+/**
+ * The alt text each document may still build. A custom rule's token may
+ * repeat long text, which each image's alt text copied, so 10,000 images ran
+ * out of memory before the rendered HTML met its limit.
+ */
+const altTextAllowance = new WeakMap<ReadonlyMap<string, LinkReference>, { remaining: number }>()
 
 type InlineResult = {
   token: InlineToken
@@ -149,6 +155,12 @@ export interface InlineTokenizerOptions {
   gfm?: boolean
   /** When true, preserve raw inline HTML tokens. */
   allowHtml?: boolean
+  /**
+   * The rendered HTML's limit. Image alt text, all of which is rendered,
+   * counts against it as it is built, across the tokenize calls that share
+   * a references map, as a parser's calls for one document do.
+   */
+  maxOutputLength?: number
 }
 
 /**
@@ -909,7 +921,7 @@ export class InlineTokenizerBase {
           raw,
           href,
           title,
-          text: this.inlineText(children),
+          text: this.inlineText(children, references),
         },
         raw,
       }
@@ -971,7 +983,7 @@ export class InlineTokenizerBase {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
       this.release(children, tokenBudget)
       return {
-        token: { type: 'image', raw, text: this.inlineText(children), href: reference.href, title: reference.title },
+        token: { type: 'image', raw, text: this.inlineText(children, references), href: reference.href, title: reference.title },
         raw,
       }
     }
@@ -1036,6 +1048,8 @@ export class InlineTokenizerBase {
     const pending = [tokens]
     while (pending.length > 0) {
       const level = pending.pop()!
+      // A length that isn't a number would make the count never pass the limit.
+      if (!Array.isArray(level)) throw new TypeError('Inline token children must be an array')
       count += level.length
       if (count > limit) return count
       for (const token of level) if ('tokens' in token) pending.push(token.tokens)
@@ -1047,8 +1061,38 @@ export class InlineTokenizerBase {
     return tokens.some(token => token.type === 'link' || ('tokens' in token && this.containsLink(token.tokens)))
   }
 
-  private inlineText(tokens: InlineToken[]): string {
-    return tokens.map(token => 'tokens' in token ? this.inlineText(token.tokens) : token.type === 'br' ? '\n' : token.text).join('')
+  private inlineText(tokens: InlineToken[], references: ReadonlyMap<string, LinkReference>): string {
+    const limit = this.inlineOptions.maxOutputLength
+    let allowance: { remaining: number } | undefined
+    if (limit !== undefined) {
+      allowance = altTextAllowance.get(references)
+      if (!allowance) {
+        allowance = { remaining: limit }
+        altTextAllowance.set(references, allowance)
+      }
+    }
+    const pieces: string[] = []
+    const collect = (tokens: InlineToken[]): void => {
+      for (const token of tokens) {
+        if ('tokens' in token) {
+          collect(token.tokens)
+          continue
+        }
+        // As join would, which built alt text before: a plugin's token may
+        // have no text, or text that isn't a string.
+        const value: unknown = token.type === 'br' ? '\n' : (token as { text?: unknown }).text
+        const text = value == null ? '' : String(value)
+        if (allowance) {
+          if (text.length > allowance.remaining) {
+            throw new RangeError(`Image alt text exceeds maxOutputLength ${limit}`)
+          }
+          allowance.remaining -= text.length
+        }
+        pieces.push(text)
+      }
+    }
+    collect(tokens)
+    return pieces.join('')
   }
 
   private parseLinkDestination(

@@ -56,7 +56,9 @@ export function resolveEmphasis(tokens: InlineToken[], runs: EmphasisDelimiter[]
     while (pending.length) {
       const current = pending.pop()!
       depth = Math.max(depth, current.depth)
-      if ('tokens' in current.token) {
+      // Only whether the depth passes maxDepth matters, and a custom rule's
+      // token may hold itself.
+      if ('tokens' in current.token && current.depth <= maxDepth) {
         for (const child of current.token.tokens) pending.push({ token: child, depth: current.depth + 1 })
       }
     }

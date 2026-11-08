@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createParser } from '../../src/index.js'
-import type { InlineRule, InlineToken, TextToken } from '../../src/core/types.js'
+import { createTokenBudget, releaseTokenBudget } from '../../src/core/token-budget.js'
+import type { InlineRule, InlineToken, MarkdownPlugin, TextToken } from '../../src/core/types.js'
+
+/** A plugin whose rule on `@` returns the same token every time. */
+const at = (token: InlineToken): MarkdownPlugin => builder => builder.addInlineRule({
+  name: 'at', priority: 1, triggerChars: [64], tokenize: (src) => (src.startsWith('@') ? { raw: '@', token } : null),
+})
 
 /** A rule on `!` returning an emphasis of 200 pieces of text. */
 function wideEmphasis(priority: number): InlineRule {
@@ -70,6 +76,47 @@ describe('custom inline rules and the token budget', () => {
     )
     expect(performance.now() - started).toBeLessThan(1_000)
     expect(parser.parse(image.repeat(3)).match(/<img src="u" alt=""/g)).toHaveLength(3)
+  })
+
+  // Without a token limit, emphasis measured a token's depth by walking all
+  // of it, for ever on a token that holds itself.
+  it('stops measuring a custom token that holds itself past the nesting limit', () => {
+    const token = { type: 'strong', raw: '@', text: '@', tokens: [] as InlineToken[] } satisfies InlineToken
+    token.tokens.push(token)
+
+    expect(() => createParser({ plugins: [at(token)] }).parse('*a* @')).toThrow(new TypeError('Cyclic token graph is not renderable'))
+  })
+
+  // Each image's alt text copied the token's text: 10,000 images ran out of
+  // memory before the rendered HTML met its limit.
+  it('counts alt text against the output limit as it is built', () => {
+    const token: InlineToken = {
+      type: 'strong', raw: '@', text: '@',
+      tokens: [{ type: 'text', raw: 'x', text: 'x'.repeat(100_000) }, { type: 'text', raw: 'y', text: 'y'.repeat(100_000) }],
+    }
+    const parser = createParser({ ugc: true, plugins: [at(token)] })
+    const started = performance.now()
+
+    expect(() => parser.parse('![@](x) '.repeat(10_000))).toThrow(new RangeError('Image alt text exceeds maxOutputLength 20000000'))
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(parser.parse('![@](x) '.repeat(3)).match(/alt="x{100000}y{100000}"/g)).toHaveLength(3)
+    expect(() => createParser({ maxOutputLength: 50, plugins: [at(token)] }).parse('![@](x)')).toThrow(RangeError)
+  })
+
+  // A length that isn't a number never passed the limit.
+  it('refuses a custom token whose children are not an array', () => {
+    const token = { type: 'strong', raw: '@', text: '@', tokens: new Set<unknown>() }
+    token.tokens.add(token)
+
+    expect(() => createParser({ maxTokens: 1_000, plugins: [at(token as unknown as InlineToken)] }).parse('a @'))
+      .toThrow(new TypeError('Inline token children must be an array'))
+  })
+
+  it('never returns more to the budget than its limit', () => {
+    const budget = createTokenBudget(10, 'maxTokens')
+    releaseTokenBudget(budget, 5)
+
+    expect(budget.remaining).toBe(10)
   })
 
   // Adjacent text was merged by appending to the token before it, which

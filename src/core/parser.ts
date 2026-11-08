@@ -180,6 +180,7 @@ export class MarkdownParserBase implements Parser {
       breaks: this.options.breaks,
       gfm: this.options.gfm,
       allowHtml: this.options.allowHtml,
+      maxOutputLength: this.options.maxOutputLength,
     }, inlineSupport)
   }
 
