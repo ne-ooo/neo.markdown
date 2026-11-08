@@ -86,7 +86,11 @@ function openElement(): void {
 }
 
 function closeElement(): void {
-  openElements[openElements.length - 1]!--
+  // A close after the parser's tokenizer ended would count against the
+  // parser around it; for the outermost one, against none.
+  const parser = openElements.length - 1
+  if (parser < 0) throw new Error('sanitize-html closed an element after its parse ended')
+  openElements[parser]!--
 }
 
 /**
