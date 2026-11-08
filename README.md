@@ -130,7 +130,10 @@ parser.parse('<a href="javascript:evil">click</a>');
 The sanitizer keeps nothing nested deeper than 100 elements. HTML nested
 deeper than 256 elements is refused with a `RangeError` as soon as parsing
 reaches that depth: the HTML parser's work grows with the square of the
-nesting depth, and 1 MB of open tags took seconds.
+nesting depth, and 1 MiB of open tags took up to a minute. Inputs other than
+disabled checkboxes are removed, and HTML is refused when removing them would
+copy more than 64,000,000 code units of output, as thousands of inputs after a
+long document would.
 
 With `allowStyle: true`, the sanitizer permits these properties:
 

@@ -30,6 +30,29 @@ describe('HTML nesting in the structural sanitizer', () => {
     expect(parser().parse('<iframe><b>fallback</b></iframe>')).toContain('fallback')
   })
 
+  // A tag cut off at the end of the iframe's text is closed without having
+  // been opened, so a plain count of opens and closes fell by one for each.
+  it.each([
+    ['cut-off tags', '<iframe><a </iframe>'],
+    ['cut-off tags of an open element\'s name', '<div><iframe><div </iframe>'],
+    ['cut-off iframes', '<div><iframe><iframe </iframe>'],
+  ])('keeps counting past discarded iframes ending in %s', (_, iframe) => {
+    const opened = iframe.startsWith('<div>') ? 1 : 0
+
+    expect(() => parser().parse(`${iframe.repeat(10)}${'<div>'.repeat(MAX_HTML_NESTING_DEPTH + 1 - 10 * opened)}`))
+      .toThrow(refusal)
+    expect(() => parser().parse(`${iframe.repeat(10)}${'<div>'.repeat(MAX_HTML_NESTING_DEPTH - 10 * opened)}`))
+      .not.toThrow()
+    expect(() => parser().parse(`<p>${iframe}${'</div>'.repeat(opened)}</p>`.repeat(1_000))).not.toThrow()
+  })
+
+  it('refuses 1 MB of nested tags after discarded iframes as soon as they pass the limit', () => {
+    const started = performance.now()
+
+    expect(() => parser().parse(`${'<iframe><a </iframe>'.repeat(45_557)}${'<b>'.repeat(45_813)}`)).toThrow(refusal)
+    expect(performance.now() - started).toBeLessThan(5_000)
+  })
+
   it('counts elements the parser closes for itself as closed', () => {
     expect(() => parser().parse(`<div>${'<p>a'.repeat(1_000)}</div>`)).not.toThrow()
     expect(() => parser().parse(`<ul>${'<li>a'.repeat(1_000)}</ul>`)).not.toThrow()
@@ -37,7 +60,7 @@ describe('HTML nesting in the structural sanitizer', () => {
   })
 
   // The parser moved every open element on each new one: 1 MB of nested
-  // tags took 2 to 14 seconds to sanitize.
+  // tags took from 6 seconds to a minute to sanitize.
   it.each([
     ['open', '<div>'.repeat(200_000)],
     ['open inline', '<span>'.repeat(170_000)],
@@ -57,5 +80,31 @@ describe('HTML nesting in the structural sanitizer', () => {
     expect(parser().parse('<details><summary>s</summary><div><div><b>x</b></div></div></details>')).toBe(
       '<details><summary>s</summary><div><div><b>x</b></div></div></details>\n',
     )
+  })
+})
+
+describe('inputs in the structural sanitizer', () => {
+  const gfm = () => createParser({ allowHtml: true, sanitize: true, gfm: true })
+
+  it('keeps only disabled checkboxes', () => {
+    expect(gfm().parse(
+      '<p>a<input type="text">b<input type="checkbox" disabled>c<INPUT TYPE=CHECKBOX DISABLED>d<input type=checkbox>e</p>',
+    )).toBe('<p>ab<input type="checkbox" disabled />c<input type="CHECKBOX" disabled />de</p>\n')
+    expect(gfm().parse('- [ ] task\n- [x] done')).toBe(
+      '<ul>\n<li><input type="checkbox" disabled /> task</li>\n<li><input type="checkbox" checked disabled /> done</li>\n</ul>\n',
+    )
+    expect(gfm().parse('<div><input value="x"><b>y</b></div>')).toBe('<div><b>y</b></div>\n')
+  })
+
+  // sanitize-html removes an element by cutting its output back to where the
+  // element began, which copies all the output before it.
+  it('refuses inputs whose removal would copy the output too many times', () => {
+    const started = performance.now()
+
+    expect(() => gfm().parse(`${'x'.repeat(512 * 1024)}${'<input>'.repeat(75_000)}`)).toThrow(
+      new RangeError('HTML has too many inputs to remove'),
+    )
+    expect(performance.now() - started).toBeLessThan(2_000)
+    expect(gfm().parse(`${'x'.repeat(10_000)}<input>\n\n`.repeat(50))).not.toContain('<input')
   })
 })

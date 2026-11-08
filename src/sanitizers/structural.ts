@@ -32,23 +32,49 @@ const stableOptions = new WeakMap<SanitizerConfig, StructuralSanitizerOptions>()
  * The deepest HTML the structural sanitizer accepts. Nothing past depth 100
  * reaches its output, and its parser, htmlparser2, keeps open elements
  * innermost first: each element it opens moves every open one, and each end
- * tag searches them all, so 1 MB of nested tags took 2 to 14 seconds.
+ * tag searches them all, so 1 MiB of nested tags took up to a minute.
  */
 export const MAX_HTML_NESTING_DEPTH = 256
 
-// Elements the parser holds open in the current sanitize call, counted from
-// its own open and close events, which include implied end tags and void
-// elements, so the count is its stack's depth.
-let openElements = 0
+// Elements the parser holds open in the current sanitize call, from its own
+// open and close events, which include implied end tags and void elements.
+// A close counts only for the innermost open element of its name: a tag cut
+// off at the end of a parse is closed without having been opened, and
+// sanitize-html parses a discarded iframe's text with a parser of its own,
+// so each `<iframe><a </iframe>` lowered a plain count by one.
+let openElements: string[] = []
 
-function openElement(): void {
-  if (++openElements > MAX_HTML_NESTING_DEPTH) {
+function openElement(name: string): void {
+  openElements.push(name)
+  if (openElements.length > MAX_HTML_NESTING_DEPTH) {
     throw new RangeError(`HTML nesting exceeds ${MAX_HTML_NESTING_DEPTH} elements`)
   }
 }
 
-function closeElement(): void {
-  openElements--
+function closeElement(name: string): void {
+  if (openElements[openElements.length - 1] === name) openElements.pop()
+}
+
+/**
+ * How much output removing inputs may copy. sanitize-html removes an element
+ * by cutting the output back to where it began, a copy of all the output
+ * before it, so 512 KiB of text followed by 75,000 inputs took 4 seconds.
+ * 64,000,000 code units take about a tenth of a second.
+ */
+const MAX_REMOVAL_COPY = 64_000_000
+let removalCopy = 0
+
+// Only a disabled checkbox input is kept.
+function removeInput(frame: { tag: string; attribs: Record<string, string>; tagPosition: number }): boolean {
+  const remove = frame.tag === 'input'
+    && (frame.attribs['type']?.toLowerCase() !== 'checkbox' || !Object.hasOwn(frame.attribs, 'disabled'))
+  if (remove) {
+    removalCopy += frame.tagPosition
+    if (removalCopy > MAX_REMOVAL_COPY) {
+      throw new RangeError('HTML has too many inputs to remove')
+    }
+  }
+  return remove
 }
 
 function hardenSanitizedTag(
@@ -108,13 +134,7 @@ function buildStructuralOptions(config: SanitizerConfig): StructuralSanitizerOpt
     parseStyleAttributes: config.allowStyle,
     allowedStyles: config.allowStyle ? { '*': SAFE_INLINE_STYLES } : undefined,
     transformTags: { '*': hardenSanitizedTag },
-    exclusiveFilter: (frame) => (
-      frame.tag === 'input'
-      && (
-        frame.attribs['type']?.toLowerCase() !== 'checkbox'
-        || !Object.hasOwn(frame.attribs, 'disabled')
-      )
-    ),
+    exclusiveFilter: removeInput,
   }
 }
 
@@ -130,10 +150,13 @@ export function sanitizeHtml(html: string, config: SanitizerConfig): string {
     if (isSanitizerConfigStable(config)) stableOptions.set(config, options)
   }
   const outer = openElements
-  openElements = 0
+  const outerCopy = removalCopy
+  openElements = []
+  removalCopy = 0
   try {
     return structuralSanitizeHtml(html, options)
   } finally {
     openElements = outer
+    removalCopy = outerCopy
   }
 }
