@@ -49,6 +49,7 @@ interface ParserOptions {
   safeLinks?: boolean | SafeLinkOptions  // External link rel/target, baseUrl resolution
   ugc?: boolean                // Shorthand for safe user-generated content rendering
   maxInputLength?: number      // Maximum input length in UTF-16 code units
+  maxOutputLength?: number     // Stop rendering longer HTML with a RangeError (before sanitizing)
   lazyImages?: boolean         // Add loading="lazy" to images (default: true)
   blocks?: BlockRule[]         // Selective block rules for tree-shaking
   plugins?: MarkdownPlugin[]   // Plugins to extend the parser
@@ -112,7 +113,7 @@ const html = parse(readme, {
 const html = parse(commentBody, { ugc: true })
 ```
 
-UGC mode limits input to 1,000,000 UTF-16 code units. Use `maxInputLength` to set a smaller limit.
+UGC mode limits input to 1,000,000 UTF-16 code units and rendered HTML to 20,000,000. Use `maxInputLength` and `maxOutputLength` to set smaller limits. Set `maxOutputLength` outside UGC mode too when the Markdown is untrusted: reference links repeat their destination at each use, so a short document can render to hundreds of times its length.
 
 ## Lazy Images
 

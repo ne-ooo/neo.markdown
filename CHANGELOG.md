@@ -8,7 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- `maxOutputLength` stops rendering with a `RangeError` once the HTML passes a length, before sanitizing and HTML transforms. Reference links repeat their destination at each use, so a short document can render to hundreds of times its length: 471 KB of references rendered to 250 million characters. The count tracks the document's actual length, however deeply its blocks nest, and the parser stays usable after it stops. UGC mode caps it at 20,000,000.
+- `maxOutputLength` stops rendering with a `RangeError` once the HTML passes a length, before sanitizing and HTML transforms. Reference links repeat their destination at each use, so a short document can render to hundreds of times its length: 471 KB of references rendered to 250 million characters. Each block, list item, and table cell is counted as it finishes, nested blocks once, and the parser stays usable after it stops. HTML a custom renderer renders and then discards still counts.
+
+### Changed
+
+- UGC mode stops rendering HTML longer than 20,000,000 code units with a `RangeError`, even when a larger `maxOutputLength` is given.
 
 ### Fixed
 
