@@ -47,6 +47,7 @@ const adversarialInputs = [
   'lineBreakRuns',
   'escapedLines',
   'embedRestore',
+  'nestedHtml',
   'balancedEmphasis',
   'referenceLabels',
   'nestedContainers',

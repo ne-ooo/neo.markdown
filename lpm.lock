@@ -6,6 +6,7 @@ resolved-with = "greedy-fusion"
 auto-install-peers = true
 
 [importers.".".dependencies]
+htmlparser2 = "12.0.0"
 sanitize-html = "2.18.1"
 
 [importers.".".dev-dependencies]
@@ -4326,6 +4327,12 @@ source = "registry+https://registry.npmjs.org"
 instance-id = "da58a75c70a4e51b31dae599a96f4fbe86a754752a9c6d7b8a9cf464c919ed49"
 package = "esbuild"
 version = "0.28.2"
+source = "registry+https://registry.npmjs.org"
+
+[root-resolutions.htmlparser2]
+instance-id = "349ccc10d672c5b391608cdc61be884531083c9b37d9f075288574f6921dfebf"
+package = "htmlparser2"
+version = "12.0.0"
 source = "registry+https://registry.npmjs.org"
 
 [root-resolutions.markdown-it]

@@ -13,6 +13,7 @@ const tocParser = createParser({ allowHtml: true, plugins: [tocPlugin()] })
 const copyParser = createParser({ allowHtml: true, plugins: [copyCodePlugin()] })
 const breaksTokenizer = new InlineTokenizer([], { breaks: true })
 const plainTokenizer = new InlineTokenizer()
+const sanitizedHtmlParser = createSanitizedParser({ allowHtml: true, sanitize: true })
 const sanitizedEmbedParser = createSanitizedParser({
   allowHtml: true,
   sanitize: true,
@@ -26,6 +27,15 @@ function tokenLimited(parse: () => string): string {
     if (error instanceof RangeError && error.message.startsWith('Markdown token count exceeds')) {
       return 'refused'
     }
+    throw error
+  }
+}
+
+function nestingLimited(parse: () => string): string {
+  try {
+    return parse()
+  } catch (error) {
+    if (error instanceof RangeError && error.message.startsWith('HTML nesting exceeds')) return 'refused'
     throw error
   }
 }
@@ -80,6 +90,8 @@ const scenarios: Record<string, (size: number) => unknown> = {
   lineBreakRuns: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 20)),
   escapedLines: (size) => plainTokenizer.tokenize('a\\_ \n'.repeat(size * 20)),
   embedRestore: (size) => sanitizedEmbedParser.parse('::youtube[x]\n'.repeat(size)),
+  // The sanitizer's HTML parser moved every open element on each new one.
+  nestedHtml: (size) => nestingLimited(() => sanitizedHtmlParser.parse('<span>'.repeat(size * 8))),
   balancedEmphasis: (size) => defaultParser.parse('*a '.repeat(size) + 'center' + ' z*'.repeat(size)),
   referenceLabels: (size) => defaultParser.parse('[label\\]'.repeat(size)),
   nestedContainers: (size) => defaultParser.parse('> '.repeat(size) + '- item\n'),

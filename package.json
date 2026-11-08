@@ -315,6 +315,7 @@
     "test:incremental": "vitest run test/unit/incremental"
   },
   "dependencies": {
+    "htmlparser2": "12.0.0",
     "sanitize-html": "2.18.1"
   },
   "devDependencies": {

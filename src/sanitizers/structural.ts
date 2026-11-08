@@ -7,6 +7,7 @@ import {
   isSanitizerConfigStable,
 } from '../core/sanitizer.js'
 import type { SanitizerConfig } from '../core/types.js'
+import { assertHtmlNesting } from './nesting.js'
 
 const SAFE_COLOR_VALUES = [
   /^#[\da-f]{3,8}$/i,
@@ -93,8 +94,13 @@ function buildStructuralOptions(config: SanitizerConfig): StructuralSanitizerOpt
   }
 }
 
-/** Sanitize an HTML fragment with structural parsing and a strict allowlist. */
+/**
+ * Sanitize an HTML fragment with structural parsing and a strict allowlist.
+ * Throws a RangeError when the HTML nests deeper than MAX_HTML_NESTING_DEPTH
+ * elements: the parser's work grows with the square of the depth.
+ */
 export function sanitizeHtml(html: string, config: SanitizerConfig): string {
+  assertHtmlNesting(html)
   let options = stableOptions.get(config)
   if (!options) {
     options = buildStructuralOptions(config)

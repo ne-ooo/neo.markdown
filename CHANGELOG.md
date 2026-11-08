@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - ATX headings and GFM autolinks trim their trailing runs by scanning from the end. The trailing-run patterns retried the run at every offset, so a heading ending in a long run of spaces or tabs before a final character, or an autolink ending in a long run of punctuation, took quadratic time: 64,000 characters took 12.6 seconds for a heading and 1.6 seconds for an autolink. Output is unchanged.
 - Add both inputs, and a heading of only spaces and tabs, to the adversarial scaling tests.
+- The structural sanitizer refuses HTML nested deeper than 256 elements with a `RangeError`, before sanitize-html parses it. Its parser, htmlparser2, moves every open element each time it opens one and searches them all at each end tag, so 1 MB of nested tags took 2 to 14 seconds, though nothing past depth 100 reaches the output. The depth is measured with htmlparser2's own tokenizer and its rules for implied end tags, void elements and foreign content, in linear time, and matches the parser's on generated tag soup. htmlparser2 12.0.0, already installed through sanitize-html, is now a direct dependency.
 
 ## [3.0.1] - 2026-11-02
 
