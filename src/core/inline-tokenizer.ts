@@ -3,7 +3,7 @@
  */
 
 import type { InlineRule, InlineToken, LinkReference } from './types.js'
-import { consumeTokenBudget, type TokenBudget } from './token-budget.js'
+import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
 import { decodeEntities, decodeMarkdown, normalizeDestination } from '../utils/markdown-text.js'
@@ -48,7 +48,13 @@ const DEFAULT_CUSTOM_PRIORITY = 750
 const HARD_MAX_INLINE_NESTING_DEPTH = 32
 const MIN_INLINE_WORK_BUDGET = 10_000
 
-type InlineResult = { token: InlineToken; raw: string; delimiter?: Omit<EmphasisDelimiter, 'index'> }
+type InlineResult = {
+  token: InlineToken
+  raw: string
+  delimiter?: Omit<EmphasisDelimiter, 'index'>
+  /** A custom rule's token, which may be shared, so it is never merged into. */
+  custom?: boolean
+}
 
 interface ParsedLinkDestination {
   end: number
@@ -77,7 +83,7 @@ interface LinkScan {
   parenthesisBalance: Int32Array
   destinations: Map<number, ParsedLinkDestination | null>
   tildeClosers: number[][]
-  emailLinks: Map<number, InlineResult>
+  emailLinks: Map<number, number>
   emailStarts: number[]
   backtickRuns: DelimiterRun[]
   backtickClosers: Map<number, DelimiterRun[]>
@@ -275,7 +281,11 @@ export class InlineTokenizerBase {
       if (char === 10) {
         const previous = tokens.at(-1)
         if (previous?.type === 'text') {
-          const spaces = /[ \t]+$/.exec(previous.raw)?.[0] ?? ''
+          // Scanned from the end, so a long piece of text costs only its
+          // trailing spaces.
+          let start = previous.raw.length
+          while (start > 0 && (previous.raw.charCodeAt(start - 1) === 32 || previous.raw.charCodeAt(start - 1) === 9)) start--
+          const spaces = previous.raw.slice(start)
           if (spaces) {
             previous.raw = previous.raw.slice(0, -spaces.length)
             previous.text = previous.text.slice(0, -spaces.length)
@@ -289,10 +299,25 @@ export class InlineTokenizerBase {
       }
       if (token) {
         this.assertProgress('inline tokenizer', src, cursor, token.raw)
-        if (token.token.type !== 'text') consumeTokenBudget(tokenBudget)
-        if (token.delimiter) delimiters.push({ ...token.delimiter, index: tokens.length })
-        tokens.push(token.token)
-        fallbackTextIndex = -1
+        // Plain text, such as an escape, joins the text before it now rather
+        // than when the paragraph ends, so a run of escapes holds one piece.
+        // Text holding a line break stays apart, for the same reason as the
+        // line break below.
+        const plain = token.token.type === 'text' && !token.delimiter && !token.custom
+          && !token.raw.includes('\n')
+        const previous = tokens[fallbackTextIndex]
+        if (
+          plain && token.token.type === 'text'
+          && fallbackTextIndex === tokens.length - 1 && previous?.type === 'text'
+        ) {
+          previous.raw += token.token.raw
+          previous.text += token.token.text
+        } else {
+          consumeTokenBudget(tokenBudget)
+          if (token.delimiter) delimiters.push({ ...token.delimiter, index: tokens.length })
+          tokens.push(token.token)
+        }
+        fallbackTextIndex = plain ? tokens.length - 1 : -1
         previousChar = token.raw.at(-1) ?? previousChar
         cursor += token.raw.length
       } else {
@@ -305,6 +330,7 @@ export class InlineTokenizerBase {
           let end = cursor + 1
           while (src.charCodeAt(end) === 91) end++
           const raw = src.slice(cursor, end)
+          consumeTokenBudget(tokenBudget)
           tokens.push({ type: 'text', raw, text: raw })
           fallbackTextIndex = tokens.length - 1
           previousChar = '['
@@ -344,6 +370,10 @@ export class InlineTokenizerBase {
           src[cursor],
           tokenBudget
         )
+        // Each line's text starts a piece: its trailing spaces are trimmed
+        // at the next break, and trimming a piece that grew across lines
+        // would copy it at every line.
+        if (char === 10) fallbackTextIndex = -1
         previousChar = src[cursor]
         cursor++
       }
@@ -356,7 +386,7 @@ export class InlineTokenizerBase {
     tokens: InlineToken[],
     fallbackTextIndex: number,
     raw: string,
-    _tokenBudget?: TokenBudget
+    tokenBudget?: TokenBudget
   ): number {
     const previous = tokens[fallbackTextIndex]
     if (fallbackTextIndex === tokens.length - 1 && previous?.type === 'text') {
@@ -364,6 +394,7 @@ export class InlineTokenizerBase {
       previous.text += raw
       return fallbackTextIndex
     }
+    consumeTokenBudget(tokenBudget)
     tokens.push({ type: 'text', raw, text: raw })
     return tokens.length - 1
   }
@@ -405,7 +436,12 @@ export class InlineTokenizerBase {
         const result = candidate.rule.tokenize(src())
         if (result) {
           this.assertProgress(candidate.rule.name, source, cursor, result.raw)
-          return result
+          // The caller charges the token itself; its children count too, so
+          // discarding it releases what was charged.
+          if ('tokens' in result.token) {
+            consumeTokenBudget(tokenBudget, this.countTokens(result.token.tokens))
+          }
+          return { ...result, custom: true }
         }
       }
       return null
@@ -420,7 +456,7 @@ export class InlineTokenizerBase {
     if (allowExtendedAutolinks && linkScan.emailLinks.has(cursor)) {
       result = tryBuiltin(INLINE_RULE_PRIORITIES['autolink'], () => {
         consumeTokenBudget(tokenBudget)
-        return linkScan.emailLinks.get(cursor)!
+        return this.gfmSupport!.emailLink(source, cursor, linkScan.emailLinks.get(cursor)!)
       })
       if (result) return result
     }
@@ -547,7 +583,7 @@ export class InlineTokenizerBase {
     const matchingParentheses = new Map<number, number>()
     const parenthesisStack: number[] = []
     const tildeClosers: number[][] = [[], [], []]
-    const emailLinks = (allowExtendedAutolinks ? this.gfmSupport?.emailLinks(src) : undefined) ?? new Map<number, InlineResult>()
+    const emailLinks = (allowExtendedAutolinks ? this.gfmSupport?.emailLinks(src) : undefined) ?? new Map<number, number>()
     const emailStarts = [...emailLinks.keys()]
     const backtickRuns: DelimiterRun[] = []
     const backtickClosers = new Map<number, DelimiterRun[]>()
@@ -862,6 +898,7 @@ export class InlineTokenizerBase {
 
     if (isImage) {
       const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
+      this.release(children, tokenBudget)
       return {
         token: {
           type: 'image',
@@ -879,7 +916,10 @@ export class InlineTokenizerBase {
       text, references, depth + 1, workBudget, tokenBudget, false
     )
 
-    if (this.containsLink(tokens)) return null
+    if (this.containsLink(tokens)) {
+      this.release(tokens, tokenBudget)
+      return null
+    }
     return {
       token: {
         type: 'link',
@@ -924,14 +964,19 @@ export class InlineTokenizerBase {
 
     const raw = src.slice(cursor, end)
     if (isImage) {
+      const children = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)
+      this.release(children, tokenBudget)
       return {
-        token: { type: 'image', raw, text: this.inlineText(this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget)), href: reference.href, title: reference.title },
+        token: { type: 'image', raw, text: this.inlineText(children), href: reference.href, title: reference.title },
         raw,
       }
     }
 
     const tokens = this.tokenizeInternal(text, references, depth + 1, workBudget, tokenBudget, false)
-    if (this.containsLink(tokens)) return null
+    if (this.containsLink(tokens)) {
+      this.release(tokens, tokenBudget)
+      return null
+    }
     return {
       token: {
         type: 'link',
@@ -943,6 +988,23 @@ export class InlineTokenizerBase {
       },
       raw,
     }
+  }
+
+  /**
+   * Returns to the budget the tokens of text the result doesn't keep: an
+   * image's alt text becomes a string, and link text holding a link isn't a
+   * link.
+   */
+  private release(tokens: InlineToken[], tokenBudget?: TokenBudget): void {
+    if (tokenBudget) releaseTokenBudget(tokenBudget, this.countTokens(tokens))
+  }
+
+  private countTokens(tokens: InlineToken[]): number {
+    let count = tokens.length
+    for (const token of tokens) {
+      if ('tokens' in token) count += this.countTokens(token.tokens)
+    }
+    return count
   }
 
   private containsLink(tokens: InlineToken[]): boolean {

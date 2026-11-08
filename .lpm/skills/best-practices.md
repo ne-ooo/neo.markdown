@@ -93,7 +93,7 @@ For user-generated content, use the `ugc` shorthand. It enables safe links, disa
 const html = parse(userComment, { ugc: true })
 ```
 
-UGC mode limits input to 1,000,000 UTF-16 code units and rendered HTML to 20,000,000. Larger `maxInputLength` and `maxOutputLength` values cannot increase these limits. Outside UGC mode, set both for untrusted Markdown: reference links repeat their destination at each use, so a short document can render to hundreds of times its length.
+UGC mode limits input to 1,000,000 UTF-16 code units, tokens to 50,000 and rendered HTML to 20,000,000. Larger `maxInputLength`, `maxTokens` and `maxOutputLength` values cannot increase these limits. Outside UGC mode, set all three for untrusted Markdown: a short document of emphasis, or a wide table with short rows, builds hundreds of thousands of tokens, and reference links repeat their destination at each use, so a short document can render to hundreds of times its length.
 
 ### Use `safeLinks: true` for README rendering
 

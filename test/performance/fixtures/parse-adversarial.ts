@@ -12,11 +12,23 @@ const htmlParser = createParser({ allowHtml: true })
 const tocParser = createParser({ allowHtml: true, plugins: [tocPlugin()] })
 const copyParser = createParser({ allowHtml: true, plugins: [copyCodePlugin()] })
 const breaksTokenizer = new InlineTokenizer([], { breaks: true })
+const plainTokenizer = new InlineTokenizer()
 const sanitizedEmbedParser = createSanitizedParser({
   allowHtml: true,
   sanitize: true,
   plugins: [embedPlugin({ youtube: true })],
 })
+
+function tokenLimited(parse: () => string): string {
+  try {
+    return parse()
+  } catch (error) {
+    if (error instanceof RangeError && error.message.startsWith('Markdown token count exceeds')) {
+      return 'refused'
+    }
+    throw error
+  }
+}
 
 function nestedEmphasis(depth: number): string {
   const openings: string[] = []
@@ -48,7 +60,13 @@ const scenarios: Record<string, (size: number) => unknown> = {
   unmatchedEmphasis: (size) => defaultParser.parse('**a '.repeat(size)),
   unmatchedDelete: (size) => defaultParser.parse('~~a '.repeat(size)),
   nestedEmphasis: (size) => defaultParser.parse(nestedEmphasis(size)),
-  nestedMax: (size) => ugcParser.parse(nestedEmphasis(size * 10 - 1)),
+  // UGC mode counts each delimiter run as it is built, so it refuses this
+  // past its token limit instead of building every run first.
+  nestedMax: (size) => tokenLimited(() => ugcParser.parse(nestedEmphasis(size * 10 - 1))),
+  // The largest UGC input, all emphasis: a million inline pieces.
+  ugcEmphasis: () => tokenLimited(() => ugcParser.parse('*a* '.repeat(250_000))),
+  // The largest UGC input, all email addresses: 166,666 links.
+  ugcEmails: () => tokenLimited(() => ugcParser.parse('a@b.c '.repeat(166_666))),
   inlineCode: (size) => defaultParser.parse(`x${'`'.repeat(size * 4)}a`),
   links: (size) => defaultParser.parse('[x]('.repeat(size)),
   html: (size) => defaultParser.parse('<a '.repeat(size)),
@@ -57,6 +75,10 @@ const scenarios: Record<string, (size: number) => unknown> = {
   copyHtml: (size) => copyParser.parse('<pre '.repeat(size * 2)),
   table: (size) => defaultParser.parse(`|${' cell |'.repeat(size)}`),
   breaks: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 4)),
+  // Each line's trailing spaces are trimmed at its break. Text that joined
+  // across lines was copied at every one.
+  lineBreakRuns: (size) => breaksTokenizer.tokenize('\n '.repeat(size * 20)),
+  escapedLines: (size) => plainTokenizer.tokenize('a\\_ \n'.repeat(size * 20)),
   embedRestore: (size) => sanitizedEmbedParser.parse('::youtube[x]\n'.repeat(size)),
   balancedEmphasis: (size) => defaultParser.parse('*a '.repeat(size) + 'center' + ' z*'.repeat(size)),
   referenceLabels: (size) => defaultParser.parse('[label\\]'.repeat(size)),

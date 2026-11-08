@@ -33,6 +33,8 @@ describe('plain-text fast path', () => {
     )
   })
 
+  // An escape joins the text before it as it is built, so the run holds one
+  // piece throughout.
   it('merges adjacent text without bypassing token accounting', () => {
     const tokenizer = new InlineTokenizer()
     const budget = createTokenBudget(1)
@@ -94,10 +96,12 @@ describe('inline parsing without syntax indexes', () => {
       type: 'strong', raw: source, text: 'bold &amp;',
       tokens: [{ type: 'text', raw: 'bold &amp;', text: 'bold &' }],
     }]
-    const budget = createTokenBudget(1)
+    // The delimiters, the text and the wrapper exist at once; the used-up
+    // delimiters return to the budget, leaving the wrapper and its text.
+    const budget = createTokenBudget(4)
     const tokens = tokenizer.tokenize(source, new Map(), budget)
     expect(tokens).toEqual(expected)
-    expect(budget.remaining).toBe(0)
+    expect(budget.remaining).toBe(2)
     tokens[0].text = 'changed'
     tokens[0].tokens![0].text = 'changed child'
     expect(tokenizer.tokenize(source)).toEqual(expected)
