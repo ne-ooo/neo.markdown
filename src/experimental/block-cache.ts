@@ -2,6 +2,7 @@ import type { BlockToken, LazyLineSet } from '../core/types.js'
 import {
   createNestedWork, normalizeMarkdown, type BlockCheckpoint, type BlockResume, type BlockContinuationFactory, type NestedWork,
 } from '../core/tokenizer.js'
+import { LineSet } from '../blocks/line-set.js'
 import { consumeTokenBudget, type TokenBudget } from '../core/token-budget.js'
 
 interface RetainedCheckpoint extends BlockCheckpoint { nodes: number; units: number }
@@ -193,7 +194,7 @@ export class BlockCache {
     }, continuations, work)
     for (const token of changed) tokens.push(token)
     for (let index = suffixIndex; index < old.length; index++) reuse(old[index], delta)
-    if (keep) { this.source = next; this.points = retained; this.nodes = nodes; this.units = units; this.lazy = lazy ? new Set(lazy) : undefined }
+    if (keep) { this.source = next; this.points = retained; this.nodes = nodes; this.units = units; this.lazy = lazy ? new LineSet(lazy) : undefined }
     else this.clear()
     return tokens
   }
