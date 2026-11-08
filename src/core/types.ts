@@ -635,6 +635,8 @@ export interface BlockRuleContext {
     retain(snapshot: () => unknown): void
     reused(codeUnits: number): void
     budget(): number
+    /** The document's nested-work budget: what's left, and how often it refused. */
+    nested?(): { readonly remaining: number; readonly refusals: number }
   }
 }
 

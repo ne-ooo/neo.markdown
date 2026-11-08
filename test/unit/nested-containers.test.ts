@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LineSet } from '../../src/blocks/line-set.js'
+import { createIncrementalMarkdown } from '../../src/experimental/incremental.js'
 import { createParser } from '../../src/index.js'
 import type { BlockRule } from '../../src/core/types.js'
 
@@ -60,4 +61,33 @@ describe('nested containers', () => {
       '<blockquote>\n<p>a\nb</p>\n</blockquote>\n',
     )
   })
+})
+
+// The nested-work bound is the document's. A block an incremental session
+// reuses spends what it spent before, so a changed block gets what a fresh
+// parse would leave it: an edit after two such blocks gave 100 levels, where
+// a fresh parse gives 67.
+describe('nested containers in incremental sessions', () => {
+  const block = (marker: string) => `${'> '.repeat(50)}${marker}\n${'y'.repeat(60_000)}\n\n`
+  // List items are tokenized, and reused, as children of their list.
+  const items = (...markers: string[]) =>
+    markers.map(marker => `- ${'> '.repeat(40)}${marker}\n  ${'y'.repeat(50_000)}\n`).join('')
+  const session = () => createIncrementalMarkdown({
+    maxInputLength: 1_000_000,
+    maxWorkCodeUnits: 10_000_000_000,
+    maxCachedBlockCodeUnits: 1_000_000_000,
+    maxCachedBlockTokens: 1_000_000,
+  })
+
+  it.each([
+    ['a block after reused ones', block('x') + block('x'), block('x') + block('z')],
+    ['a block before a reused suffix', block('x') + block('x'), block('z') + block('x')],
+    ['a document that grows past the bound', `${block('x')}tail\n`, `${block('x') + block('x')}tail\n`],
+    ['an item appended after reused siblings', items('x', 'x'), items('x', 'x', 'x')],
+  ])('renders %s as a fresh parse does', (_, before, after) => {
+    const incremental = session()
+    incremental.update(before)
+
+    expect(incremental.update(after).html).toBe(createParser().parse(after))
+  }, 60_000)
 })

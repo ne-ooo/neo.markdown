@@ -26,12 +26,32 @@ export interface BlockCheckpoint {
   end: number
   dependencyEnd: number
   budgetCost: number
+  /** Nested content the block tokenized, which a reuse spends again. */
+  nestedCost: number
+  /** Whether the nested-work bound flattened part of the block. */
+  nestedRefused: boolean
   token?: BlockToken
   continuation?: unknown
 }
 
+/**
+ * Nested content a document may still tokenize. A reused block spends what
+ * it spent when it was tokenized, so each block sees what a fresh parse
+ * would leave it.
+ */
+export interface NestedWork {
+  remaining: number
+  refusals: number
+}
+
+/** The nested work a document of `length` code units may do. */
+export function createNestedWork(length: number): NestedWork {
+  return { remaining: Math.max(NESTED_WORK_FACTOR * length, MIN_NESTED_WORK), refusals: 0 }
+}
+
 export type BlockResume = (src: string, start: number, budget: TokenBudget | undefined,
-  checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory) => BlockToken[]
+  checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory,
+  work?: NestedWork) => BlockToken[]
 export interface BlockContinuationScope {
   context: NonNullable<BlockRuleContext['continuation']>
   finish(): unknown
@@ -59,7 +79,7 @@ export class Tokenizer {
   private readonly options: Readonly<ParserOptions>
   private readonly rules: InternalBlockRule[]
   private readonly maxNestingDepth: number
-  private nestedWork: { remaining: number } | undefined
+  private nestedWork: NestedWork | undefined
 
   constructor(
     options: ParserOptions = {},
@@ -120,11 +140,15 @@ export class Tokenizer {
     return this.withNestedWork(src, () => this.tokenizeInternal(src, 0, tokenBudget))
   }
 
-  /** Internal experimental entry. Resume at a previously observed top-level boundary. */
+  /**
+   * Internal experimental entry. Resume at a previously observed top-level
+   * boundary, with the nested work blocks reused before it left.
+   */
   resume(src: string, start: number, tokenBudget: TokenBudget | undefined,
-    checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory): BlockToken[] {
+    checkpoint: (point: BlockCheckpoint) => boolean, continuations?: BlockContinuationFactory,
+    work?: NestedWork): BlockToken[] {
     return this.withNestedWork(src, () =>
-      this.tokenizeInternal(src, 0, tokenBudget, undefined, start, checkpoint, continuations))
+      this.tokenizeInternal(src, 0, tokenBudget, undefined, start, checkpoint, continuations), work)
   }
 
   /**
@@ -134,9 +158,9 @@ export class Tokenizer {
    * tokenize at most NESTED_WORK_FACTOR times its length, or MIN_NESTED_WORK,
    * as nested content.
    */
-  private withNestedWork<T>(src: string, tokenize: () => T): T {
+  private withNestedWork<T>(src: string, tokenize: () => T, work = createNestedWork(src.length)): T {
     const previous = this.nestedWork
-    this.nestedWork = { remaining: Math.max(NESTED_WORK_FACTOR * src.length, MIN_NESTED_WORK) }
+    this.nestedWork = work
     try {
       return tokenize()
     } finally {
@@ -159,7 +183,13 @@ export class Tokenizer {
     let cursor = start
     let checkpointStart = start
     let previousBudget = tokenBudget?.remaining ?? 0
+    let previousNested = this.nestedWork?.remaining ?? 0
+    let previousRefusals = this.nestedWork?.refusals ?? 0
     let dependencyEnd = start
+    const nestedSpent = () => ({
+      nestedCost: previousNested - (this.nestedWork?.remaining ?? 0),
+      nestedRefused: (this.nestedWork?.refusals ?? 0) !== previousRefusals,
+    })
 
     while (cursor < markdown.length) {
       if (markdown.charCodeAt(cursor) === 10) {
@@ -197,16 +227,19 @@ export class Tokenizer {
       cursor += consumed || 1
       if (checkpoint && token) {
         const point = { start: checkpointStart, end: cursor, dependencyEnd: Math.max(dependencyEnd, cursor + 1),
-          budgetCost: previousBudget - (tokenBudget?.remaining ?? 0), token, ...(scope ? { continuation: scope.finish() } : {}) }
+          budgetCost: previousBudget - (tokenBudget?.remaining ?? 0), ...nestedSpent(), token,
+          ...(scope ? { continuation: scope.finish() } : {}) }
         if (checkpoint(point)) return tokens
         checkpointStart = cursor
         previousBudget = tokenBudget?.remaining ?? 0
+        previousNested = this.nestedWork?.remaining ?? 0
+        previousRefusals = this.nestedWork?.refusals ?? 0
         dependencyEnd = cursor
       }
     }
 
     if (checkpoint && checkpointStart < cursor) checkpoint({ start: checkpointStart, end: cursor,
-      dependencyEnd: markdown.length + 1, budgetCost: previousBudget - (tokenBudget?.remaining ?? 0) })
+      dependencyEnd: markdown.length + 1, budgetCost: previousBudget - (tokenBudget?.remaining ?? 0), ...nestedSpent() })
 
     return tokens
   }
@@ -224,7 +257,10 @@ export class Tokenizer {
       reserveNested: (length) => {
         const work = this.nestedWork
         if (!work) return true
-        if (work.remaining < length) return false
+        if (work.remaining < length) {
+          work.refusals++
+          return false
+        }
         work.remaining -= length
         return true
       },

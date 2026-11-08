@@ -6,6 +6,8 @@ import { LineSet } from '../line-set.js'
 
 interface ListState {
   kind: 'list'; cursor: number; items: ListItemToken[]; loose: boolean; previousBlank: boolean; cost: number
+  /** Nested work the saved items spent, and whether any was flattened. */
+  nestedCost: number; nestedRefused: boolean
   current: {
     start: number; marker: NonNullable<ReturnType<typeof listMarker>>; content: string
     task: string | undefined; lines: string[]; lazy: number[]; contentLength: number; blank: boolean
@@ -26,14 +28,22 @@ export const list: BlockRule = {
     if (!first) return null
     const continuation = context?.continuation
     const previous = continuation?.previous as ListState | undefined
-    const saved = previous?.kind === 'list' ? previous : undefined
+    const initialNested = continuation?.nested?.()
+    // Saved items render as a fresh parse would only with their whole nested
+    // cost still left; otherwise the list is scanned again.
+    const saved = previous?.kind === 'list' && !previous.nestedRefused
+      && previous.nestedCost <= (initialNested?.remaining ?? Infinity) ? previous : undefined
     const initialBudget = continuation?.budget() ?? 0
     const items: ListItemToken[] = saved?.items.slice() ?? []
     let cursor = saved?.cursor ?? 0
     let loose = saved?.loose ?? false
     let previousBlank = saved?.previousBlank ?? false
     let pending = saved?.current
-    if (saved) { context!.consumeTokens(saved.cost); continuation!.reused(cursor) }
+    if (saved) {
+      context!.consumeTokens(saved.cost)
+      context!.reserveNested?.(saved.nestedCost)
+      continuation!.reused(cursor)
+    }
     while (cursor < src.length || pending) {
       const resumed = pending
       pending = undefined
@@ -73,8 +83,11 @@ export const list: BlockRule = {
         const end = cursor, count = lines.length, size = contentLength, itemCount = items.length
         const prefixLoose = loose, prefixBlank = previousBlank, tailBlank = blank, paragraph = state.snapshot()
         const cost = initialBudget - continuation.budget()
+        const nested = continuation.nested?.()
+        const nestedCost = initialNested && nested ? initialNested.remaining - nested.remaining : 0
+        const nestedRefused = Boolean(initialNested && nested && nested.refusals !== initialNested.refusals)
         continuation.retain(() => ({ kind: 'list', cursor: end, items: items.slice(0, itemCount),
-          loose: prefixLoose, previousBlank: prefixBlank, cost, current: {
+          loose: prefixLoose, previousBlank: prefixBlank, cost, nestedCost, nestedRefused, current: {
             start: itemStart, marker, content, task, lines: lines.slice(0, count),
             lazy: lazy.below(size), contentLength: size, blank: tailBlank, paragraph,
           } } satisfies ListState))

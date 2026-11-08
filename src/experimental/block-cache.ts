@@ -1,5 +1,7 @@
 import type { BlockToken, LazyLineSet } from '../core/types.js'
-import { normalizeMarkdown, type BlockCheckpoint, type BlockResume, type BlockContinuationFactory } from '../core/tokenizer.js'
+import {
+  createNestedWork, normalizeMarkdown, type BlockCheckpoint, type BlockResume, type BlockContinuationFactory, type NestedWork,
+} from '../core/tokenizer.js'
 import { consumeTokenBudget, type TokenBudget } from '../core/token-budget.js'
 
 interface RetainedCheckpoint extends BlockCheckpoint { nodes: number; units: number }
@@ -55,7 +57,13 @@ export class BlockCache {
       lastBlockRestart: this.restart, lastBlockParsedThrough: this.parsedThrough, ...this.continuationMetrics }
   }
 
-  parse(input: string, budget: TokenBudget | undefined, resume: BlockResume, lazy?: LazyLineSet): BlockToken[] {
+  /**
+   * `work` is the document's nested-work budget, which a child cache shares
+   * with its document. A block is reused only if a fresh parse would leave
+   * it its whole nested cost, and spends that cost again.
+   */
+  parse(input: string, budget: TokenBudget | undefined, resume: BlockResume, lazy?: LazyLineSet,
+    work: NestedWork = createNestedWork(normalizeMarkdown(input).length)): BlockToken[] {
     const next = normalizeMarkdown(input)
     const previous = this.source
     const old = this.points
@@ -70,8 +78,10 @@ export class BlockCache {
       }
       retained.push(point); nodes += point.nodes; units += point.units
     }
+    const reusable = (point: RetainedCheckpoint) => !point.nestedRefused && point.nestedCost <= work.remaining
     const reuse = (point: RetainedCheckpoint, delta = 0) => {
       consumeTokenBudget(budget, point.budgetCost)
+      work.remaining -= point.nestedCost
       if (point.token) { tokens.push(point.token); this.reusedBlocks++ }
       this.reusedCodeUnits += point.end - point.start
       remember(delta ? { ...point, start: point.start + delta, end: point.end + delta, dependencyEnd: point.dependencyEnd + delta } : point)
@@ -92,12 +102,21 @@ export class BlockCache {
     for (const position of lazy ?? []) if (!this.lazy?.has(position - delta)) suffix = Math.min(suffix, Math.max(0, next.length - position - 1))
     let prefixCount = 0
     const identical = previous === next && sameLazy
-    while (prefixCount < old.length && (identical || old[prefixCount].dependencyEnd <= prefix)) reuse(old[prefixCount++])
+    while (
+      prefixCount < old.length && (identical || old[prefixCount].dependencyEnd <= prefix) && reusable(old[prefixCount])
+    ) reuse(old[prefixCount++])
     const start = prefixCount ? old[prefixCount - 1].end : 0
     this.restart = start
     this.parsedThrough = start
     const oldEnds = new Map<number, number>()
     const oldStates = new Map<number, ContinuationData>()
+    // What each old suffix would spend, and whether any of it was flattened.
+    const suffixCost = new Array<number>(old.length + 1).fill(0)
+    const suffixRefused = new Array<boolean>(old.length + 1).fill(false)
+    for (let index = old.length - 1; index >= prefixCount; index--) {
+      suffixCost[index] = suffixCost[index + 1]! + old[index]!.nestedCost
+      suffixRefused[index] = suffixRefused[index + 1]! || old[index]!.nestedRefused
+    }
     for (let index = prefixCount; index < old.length; index++) {
       const point = old[index]
       oldEnds.set(point.end, index + 1)
@@ -127,6 +146,7 @@ export class BlockCache {
           },
           reused: units => { this.continuationMetrics.continuationHits++; this.continuationMetrics.continuedCodeUnits += units },
           budget: () => budget?.remaining ?? 0,
+          nested: () => ({ remaining: work.remaining, refusals: work.refusals }),
         },
         finish: () => {
           if (snapshot) frame = snapshot()
@@ -136,7 +156,7 @@ export class BlockCache {
           if (!child || child.key !== key || child.depth !== depth) child = {
             key, depth, cache: new BlockCache(this.limits, this.charge, this.continuationMetrics),
           }
-          return child.cache.parse(source, budget, nestedResume, lines)
+          return child.cache.parse(source, budget, nestedResume, lines, work)
         },
       }
     }
@@ -165,9 +185,12 @@ export class BlockCache {
       if (point.end < next.length - suffix) return false
       const index = oldEnds.get(point.end - delta)
       if (index === undefined) return false
+      // The old suffix renders as a fresh parse would only with its whole
+      // nested cost still left.
+      if (suffixRefused[index] || suffixCost[index]! > work.remaining) return false
       suffixIndex = index
       return true
-    }, continuations)
+    }, continuations, work)
     for (const token of changed) tokens.push(token)
     for (let index = suffixIndex; index < old.length; index++) reuse(old[index], delta)
     if (keep) { this.source = next; this.points = retained; this.nodes = nodes; this.units = units; this.lazy = lazy ? new Set(lazy) : undefined }

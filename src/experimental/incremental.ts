@@ -103,7 +103,8 @@ export function createIncrementalMarkdown(options: IncrementalMarkdownOptions = 
   class ReusingParser extends MarkdownParser {
     protected override tokenizeBlocks(text: string, budget?: TokenBudget): BlockToken[] {
       if (!reusable) return super.tokenizeBlocks(text, budget)
-      const tokens = blocks.parse(text, budget, (source, start, budget, checkpoint, continuations) => this.resumeBlocks(source, start, budget, checkpoint, continuations))
+      const tokens = blocks.parse(text, budget, (source, start, budget, checkpoint, continuations, work) =>
+        this.resumeBlocks(source, start, budget, checkpoint, continuations, work))
       return isolated ? isolateTokens(tokens, charge, cloneMetrics) : tokens
     }
     protected override tokenizeInline(text: string, references: ReadonlyMap<string, LinkReference>, budget?: TokenBudget): InlineToken[] {
