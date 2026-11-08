@@ -1,6 +1,6 @@
 import type { InlineToken, TextToken } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
-import { copyToken, type InlineTokenMeasure } from './custom-tokens.js'
+import { editableText, type InlineTokenMeasure } from './custom-tokens.js'
 
 export interface EmphasisDelimiter {
   index: number
@@ -35,8 +35,9 @@ export function delimiterFlags(source: string, start: number, length: number) {
  */
 /**
  * Merges adjacent text. A token a custom rule returns may be shared, so the
- * first of a run is copied once, and the copy takes the rest; a text token
- * with children, which merging would drop, stays apart.
+ * first of a run is copied once if it is a plain object, and the copy takes
+ * the rest; a text token with children, which merging would drop, stays
+ * apart.
  */
 function mergeText(tokens: InlineToken[], budget?: TokenBudget): InlineToken[] {
   const result: InlineToken[] = []
@@ -45,7 +46,7 @@ function mergeText(tokens: InlineToken[], budget?: TokenBudget): InlineToken[] {
     const previous = result.at(-1)
     if (previous?.type === 'text' && token.type === 'text' && !('tokens' in previous) && !('tokens' in token)) {
       if (previous !== owned) {
-        owned = copyToken(previous, { raw: previous.raw, text: previous.text })
+        owned = editableText(previous)
         result[result.length - 1] = owned
       }
       owned.raw += token.raw

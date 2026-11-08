@@ -179,28 +179,55 @@ describe('custom inline rules and the token budget', () => {
     expect(createParser({ ugc: true, plugins: [plugin] }).parse('![@](u) '.repeat(20_000)).match(/<img /g)).toHaveLength(20_000)
   })
 
-  // Merging and trimming spread a rule's token into a plain object, which
-  // dropped the getters of a class instance.
-  it('copies a rule token that is a class instance with its getters', () => {
+  // Merging and trimming copied a rule's token. A copy of a class instance
+  // lost getters, private fields or fields it inherited, so rendering threw
+  // or changed where main renders. A class instance is changed in place, as
+  // main does; a plain object, which a rule may share, is copied.
+  it('changes a rule token that is a class instance in place, as before', () => {
+    const rule = (match: string, make: () => unknown): MarkdownPlugin => builder => builder.addInlineRule({
+      name: 'rule', priority: 1, triggerChars: [match.charCodeAt(0)], tokenize: (src) => (src.startsWith(match) ? { raw: match, token: make() as InlineToken } : null),
+    })
     class Leaf { raw = '@'; text = 'L'; get type() { return 'text' as const } }
     class Spaced { raw = '@  '; text = 'C  '; get type() { return 'text' as const } }
-    const leaf = createParser({ plugins: [at(new Leaf() as unknown as InlineToken)] })
-    const spaced = createParser({ plugins: [builder => builder.addInlineRule({
-      name: 'at', priority: 1, triggerChars: [64], tokenize: (src) => (src.startsWith('@  ') ? { raw: '@  ', token: new Spaced() as unknown as InlineToken } : null),
-    })] })
+    class Own { type = 'text' as const; raw = '@'; text = 'L' }
+    class Labelled { type = 'text' as const; raw = '@'; text = 'a'; #label = 'ok'; get label() { return this.#label } }
+    const leaf = createParser({ plugins: [rule('@', () => new Leaf())] })
+    const spaced = createParser({ plugins: [rule('@  ', () => new Spaced())] })
+    const own = createParser({ plugins: [rule('@', () => new Own())] })
+    const labelled = createParser({ plugins: [rule('@', () => new Labelled())], renderer: { text: (token) => (token as { label?: string }).label ?? token.text } })
 
     expect(leaf.parse('@b')).toBe('<p>Lb</p>\n')
     expect(leaf.parse('@ b')).toBe('<p>L b</p>\n')
-    // Inheriting from the token before added a prototype for each merge,
-    // which made a run of them quadratic, and left fields out of copies.
-    class Own { type = 'text' as const; raw = '@'; text = 'L' }
-    const own = createParser({ plugins: [at(new Own() as unknown as InlineToken)] })
+    expect(spaced.parse('@  \nx')).toBe('<p>C<br>\nx</p>\n')
+    expect(spaced.parse('![@  \nx](u)')).toContain('alt="C\nx"')
     const merged = (own.tokenize('@@@b')[0] as { tokens: InlineToken[] }).tokens[0]!
     expect(Object.getPrototypeOf(merged)).toBe(Own.prototype)
     expect(JSON.parse(JSON.stringify(merged))).toEqual({ type: 'text', raw: '@@@b', text: 'LLLb' })
     expect(own.render(structuredClone(own.tokenize('@b')))).toBe('<p>Lb</p>\n')
-    expect(spaced.parse('@  \nx')).toBe('<p>C<br>\nx</p>\n')
-    expect(spaced.parse('![@  \nx](u)')).toContain('alt="C\nx"')
+    expect(labelled.parse('@x')).toBe('<p>ok</p>\n')
+  })
+
+  // A token whose children are all text was charged as a built-in token,
+  // then measured inside another rule's token, and released by that
+  // measure, returning what it never took.
+  it('charges and releases a token whose children are all text the same way', () => {
+    const leaf: InlineToken = { type: 'text', raw: '', text: '' }
+    const flat: InlineToken = { type: 'em', raw: '@', text: '', tokens: Array<InlineToken>(50).fill(leaf) }
+    const wrapper: InlineToken = { type: 'strong', raw: '%', text: '', tokens: [flat] }
+    const forty: InlineToken = { type: 'strong', raw: 'R', text: '', tokens: [{ type: 'em', raw: '', text: '', tokens: Array<InlineToken>(39).fill(leaf) }] }
+    const parser = createParser({
+      maxOutputLength: 100,
+      renderer: { strong: () => '', em: () => '' },
+      plugins: [builder => {
+        for (const [char, token] of Object.entries({ '@': flat, '%': wrapper, R: forty })) {
+          builder.addInlineRule({ name: char, priority: 1, triggerChars: [char.charCodeAt(0)], tokenize: (src) => (src.startsWith(char) ? { raw: char, token } : null) })
+        }
+      }],
+    })
+    const refusal = new RangeError("Custom inline tokens' descendants exceed maxOutputLength 100")
+
+    expect(() => parser.parse('R R R')).toThrow(refusal)
+    expect(() => parser.parse('R ![@%](u) R R')).toThrow(refusal)
   })
 
   // Alt text from the Markdown itself counted against the output limit,

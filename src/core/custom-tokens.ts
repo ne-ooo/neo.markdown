@@ -116,7 +116,8 @@ function onlyLeaves(children: InlineToken[], measures: WeakMap<object, InlineTok
 /**
  * Measures a token with children. Tokens shared within it are measured once,
  * through `local`. The document keeps the measures of long arrays of
- * children, and of tokens that give no alt text, so alt text can skip them.
+ * children, and of tokens holding tokens that give no alt text, so alt text
+ * can skip them.
  */
 function measureWithin(
   token: InlineToken,
@@ -153,7 +154,9 @@ function measureWithin(
   }
   const measure = token.type === 'link' && !held.link ? { ...held, link: true } : held
   local.set(token, measure)
-  if (measure.text === 0) measures.set(token, measure)
+  // A token whose children are all text is charged and released as a
+  // built-in one, wherever it is, so it isn't kept.
+  if (measure.text === 0 && measure.depth > 1) measures.set(token, measure)
   return measure
 }
 
@@ -257,18 +260,13 @@ export function keepAltText(document: InlineDocument, length: number): void {
 }
 
 /**
- * Copies a token with changes. A plain object is spread. Any other, such as
- * a class instance a rule returns, keeps its prototype, so its getters and
- * methods stay, and its own properties, so it serializes as it did.
+ * A token whose text can be changed: a copy of a plain object, which a rule
+ * may return every time, or the token itself otherwise. A class instance is
+ * changed in place, as before, since no copy keeps its private fields.
  */
-export function copyToken<T extends object>(token: T, changes: Partial<T>): T {
-  const prototype: object | null = Object.getPrototypeOf(token)
-  if (prototype === Object.prototype || prototype === null) return { ...token, ...changes }
-  const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(token)
-  for (const [key, value] of Object.entries(changes)) {
-    descriptors[key] = { value, writable: true, enumerable: true, configurable: true }
-  }
-  return Object.create(prototype, descriptors) as T
+export function editableText<T extends object>(token: T): T {
+  const prototype: unknown = Object.getPrototypeOf(token)
+  return prototype === Object.prototype || prototype === null ? { ...token } : token
 }
 
 /** Pieces at least this long are shared by an alt text rather than copied into it. */

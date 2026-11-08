@@ -5,7 +5,7 @@
 import type { ImageToken, InlineRule, InlineToken, LinkReference } from './types.js'
 import { consumeTokenBudget, releaseTokenBudget, type TokenBudget } from './token-budget.js'
 import {
-  chargeCustomToken, copyToken, createInlineDocument, keepAltText, leafText, SHARED_PIECE_LENGTH, type InlineDocument,
+  chargeCustomToken, createInlineDocument, editableText, keepAltText, leafText, SHARED_PIECE_LENGTH, type InlineDocument,
 } from './custom-tokens.js'
 import { delimiterFlags, resolveEmphasis, type EmphasisDelimiter } from './emphasis.js'
 import { htmlTagEnd } from '../utils/html-syntax.js'
@@ -307,10 +307,9 @@ export class InlineTokenizerBase {
           const spaces = previous.raw.slice(start)
           if (spaces) {
             // A copy: the token may be one a custom rule returns every time.
-            const trimmed = copyToken(previous, {
-              raw: previous.raw.slice(0, -spaces.length),
-              text: previous.text.slice(0, -spaces.length),
-            })
+            const trimmed = editableText(previous)
+            trimmed.raw = previous.raw.slice(0, -spaces.length)
+            trimmed.text = previous.text.slice(0, -spaces.length)
             // A rule's token with children is released by its measure.
             const measure = 'tokens' in previous ? this.document!.measures.get(previous) : undefined
             if (measure) this.document!.measures.set(trimmed, measure)
